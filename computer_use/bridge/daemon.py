@@ -8,16 +8,47 @@ Usage:
     python daemon.py --help
 """
 
-import argparse
-import base64
+# ── DPI awareness MUST be set before ANY Win32 API call or mss import ──
+# This ensures all coordinate APIs use physical pixels consistently,
+# whether connected via physical display or Remote Desktop.
 import ctypes
 import ctypes.wintypes
+import sys
+
+def _set_dpi_awareness():
+    """Set per-monitor DPI awareness v2. Must run before any Win32 usage."""
+    if sys.platform != "win32":
+        return
+    try:
+        # Preferred: Windows 10 1703+ (per-monitor v2)
+        u32 = ctypes.windll.user32
+        u32.SetProcessDpiAwarenessContext.restype = ctypes.wintypes.BOOL
+        u32.SetProcessDpiAwarenessContext.argtypes = [ctypes.wintypes.HANDLE]
+        if u32.SetProcessDpiAwarenessContext(ctypes.wintypes.HANDLE(-4)):
+            return
+    except (AttributeError, OSError):
+        pass
+    try:
+        # Fallback: Windows 8.1+ (per-monitor v1)
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        pass
+    try:
+        # Last resort: Vista+ (system DPI aware)
+        ctypes.windll.user32.SetProcessDPIAware()
+    except (AttributeError, OSError):
+        pass
+
+_set_dpi_awareness()
+# ── Now safe to use Win32 APIs and import mss ──
+
+import argparse
+import base64
 import io
 import json
 import logging
 import socket
 import struct
-import sys
 import time
 
 logging.basicConfig(
@@ -29,6 +60,7 @@ logger = logging.getLogger("bridge.daemon")
 # Win32 constants
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
+MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_RIGHTDOWN = 0x0008
@@ -36,12 +68,16 @@ MOUSEEVENTF_RIGHTUP = 0x0010
 MOUSEEVENTF_MIDDLEDOWN = 0x0020
 MOUSEEVENTF_MIDDLEUP = 0x0040
 MOUSEEVENTF_WHEEL = 0x0800
+MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_VIRTUALDESK = 0x4000
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 SM_CXSCREEN = 0
 SM_CYSCREEN = 1
 SM_XVIRTUALSCREEN = 76
 SM_YVIRTUALSCREEN = 77
-LOGPIXELSX = 88
+SM_CXVIRTUALSCREEN = 78
+SM_CYVIRTUALSCREEN = 79
 
 HEADER_SIZE = 4
 DEFAULT_PORT = 19542
@@ -69,7 +105,7 @@ VK_MAP = {
     "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
 }
 
-# Win32 structures
+# Win32 API handles
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
 
@@ -103,18 +139,6 @@ class INPUT(ctypes.Structure):
     _fields_ = [("type", ctypes.wintypes.DWORD), ("union", INPUT_UNION)]
 
 
-def _send_mouse_input(flags, dx=0, dy=0, data=0):
-    inp = INPUT()
-    inp.type = INPUT_MOUSE
-    inp.union.mi.dx = dx
-    inp.union.mi.dy = dy
-    inp.union.mi.mouseData = data
-    inp.union.mi.dwFlags = flags
-    inp.union.mi.time = 0
-    inp.union.mi.dwExtraInfo = None
-    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
-
-
 def _send_key_event(vk, down=True):
     inp = INPUT()
     inp.type = INPUT_KEYBOARD
@@ -126,8 +150,41 @@ def _send_key_event(vk, down=True):
     user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
 
+def _log_dpi_diagnostics():
+    """Log DPI and coordinate space info at startup for debugging."""
+    try:
+        ctx = user32.GetThreadDpiAwarenessContext()
+        awareness = user32.GetAwarenessFromDpiAwarenessContext(ctx)
+        names = {0: "UNAWARE", 1: "SYSTEM_AWARE", 2: "PER_MONITOR_AWARE"}
+        logger.info("DPI awareness: %s (%d)", names.get(awareness, "UNKNOWN"), awareness)
+    except Exception:
+        logger.info("DPI awareness: could not query (older Windows)")
+
+    cx = user32.GetSystemMetrics(SM_CXSCREEN)
+    cy = user32.GetSystemMetrics(SM_CYSCREEN)
+    logger.info("Primary screen: %dx%d", cx, cy)
+
+    vx = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+    vy = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+    vw = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+    vh = user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+    logger.info("Virtual screen: origin=(%d,%d) size=%dx%d", vx, vy, vw, vh)
+
+    try:
+        dpi = user32.GetDpiForSystem()
+        logger.info("System DPI: %d (scale=%.1fx)", dpi, dpi / 96.0)
+    except AttributeError:
+        try:
+            hdc = user32.GetDC(0)
+            dpi = gdi32.GetDeviceCaps(hdc, 88)
+            user32.ReleaseDC(0, hdc)
+            logger.info("DPI (GetDeviceCaps): %d (scale=%.1fx)", dpi, dpi / 96.0)
+        except Exception:
+            pass
+
+
 class ScreenCapturer:
-    """Fast screenshot capture using mss."""
+    """Fast screenshot capture using mss. Re-queries monitor info each call for RDP."""
 
     def __init__(self):
         import mss
@@ -137,13 +194,11 @@ class ScreenCapturer:
         monitor = self._sct.monitors[1]  # primary monitor
         img = self._sct.grab(monitor)
         jpeg_bytes = self._to_jpeg(img, quality)
-        offset_x = monitor["left"]
-        offset_y = monitor["top"]
         return {
             "width": img.width,
             "height": img.height,
-            "offset_x": offset_x,
-            "offset_y": offset_y,
+            "offset_x": monitor["left"],
+            "offset_y": monitor["top"],
             "scale_factor": self._get_scale_factor(),
             "image_b64": base64.b64encode(jpeg_bytes).decode("ascii"),
         }
@@ -159,6 +214,7 @@ class ScreenCapturer:
         }
 
     def screen_size(self):
+        # Query fresh each time -- RDP can change resolution mid-session
         m = self._sct.monitors[1]
         return {"width": m["width"], "height": m["height"]}
 
@@ -167,8 +223,23 @@ class ScreenCapturer:
 
     def _get_scale_factor(self):
         try:
+            dpi = user32.GetDpiForSystem()
+            return dpi / 96.0
+        except AttributeError:
+            pass
+        try:
+            hmon = user32.MonitorFromPoint(ctypes.wintypes.POINT(0, 0), 1)
+            dpi_x = ctypes.c_uint()
+            dpi_y = ctypes.c_uint()
+            ctypes.windll.shcore.GetDpiForMonitor(
+                hmon, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y)
+            )
+            return dpi_x.value / 96.0
+        except (AttributeError, OSError):
+            pass
+        try:
             hdc = user32.GetDC(0)
-            dpi = gdi32.GetDeviceCaps(hdc, LOGPIXELSX)
+            dpi = gdi32.GetDeviceCaps(hdc, 88)
             user32.ReleaseDC(0, hdc)
             return dpi / 96.0
         except Exception:
@@ -183,49 +254,154 @@ class ScreenCapturer:
 
 
 class InputSender:
-    """Mouse and keyboard input via Win32 SendInput."""
+    """Mouse and keyboard input via Win32 SendInput with proper DPI handling.
+
+    Uses MOUSEEVENTF_ABSOLUTE for all mouse positioning -- atomic move+click,
+    no race conditions, correct coordinate generation for all apps.
+    Queries virtual screen metrics fresh each call to adapt to RDP changes.
+    """
+
+    def _get_virtual_screen(self):
+        """Get current virtual screen bounds. Fresh each call for RDP."""
+        vx = user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+        vy = user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+        vw = user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+        vh = user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+        return vx, vy, vw, vh
+
+    def _normalize(self, x, y):
+        """Convert physical pixel coords to 0-65535 normalized virtual desktop coords."""
+        vx, vy, vw, vh = self._get_virtual_screen()
+        abs_x = int((x - vx) * 65535 / max(vw - 1, 1))
+        abs_y = int((y - vy) * 65535 / max(vh - 1, 1))
+        return abs_x, abs_y
+
+    def _make_move_input(self, abs_x, abs_y):
+        """Create an INPUT struct for absolute mouse move."""
+        inp = INPUT()
+        inp.type = INPUT_MOUSE
+        inp.union.mi.dx = abs_x
+        inp.union.mi.dy = abs_y
+        inp.union.mi.dwFlags = (
+            MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        )
+        inp.union.mi.time = 0
+        inp.union.mi.dwExtraInfo = None
+        return inp
+
+    def _make_button_input(self, flags, data=0):
+        """Create an INPUT struct for a mouse button event."""
+        inp = INPUT()
+        inp.type = INPUT_MOUSE
+        inp.union.mi.dwFlags = flags
+        inp.union.mi.mouseData = data
+        inp.union.mi.time = 0
+        inp.union.mi.dwExtraInfo = None
+        return inp
+
+    def _button_flags(self, button):
+        if button == "right":
+            return MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP
+        if button == "middle":
+            return MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP
+        return MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP
 
     def move_mouse(self, x, y):
-        user32.SetCursorPos(x, y)
+        abs_x, abs_y = self._normalize(x, y)
+        inp = self._make_move_input(abs_x, abs_y)
+        sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        if sent != 1:
+            logger.warning("SendInput move returned %d (expected 1)", sent)
 
     def click(self, x, y, button="left"):
-        self.move_mouse(x, y)
-        time.sleep(0.02)
-        if button == "left":
-            _send_mouse_input(MOUSEEVENTF_LEFTDOWN)
-            _send_mouse_input(MOUSEEVENTF_LEFTUP)
-        elif button == "right":
-            _send_mouse_input(MOUSEEVENTF_RIGHTDOWN)
-            _send_mouse_input(MOUSEEVENTF_RIGHTUP)
-        elif button == "middle":
-            _send_mouse_input(MOUSEEVENTF_MIDDLEDOWN)
-            _send_mouse_input(MOUSEEVENTF_MIDDLEUP)
+        abs_x, abs_y = self._normalize(x, y)
+        down_flag, up_flag = self._button_flags(button)
+
+        # Atomic: move + down + up in a single SendInput call
+        inputs = (INPUT * 3)()
+        inputs[0] = self._make_move_input(abs_x, abs_y)
+        inputs[1] = self._make_button_input(down_flag)
+        inputs[2] = self._make_button_input(up_flag)
+        sent = user32.SendInput(3, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+        if sent != 3:
+            logger.warning("SendInput click returned %d (expected 3)", sent)
 
     def double_click(self, x, y):
-        self.move_mouse(x, y)
-        time.sleep(0.02)
-        _send_mouse_input(MOUSEEVENTF_LEFTDOWN)
-        _send_mouse_input(MOUSEEVENTF_LEFTUP)
-        time.sleep(0.05)
-        _send_mouse_input(MOUSEEVENTF_LEFTDOWN)
-        _send_mouse_input(MOUSEEVENTF_LEFTUP)
+        abs_x, abs_y = self._normalize(x, y)
+
+        # Atomic: move + down + up + down + up
+        inputs = (INPUT * 5)()
+        inputs[0] = self._make_move_input(abs_x, abs_y)
+        inputs[1] = self._make_button_input(MOUSEEVENTF_LEFTDOWN)
+        inputs[2] = self._make_button_input(MOUSEEVENTF_LEFTUP)
+        inputs[3] = self._make_button_input(MOUSEEVENTF_LEFTDOWN)
+        inputs[4] = self._make_button_input(MOUSEEVENTF_LEFTUP)
+        sent = user32.SendInput(5, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+        if sent != 5:
+            logger.warning("SendInput double_click returned %d (expected 5)", sent)
 
     def type_text(self, text):
+        """Type text via clipboard paste (Ctrl+V).
+
+        This is the most reliable method across all applications, keyboard
+        layouts, and RDP sessions. Sets clipboard content then pastes.
+        Falls back to per-character KEYEVENTF_UNICODE for very short text.
+        """
+        if len(text) <= 3:
+            # Very short text: direct key injection avoids clipboard side effects
+            self._type_unicode(text)
+            return
+
+        # Set clipboard and paste
+        self._set_clipboard(text)
+        time.sleep(0.01)
+        # Ctrl+V paste
+        _send_key_event(0x11, down=True)   # Ctrl down
+        _send_key_event(0x56, down=True)   # V down
+        _send_key_event(0x56, down=False)  # V up
+        _send_key_event(0x11, down=False)  # Ctrl up
+
+    def _type_unicode(self, text):
+        """Type short text using KEYEVENTF_UNICODE one char at a time."""
         for char in text:
-            vk = user32.VkKeyScanW(ord(char))
-            if vk == -1:
-                hwnd = user32.GetForegroundWindow()
-                user32.SendMessageW(hwnd, 0x0102, ord(char), 0)
+            if char in ("\n", "\r"):
+                _send_key_event(0x0D, down=True)
+                _send_key_event(0x0D, down=False)
             else:
-                key_code = vk & 0xFF
-                modifiers = (vk >> 8) & 0xFF
-                if modifiers & 1:
-                    _send_key_event(0x10, down=True)
-                _send_key_event(key_code, down=True)
-                _send_key_event(key_code, down=False)
-                if modifiers & 1:
-                    _send_key_event(0x10, down=False)
-                time.sleep(0.01)
+                code = ord(char)
+                inputs = (INPUT * 2)()
+                inputs[0].type = INPUT_KEYBOARD
+                inputs[0].union.ki.wVk = 0
+                inputs[0].union.ki.wScan = code
+                inputs[0].union.ki.dwFlags = KEYEVENTF_UNICODE
+                inputs[0].union.ki.time = 0
+                inputs[0].union.ki.dwExtraInfo = None
+                inputs[1].type = INPUT_KEYBOARD
+                inputs[1].union.ki.wVk = 0
+                inputs[1].union.ki.wScan = code
+                inputs[1].union.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                inputs[1].union.ki.time = 0
+                inputs[1].union.ki.dwExtraInfo = None
+                user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+            time.sleep(0.01)
+
+    @staticmethod
+    def _set_clipboard(text):
+        """Set Windows clipboard text using Win32 API."""
+        CF_UNICODETEXT = 13
+        GMEM_MOVEABLE = 0x0002
+        kernel32 = ctypes.windll.kernel32
+
+        data = text.encode("utf-16-le") + b"\x00\x00"
+        h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+        p_mem = kernel32.GlobalLock(h_mem)
+        ctypes.memmove(p_mem, data, len(data))
+        kernel32.GlobalUnlock(h_mem)
+
+        user32.OpenClipboard(0)
+        user32.EmptyClipboard()
+        user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+        user32.CloseClipboard()
 
     def key_press(self, keys):
         vk_codes = []
@@ -247,15 +423,26 @@ class InputSender:
             _send_key_event(vk, down=False)
 
     def scroll(self, x, y, amount):
-        self.move_mouse(x, y)
-        time.sleep(0.02)
-        _send_mouse_input(MOUSEEVENTF_WHEEL, data=amount * 120)
+        abs_x, abs_y = self._normalize(x, y)
+
+        # Atomic: move + scroll
+        inputs = (INPUT * 2)()
+        inputs[0] = self._make_move_input(abs_x, abs_y)
+        inputs[1] = self._make_button_input(MOUSEEVENTF_WHEEL, data=amount * 120)
+        sent = user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+        if sent != 2:
+            logger.warning("SendInput scroll returned %d (expected 2)", sent)
 
     def drag(self, start_x, start_y, end_x, end_y, duration=0.5):
-        self.move_mouse(start_x, start_y)
-        time.sleep(0.02)
-        _send_mouse_input(MOUSEEVENTF_LEFTDOWN)
+        abs_sx, abs_sy = self._normalize(start_x, start_y)
 
+        # Atomic: move to start + press down
+        inputs = (INPUT * 2)()
+        inputs[0] = self._make_move_input(abs_sx, abs_sy)
+        inputs[1] = self._make_button_input(MOUSEEVENTF_LEFTDOWN)
+        user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+
+        # Smooth interpolation
         steps = max(int(duration * 60), 10)
         sleep_time = duration / steps
         for i in range(1, steps + 1):
@@ -265,7 +452,9 @@ class InputSender:
             self.move_mouse(cx, cy)
             time.sleep(sleep_time)
 
-        _send_mouse_input(MOUSEEVENTF_LEFTUP)
+        # Release
+        inp = self._make_button_input(MOUSEEVENTF_LEFTUP)
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
 
 class BridgeDaemon:
@@ -412,6 +601,8 @@ def main():
     if sys.platform != "win32":
         logger.error("This daemon must run on Windows, not %s", sys.platform)
         sys.exit(1)
+
+    _log_dpi_diagnostics()
 
     daemon = BridgeDaemon(args.port)
     try:
