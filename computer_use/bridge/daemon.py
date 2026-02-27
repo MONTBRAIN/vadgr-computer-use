@@ -354,12 +354,13 @@ class InputSender:
 
         # Set clipboard and paste
         self._set_clipboard(text)
-        time.sleep(0.01)
+        time.sleep(0.05)  # let clipboard settle
         # Ctrl+V paste
         _send_key_event(0x11, down=True)   # Ctrl down
         _send_key_event(0x56, down=True)   # V down
         _send_key_event(0x56, down=False)  # V up
         _send_key_event(0x11, down=False)  # Ctrl up
+        time.sleep(0.05)  # let target app process the paste
 
     def _type_unicode(self, text):
         """Type short text using KEYEVENTF_UNICODE one char at a time."""
@@ -387,20 +388,36 @@ class InputSender:
 
     @staticmethod
     def _set_clipboard(text):
-        """Set Windows clipboard text using Win32 API."""
+        """Set Windows clipboard text using Win32 API.
+
+        Must declare correct 64-bit return types for GlobalAlloc/GlobalLock,
+        otherwise ctypes truncates the pointer to 32 bits -> access violation.
+        """
         CF_UNICODETEXT = 13
         GMEM_MOVEABLE = 0x0002
         kernel32 = ctypes.windll.kernel32
 
+        # Declare proper 64-bit pointer return types (critical on x64)
+        kernel32.GlobalAlloc.restype = ctypes.c_void_p
+        kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+
         data = text.encode("utf-16-le") + b"\x00\x00"
         h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+        if not h_mem:
+            raise OSError("GlobalAlloc failed")
         p_mem = kernel32.GlobalLock(h_mem)
+        if not p_mem:
+            raise OSError("GlobalLock failed")
         ctypes.memmove(p_mem, data, len(data))
         kernel32.GlobalUnlock(h_mem)
 
-        user32.OpenClipboard(0)
+        if not user32.OpenClipboard(0):
+            raise OSError("OpenClipboard failed")
         user32.EmptyClipboard()
-        user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+        user32.SetClipboardData(CF_UNICODETEXT, ctypes.c_void_p(h_mem))
         user32.CloseClipboard()
 
     def key_press(self, keys):
