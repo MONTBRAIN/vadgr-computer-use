@@ -1,9 +1,11 @@
 """Abstract platform backend combining screenshot and action capabilities."""
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.screenshot import ScreenCapture
+from computer_use.core.types import ForegroundWindow
 
 
 class PlatformBackend(ABC):
@@ -33,5 +35,14 @@ class PlatformBackend(ABC):
             available (bool): Whether the API is usable
             api_name (str): Name of the API (e.g. "UI Automation", "AT-SPI2")
             notes (str): Any relevant notes
+        """
+        ...
+
+    @abstractmethod
+    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+        """Return info about the currently focused window.
+
+        Returns ForegroundWindow with app name, title, position, and size.
+        Returns None if the information cannot be determined.
         """
         ...

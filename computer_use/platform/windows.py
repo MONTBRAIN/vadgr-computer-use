@@ -12,7 +12,7 @@ from typing import Optional
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.windows")
@@ -319,6 +319,53 @@ class WindowsBackend(PlatformBackend):
 
     def is_available(self) -> bool:
         return sys.platform == "win32"
+
+    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+        if sys.platform != "win32":
+            return None
+        try:
+            hwnd = user32.GetForegroundWindow()
+            if not hwnd:
+                return None
+
+            rect = ctypes.wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            title = buf.value
+
+            pid = ctypes.wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            app_name = ""
+            try:
+                handle = kernel32.OpenProcess(0x1000, False, pid.value)
+                if handle:
+                    try:
+                        name_buf = ctypes.create_unicode_buffer(512)
+                        size = ctypes.wintypes.DWORD(512)
+                        kernel32.QueryFullProcessImageNameW(
+                            handle, 0, name_buf, ctypes.byref(size)
+                        )
+                        full_path = name_buf.value
+                        if full_path:
+                            app_name = full_path.rsplit("\\", 1)[-1]
+                    finally:
+                        kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+
+            return ForegroundWindow(
+                app_name=app_name,
+                title=title,
+                x=rect.left,
+                y=rect.top,
+                width=rect.right - rect.left,
+                height=rect.bottom - rect.top,
+                pid=pid.value,
+            )
+        except Exception:
+            return None
 
     def get_accessibility_info(self) -> dict:
         return {

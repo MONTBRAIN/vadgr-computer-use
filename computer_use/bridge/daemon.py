@@ -185,6 +185,15 @@ def _log_dpi_diagnostics():
             pass
 
 
+# Adaptation functions for muscle memory (used when hit_count > 0).
+# These live alongside daemon.py on Windows, or in core/ on WSL/Linux.
+try:
+    from spatial_cache import adapted_fitts_duration, muscle_memory_windmouse_params
+    _HAS_ADAPT = True
+except ImportError:
+    _HAS_ADAPT = False
+
+
 class ScreenCapturer:
     """Fast screenshot capture using mss. Re-queries monitor info each call for RDP."""
 
@@ -453,16 +462,27 @@ class InputSender:
         user32.GetCursorPos(ctypes.byref(point))
         return point.x, point.y
 
-    def smooth_move(self, end_x, end_y, target_width=40):
-        """Move mouse to (end_x, end_y) with human-like WindMouse motion."""
+    def smooth_move(self, end_x, end_y, target_width=40, hit_count=0):
+        """Move mouse to (end_x, end_y) with human-like WindMouse motion.
+
+        When hit_count > 1, adapts path and timing via muscle memory:
+        straighter paths, faster movement.
+        """
         start_x, start_y = self._get_cursor_pos()
         distance = math.hypot(end_x - start_x, end_y - start_y)
 
         if distance < 2:
             return
 
-        path = _windmouse_path(start_x, start_y, end_x, end_y)
+        # Adapt WindMouse params based on muscle memory
+        path_kwargs = {}
+        if _HAS_ADAPT and hit_count > 1:
+            path_kwargs = muscle_memory_windmouse_params(hit_count)
+        path = _windmouse_path(start_x, start_y, end_x, end_y, **path_kwargs)
+
         duration = _fitts_duration(distance, target_width)
+        if _HAS_ADAPT and hit_count > 1:
+            duration = adapted_fitts_duration(duration, hit_count)
         delays = _generate_delays(len(path), duration)
 
         for i, (px, py) in enumerate(path):
@@ -478,18 +498,18 @@ class InputSender:
         inp = self._make_move_input(abs_x, abs_y)
         user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
-    def move_mouse(self, x, y, natural=True):
+    def move_mouse(self, x, y, natural=True, hit_count=0):
         if natural:
-            self.smooth_move(x, y)
+            self.smooth_move(x, y, hit_count=hit_count)
         else:
             self._instant_move(x, y)
 
-    def click(self, x, y, button="left", natural=True):
+    def click(self, x, y, button="left", natural=True, hit_count=0):
         down_flag, up_flag = self._button_flags(button)
 
         if natural:
             # Approach target with smooth movement
-            self.smooth_move(x, y)
+            self.smooth_move(x, y, hit_count=hit_count)
             time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
             # Slight click offset (humans don't hit pixel-perfect center)
             offset_x = x + int(random.gauss(0, 2))
@@ -507,9 +527,9 @@ class InputSender:
         if sent != 3:
             logger.warning("SendInput click returned %d (expected 3)", sent)
 
-    def double_click(self, x, y, natural=True):
+    def double_click(self, x, y, natural=True, hit_count=0):
         if natural:
-            self.smooth_move(x, y)
+            self.smooth_move(x, y, hit_count=hit_count)
             time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
             offset_x = x + int(random.gauss(0, 2))
             offset_y = y + int(random.gauss(0, 2))
@@ -701,6 +721,7 @@ class BridgeDaemon:
             "key_press": self._handle_key_press,
             "scroll": self._handle_scroll,
             "drag": self._handle_drag,
+            "foreground_window": self._handle_foreground_window,
         }
 
     def run(self):
@@ -786,18 +807,21 @@ class BridgeDaemon:
 
     def _handle_move_mouse(self, params):
         self._input.move_mouse(params["x"], params["y"],
-                               natural=params.get("natural", True))
+                               natural=params.get("natural", True),
+                               hit_count=params.get("hit_count", 0))
         return {}
 
     def _handle_click(self, params):
         self._input.click(params["x"], params["y"],
                           button=params.get("button", "left"),
-                          natural=params.get("natural", True))
+                          natural=params.get("natural", True),
+                          hit_count=params.get("hit_count", 0))
         return {}
 
     def _handle_double_click(self, params):
         self._input.double_click(params["x"], params["y"],
-                                 natural=params.get("natural", True))
+                                 natural=params.get("natural", True),
+                                 hit_count=params.get("hit_count", 0))
         return {}
 
     def _handle_type_text(self, params):
@@ -821,6 +845,58 @@ class BridgeDaemon:
         )
         return {}
 
+    def _handle_foreground_window(self, params):
+        """Return foreground window info via Win32 APIs."""
+        try:
+            hwnd = user32.GetForegroundWindow()
+            if not hwnd:
+                return {"error": "no foreground window"}
+
+            # Window rect
+            rect = ctypes.wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+
+            # Window title
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            title = buf.value
+
+            # Process name via PID
+            pid = ctypes.wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            app_name = ""
+            try:
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value
+                )
+                if handle:
+                    try:
+                        name_buf = ctypes.create_unicode_buffer(512)
+                        size = ctypes.wintypes.DWORD(512)
+                        kernel32.QueryFullProcessImageNameW(
+                            handle, 0, name_buf, ctypes.byref(size)
+                        )
+                        full_path = name_buf.value
+                        if full_path:
+                            app_name = full_path.rsplit("\\", 1)[-1]
+                    finally:
+                        kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+
+            return {
+                "app_name": app_name,
+                "title": title,
+                "x": rect.left,
+                "y": rect.top,
+                "width": rect.right - rect.left,
+                "height": rect.bottom - rect.top,
+                "pid": pid.value,
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
 def main():
     parser = argparse.ArgumentParser(description="Agent Forge Bridge Daemon")

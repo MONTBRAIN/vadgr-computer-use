@@ -4,11 +4,44 @@ from computer_use.core.types import (
     Action,
     ActionType,
     Element,
+    ForegroundWindow,
     Platform,
     Region,
     ScreenState,
     StepResult,
 )
+
+
+class TestForegroundWindow:
+    def test_creation(self):
+        fw = ForegroundWindow(
+            app_name="notepad.exe",
+            title="Untitled - Notepad",
+            x=100, y=50, width=800, height=600, pid=1234,
+        )
+        assert fw.app_name == "notepad.exe"
+        assert fw.title == "Untitled - Notepad"
+        assert fw.x == 100
+        assert fw.y == 50
+        assert fw.width == 800
+        assert fw.height == 600
+        assert fw.pid == 1234
+
+    def test_default_pid(self):
+        fw = ForegroundWindow(
+            app_name="app", title="t", x=0, y=0, width=100, height=100,
+        )
+        assert fw.pid == 0
+
+    def test_frozen(self):
+        fw = ForegroundWindow(
+            app_name="app", title="t", x=0, y=0, width=100, height=100,
+        )
+        try:
+            fw.x = 5
+            assert False, "Should raise"
+        except AttributeError:
+            pass
 
 
 class TestRegion:

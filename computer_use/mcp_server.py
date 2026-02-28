@@ -145,39 +145,63 @@ def screenshot_region(x: int, y: int, width: int, height: int) -> Image:
 
 
 @mcp.tool()
-def click(x: int, y: int) -> str:
+def click(x: int, y: int, element_hint: str = "") -> str:
     """Left-click at screen coordinates (pixels).
 
     IMPORTANT: Always take a screenshot() first to confirm the target element's
     position. After clicking, take another screenshot() to verify the click
     landed correctly. Aim for the center of the target element.
+
+    element_hint: optional label for the target (e.g. "File menu", "Save button").
+    When provided, enables muscle memory -- repeated clicks become faster.
     """
     engine = _get_engine()
-    engine.click(*_to_real(x, y))
+    kwargs = {}
+    if element_hint:
+        kwargs["element_hint"] = element_hint
+    engine.click(*_to_real(x, y), **kwargs)
     return f"Clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def double_click(x: int, y: int) -> str:
-    """Double-click at screen coordinates."""
+def double_click(x: int, y: int, element_hint: str = "") -> str:
+    """Double-click at screen coordinates.
+
+    element_hint: optional label for muscle memory learning.
+    """
     engine = _get_engine()
-    engine.double_click(*_to_real(x, y))
+    kwargs = {}
+    if element_hint:
+        kwargs["element_hint"] = element_hint
+    engine.double_click(*_to_real(x, y), **kwargs)
     return f"Double-clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def right_click(x: int, y: int) -> str:
-    """Right-click at screen coordinates."""
+def right_click(x: int, y: int, element_hint: str = "") -> str:
+    """Right-click at screen coordinates.
+
+    element_hint: optional label for muscle memory learning.
+    """
     engine = _get_engine()
-    engine.right_click(*_to_real(x, y))
+    kwargs = {}
+    if element_hint:
+        kwargs["element_hint"] = element_hint
+    engine.right_click(*_to_real(x, y), **kwargs)
     return f"Right-clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def move_mouse(x: int, y: int) -> str:
-    """Move the mouse without clicking."""
+def move_mouse(x: int, y: int, element_hint: str = "") -> str:
+    """Move the mouse without clicking.
+
+    element_hint: optional label for muscle memory learning.
+    """
     engine = _get_engine()
-    engine.move_mouse(*_to_real(x, y))
+    kwargs = {}
+    if element_hint:
+        kwargs["element_hint"] = element_hint
+    engine.move_mouse(*_to_real(x, y), **kwargs)
     return f"Mouse moved to ({x}, {y})"
 
 

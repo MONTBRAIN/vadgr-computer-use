@@ -17,14 +17,23 @@ class BridgeActionExecutor(ActionExecutor):
         except BridgeError as e:
             raise ActionError(f"Bridge {method} failed: {e}") from e
 
-    def move_mouse(self, x: int, y: int) -> None:
-        self._act("move_mouse", {"x": x, "y": y})
+    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
+        params = {"x": x, "y": y}
+        if hit_count > 0:
+            params["hit_count"] = hit_count
+        self._act("move_mouse", params)
 
-    def click(self, x: int, y: int, button: str = "left") -> None:
-        self._act("click", {"x": x, "y": y, "button": button})
+    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
+        params = {"x": x, "y": y, "button": button}
+        if hit_count > 0:
+            params["hit_count"] = hit_count
+        self._act("click", params)
 
-    def double_click(self, x: int, y: int) -> None:
-        self._act("double_click", {"x": x, "y": y})
+    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
+        params = {"x": x, "y": y}
+        if hit_count > 0:
+            params["hit_count"] = hit_count
+        self._act("double_click", params)
 
     def type_text(self, text: str) -> None:
         self._act("type_text", {"text": text})

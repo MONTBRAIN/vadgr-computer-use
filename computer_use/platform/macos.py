@@ -9,10 +9,12 @@ import sys
 import tempfile
 import time
 
+from typing import Optional
+
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.macos")
@@ -305,6 +307,67 @@ class MacOSActionExecutor(ActionExecutor):
             # AppleScript doesn't natively support drag, would need CGEvent
 
 
+# TTL cache for foreground window info.
+_FG_WINDOW_TTL = 0.1  # 100ms
+_fg_window_cache_mac: "Optional[tuple[float, Optional[ForegroundWindow]]]" = None
+
+
+def _get_foreground_window_macos() -> "Optional[ForegroundWindow]":
+    global _fg_window_cache_mac
+    now = time.monotonic()
+    if _fg_window_cache_mac is not None:
+        ts, cached = _fg_window_cache_mac
+        if now - ts < _FG_WINDOW_TTL:
+            return cached
+
+    result = _query_foreground_window_macos()
+    _fg_window_cache_mac = (now, result)
+    return result
+
+
+def _query_foreground_window_macos() -> "Optional[ForegroundWindow]":
+    script = (
+        'tell application "System Events"\n'
+        '  set fp to first process whose frontmost is true\n'
+        '  set appName to name of fp\n'
+        '  set appPID to unix id of fp\n'
+        '  set winTitle to ""\n'
+        '  set winX to 0\n'
+        '  set winY to 0\n'
+        '  set winW to 0\n'
+        '  set winH to 0\n'
+        '  try\n'
+        '    set w to window 1 of fp\n'
+        '    set winTitle to name of w\n'
+        '    set {winX, winY} to position of w\n'
+        '    set {winW, winH} to size of w\n'
+        '  end try\n'
+        '  return appName & "\\n" & appPID & "\\n" & winTitle & "\\n" & winX & "\\n" & winY & "\\n" & winW & "\\n" & winH\n'
+        'end tell'
+    )
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=2.0,
+        )
+        if result.returncode != 0:
+            return None
+        parts = result.stdout.strip().split("\n")
+        if len(parts) < 7:
+            return None
+        return ForegroundWindow(
+            app_name=parts[0],
+            title=parts[2],
+            x=int(parts[3]),
+            y=int(parts[4]),
+            width=int(parts[5]),
+            height=int(parts[6]),
+            pid=int(parts[1]) if parts[1].isdigit() else 0,
+        )
+    except Exception:
+        return None
+
+
 class MacOSBackend(PlatformBackend):
     """macOS platform backend."""
 
@@ -324,6 +387,9 @@ class MacOSBackend(PlatformBackend):
 
     def is_available(self) -> bool:
         return sys.platform == "darwin"
+
+    def get_foreground_window(self) -> "Optional[ForegroundWindow]":
+        return _get_foreground_window_macos()
 
     def get_accessibility_info(self) -> dict:
         try:

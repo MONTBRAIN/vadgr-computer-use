@@ -26,6 +26,19 @@ class ActionType(Enum):
 
 
 @dataclass(frozen=True)
+class ForegroundWindow:
+    """Info about the currently focused window."""
+
+    app_name: str   # "notepad.exe", "firefox"
+    title: str      # "Untitled - Notepad"
+    x: int          # window top-left X (screen coords)
+    y: int          # window top-left Y
+    width: int
+    height: int
+    pid: int = 0
+
+
+@dataclass(frozen=True)
 class Region:
     """A rectangular region on screen."""
 

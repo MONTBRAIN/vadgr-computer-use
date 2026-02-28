@@ -8,11 +8,12 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.wsl2")
@@ -724,6 +725,25 @@ class WSL2Backend(PlatformBackend):
 
     def is_available(self) -> bool:
         return shutil.which("powershell.exe") is not None
+
+    def get_foreground_window(self):
+        if self._probe_bridge() and self._bridge is not None:
+            try:
+                result = self._bridge.call("foreground_window", timeout=2.0)
+                if "error" in result:
+                    return None
+                return ForegroundWindow(
+                    app_name=result.get("app_name", ""),
+                    title=result.get("title", ""),
+                    x=result.get("x", 0),
+                    y=result.get("y", 0),
+                    width=result.get("width", 0),
+                    height=result.get("height", 0),
+                    pid=result.get("pid", 0),
+                )
+            except Exception:
+                return None
+        return None
 
     def get_accessibility_info(self) -> dict:
         return {

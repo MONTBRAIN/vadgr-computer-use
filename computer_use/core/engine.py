@@ -2,6 +2,8 @@
 
 import logging
 import os
+import time
+from dataclasses import dataclass
 from typing import Optional
 
 import yaml
@@ -9,9 +11,11 @@ import yaml
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ConfigError, PlatformNotSupportedError
 from computer_use.core.screenshot import ScreenCapture
+from computer_use.core.spatial_cache import MuscleMemoryCache
 from computer_use.core.types import (
     Action,
     Element,
+    ForegroundWindow,
     Platform,
     Region,
     ScreenState,
@@ -21,6 +25,57 @@ from computer_use.platform.base import PlatformBackend
 from computer_use.platform.detect import detect_platform, get_backend
 
 logger = logging.getLogger("computer_use.engine")
+
+# Percentage grid resolution for Layer 1 synthetic hints.
+# 3% grid = ~33 buckets per axis, balances precision vs. tolerance.
+_PCT_BUCKET = 3
+
+# TTL for foreground window cache (seconds).
+_FG_WINDOW_TTL = 0.05  # 50ms
+
+# Apps that are remote desktop shells -- the foreground window is a container
+# for a remote session, NOT the actual app the user is interacting with.
+# When detected, we fall back to platform-level caching (no window context).
+_PASSTHROUGH_APPS = frozenset({
+    "mstsc.exe",        # Windows Remote Desktop
+    "msrdc.exe",        # Modern Remote Desktop client
+    "vmconnect.exe",    # Hyper-V VM Connect
+    "vmware-vmx.exe",   # VMware Workstation
+    "virtualboxvm.exe", # VirtualBox
+    "vncviewer.exe",    # VNC Viewer
+    "tvnviewer.exe",    # TightVNC
+    "putty.exe",        # PuTTY (terminal, no spatial UI)
+    "wezterm-gui.exe",  # Terminal (scrolling content, bad for spatial)
+    "windowsterminal.exe",  # Windows Terminal
+})
+
+
+@dataclass
+class _CacheContext:
+    """Resolved cache context for a mouse action."""
+    app_name: str       # real app name (e.g. "notepad.exe") or platform fallback
+    hint: str           # element hint for cache key (may be synthetic "@300,200")
+    cache_x: int        # window-relative X for cache storage
+    cache_y: int        # window-relative Y for cache storage
+    layer: int          # which layer resolved: 1, 2, or 3
+
+# Default cache location (platform-appropriate).
+_CACHE_DIR_ENV = "AGENT_FORGE_DATA"
+
+
+def _default_cache_path() -> str:
+    """Pick a cross-platform data directory for the muscle memory DB."""
+    env = os.environ.get(_CACHE_DIR_ENV)
+    if env:
+        base = env
+    elif os.name == "nt":
+        base = os.path.join(os.environ.get("APPDATA", "."), "AgentForge")
+    elif os.environ.get("XDG_DATA_HOME"):
+        base = os.path.join(os.environ["XDG_DATA_HOME"], "agent-forge")
+    else:
+        base = os.path.join(os.path.expanduser("~"), ".local", "share", "agent-forge")
+    os.makedirs(base, exist_ok=True)
+    return os.path.join(base, "muscle_memory.db")
 
 
 class ComputerUseEngine:
@@ -65,6 +120,16 @@ class ComputerUseEngine:
         self._vs_offset_x: int = 0
         self._vs_offset_y: int = 0
 
+        # Muscle memory cache (cross-platform).
+        db_path = _default_cache_path()
+        self._cache = MuscleMemoryCache(db_path)
+        self._last_hint: str = ""
+        logger.info("Muscle memory cache: %s", db_path)
+
+        # Foreground window cache (TTL-based).
+        self._fg_window: Optional[ForegroundWindow] = None
+        self._fg_window_ts: float = 0.0
+
     # --- Library Mode API ---
 
     def screenshot(self) -> ScreenState:
@@ -84,20 +149,148 @@ class ComputerUseEngine:
         """Capture a rectangular region of the screen."""
         return self._capture.capture_region(Region(x, y, width, height))
 
-    def click(self, x: int, y: int) -> None:
+    # --- 3-Layer Cache Resolution ---
+
+    def _get_fg_window(self) -> Optional[ForegroundWindow]:
+        """Get foreground window info with TTL cache."""
+        now = time.monotonic()
+        if now - self._fg_window_ts < _FG_WINDOW_TTL and self._fg_window is not None:
+            return self._fg_window
+        try:
+            self._fg_window = self._backend.get_foreground_window()
+        except Exception:
+            self._fg_window = None
+        self._fg_window_ts = now
+        return self._fg_window
+
+    def _resolve_cache_context(
+        self, element_hint: Optional[str], x: int, y: int
+    ) -> _CacheContext:
+        """3-layer resolution for cache context.
+
+        Layer 3: Model-provided element_hint (highest precision).
+        Layer 2: Accessibility API auto-detect (role:name).
+        Layer 1: App name + percentage-bucketed window-relative coords.
+
+        Passthrough apps (RDP, VNC, terminals) are excluded — their
+        foreground window is a shell, not the actual UI being controlled.
+        """
+        fg = self._get_fg_window()
+
+        # Exclude passthrough apps — treat as if no window info
+        if fg and fg.app_name and fg.app_name.lower() in _PASSTHROUGH_APPS:
+            fg = None
+
+        # Real app name from foreground window, or platform fallback
+        if fg and fg.app_name:
+            app_name = fg.app_name.lower()
+        else:
+            app_name = self._platform.value
+
+        # Convert to window-relative coords (survives window moves)
+        if fg and fg.width > 0 and fg.height > 0:
+            cache_x = x - fg.x + self._vs_offset_x
+            cache_y = y - fg.y + self._vs_offset_y
+        else:
+            # No window info — use absolute coords as fallback
+            cache_x = x
+            cache_y = y
+
+        # Layer 3: caller-provided hint
+        if element_hint:
+            return _CacheContext(
+                app_name=app_name, hint=element_hint,
+                cache_x=cache_x, cache_y=cache_y, layer=3,
+            )
+
+        # Layer 2: accessibility API
+        locator = self._get_locator()
+        if locator is not None:
+            try:
+                ax, ay = self._to_abs(x, y)
+                el = locator.find_element_at(ax, ay)
+                if el and el.name:
+                    hint = f"{el.role}:{el.name}"
+                    return _CacheContext(
+                        app_name=app_name, hint=hint,
+                        cache_x=cache_x, cache_y=cache_y, layer=2,
+                    )
+            except Exception:
+                pass
+
+        # Layer 1: percentage-bucketed coords (survives resize)
+        if fg and fg.width > 0 and fg.height > 0:
+            pct_x = int(cache_x * 100 / fg.width)
+            pct_y = int(cache_y * 100 / fg.height)
+            bx = (pct_x // _PCT_BUCKET) * _PCT_BUCKET
+            by = (pct_y // _PCT_BUCKET) * _PCT_BUCKET
+            hint = f"@{bx}%,{by}%"
+        else:
+            # No window dims — use pixel coords with a fixed bucket
+            bx = (cache_x // 25) * 25
+            by = (cache_y // 25) * 25
+            hint = f"@{bx},{by}"
+        return _CacheContext(
+            app_name=app_name, hint=hint,
+            cache_x=cache_x, cache_y=cache_y, layer=1,
+        )
+
+    def _cache_lookup(self, ctx: _CacheContext) -> int:
+        """Look up in muscle memory. Returns hit_count (0 on miss)."""
+        entry = self._cache.lookup(
+            ctx.app_name, ctx.hint, ctx.cache_x, ctx.cache_y
+        )
+        return entry.hit_count if entry else 0
+
+    def _cache_record(self, ctx: _CacheContext) -> None:
+        """Record a successful interaction in muscle memory."""
+        self._cache.record_hit(
+            ctx.app_name, ctx.hint, ctx.cache_x, ctx.cache_y,
+            prev_hint=self._last_hint,
+        )
+        self._last_hint = ctx.hint
+
+    def click(self, x: int, y: int, element_hint: str = None) -> None:
         """Left-click at screenshot coordinates (auto-translated for multi-monitor)."""
+        ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
-        self._executor.click(ax, ay)
+        hit_count = self._cache_lookup(ctx)
+        if hit_count > 0:
+            try:
+                self._executor.click(ax, ay, hit_count=hit_count)
+            except TypeError:
+                self._executor.click(ax, ay)
+        else:
+            self._executor.click(ax, ay)
+        self._cache_record(ctx)
 
-    def double_click(self, x: int, y: int) -> None:
+    def double_click(self, x: int, y: int, element_hint: str = None) -> None:
         """Double-click at screenshot coordinates."""
+        ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
-        self._executor.double_click(ax, ay)
+        hit_count = self._cache_lookup(ctx)
+        if hit_count > 0:
+            try:
+                self._executor.double_click(ax, ay, hit_count=hit_count)
+            except TypeError:
+                self._executor.double_click(ax, ay)
+        else:
+            self._executor.double_click(ax, ay)
+        self._cache_record(ctx)
 
-    def right_click(self, x: int, y: int) -> None:
+    def right_click(self, x: int, y: int, element_hint: str = None) -> None:
         """Right-click at screenshot coordinates."""
+        ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
-        self._executor.click(ax, ay, button="right")
+        hit_count = self._cache_lookup(ctx)
+        if hit_count > 0:
+            try:
+                self._executor.click(ax, ay, button="right", hit_count=hit_count)
+            except TypeError:
+                self._executor.click(ax, ay, button="right")
+        else:
+            self._executor.click(ax, ay, button="right")
+        self._cache_record(ctx)
 
     def type_text(self, text: str) -> None:
         """Type a string of text."""
@@ -125,10 +318,19 @@ class ComputerUseEngine:
         aex, aey = self._to_abs(end_x, end_y)
         self._executor.drag(asx, asy, aex, aey, duration)
 
-    def move_mouse(self, x: int, y: int) -> None:
+    def move_mouse(self, x: int, y: int, element_hint: str = None) -> None:
         """Move mouse without clicking."""
+        ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
-        self._executor.move_mouse(ax, ay)
+        hit_count = self._cache_lookup(ctx)
+        if hit_count > 0:
+            try:
+                self._executor.move_mouse(ax, ay, hit_count=hit_count)
+            except TypeError:
+                self._executor.move_mouse(ax, ay)
+        else:
+            self._executor.move_mouse(ax, ay)
+        self._cache_record(ctx)
 
     def execute_action(self, action: Action) -> None:
         """Execute an Action dataclass directly."""

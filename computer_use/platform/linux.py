@@ -2,14 +2,16 @@
 
 import io
 import logging
+import os
 import shutil
 import subprocess
+import time
 from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.linux")
@@ -194,6 +196,72 @@ class LinuxActionExecutor(ActionExecutor):
         _run_xdotool("mouseup", "1")
 
 
+# TTL cache for foreground window info to avoid subprocess overhead per click.
+_FG_WINDOW_TTL = 0.1  # 100ms
+_fg_window_cache: Optional[tuple[float, Optional[ForegroundWindow]]] = None
+
+
+def _get_foreground_window_linux() -> Optional[ForegroundWindow]:
+    """Get foreground window via xdotool + /proc. Cached with 100ms TTL."""
+    global _fg_window_cache
+    now = time.monotonic()
+    if _fg_window_cache is not None:
+        ts, cached = _fg_window_cache
+        if now - ts < _FG_WINDOW_TTL:
+            return cached
+
+    result = _query_foreground_window_linux()
+    _fg_window_cache = (now, result)
+    return result
+
+
+def _query_foreground_window_linux() -> Optional[ForegroundWindow]:
+    try:
+        result = subprocess.run(
+            ["xdotool", "getactivewindow", "getwindowname",
+             "getactivewindow", "getwindowgeometry", "--shell",
+             "getactivewindow", "getwindowpid"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+        if result.returncode != 0:
+            return None
+
+        lines = result.stdout.strip().split("\n")
+        if len(lines) < 2:
+            return None
+
+        title = lines[0]
+        geo = {}
+        pid = 0
+        for line in lines[1:]:
+            if "=" in line:
+                k, v = line.split("=", 1)
+                geo[k.strip()] = v.strip()
+            elif line.strip().isdigit():
+                pid = int(line.strip())
+
+        x = int(geo.get("X", 0))
+        y = int(geo.get("Y", 0))
+        width = int(geo.get("WIDTH", 0))
+        height = int(geo.get("HEIGHT", 0))
+
+        # Get app name from /proc/{pid}/comm
+        app_name = ""
+        if pid > 0:
+            try:
+                with open(f"/proc/{pid}/comm") as f:
+                    app_name = f.read().strip()
+            except (OSError, IOError):
+                pass
+
+        return ForegroundWindow(
+            app_name=app_name, title=title,
+            x=x, y=y, width=width, height=height, pid=pid,
+        )
+    except Exception:
+        return None
+
+
 class LinuxBackend(PlatformBackend):
     """Linux/X11 platform backend."""
 
@@ -213,6 +281,9 @@ class LinuxBackend(PlatformBackend):
 
     def is_available(self) -> bool:
         return shutil.which("xdotool") is not None
+
+    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+        return _get_foreground_window_linux()
 
     def get_accessibility_info(self) -> dict:
         try:
