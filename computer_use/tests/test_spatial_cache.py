@@ -467,6 +467,363 @@ class TestNavFallback:
         assert entry.app_name == "app.exe"
 
 
+class TestResolutionRescaling:
+    """Tests for resolution-independent coordinate rescaling."""
+
+    def test_record_stores_window_dims(self, cache):
+        """win_w/win_h are stored on the entry."""
+        entry = cache.record_hit("app.exe", "btn", 100, 200, win_w=800, win_h=600)
+        assert entry.win_w == 800
+        assert entry.win_h == 600
+
+    def test_rescale_coords_same_size(self, cache):
+        """No-op when current dims match stored dims."""
+        entry = cache.record_hit("app.exe", "btn", 200, 150, win_w=800, win_h=600)
+        rx, ry = MuscleMemoryCache.rescale_coords(entry, 800, 600)
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_rescale_coords_window_only_resize_no_scale(self, cache):
+        """Window-only resize (unknown screen) -> no rescale."""
+        entry = cache.record_hit("app.exe", "btn", 200, 150, win_w=800, win_h=600)
+        rx, ry = MuscleMemoryCache.rescale_coords(entry, 1600, 1200)
+        # screen_w=0 (unknown) -> can't determine if screen changed -> no rescale
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_rescale_coords_window_only_shrink_no_scale(self, cache):
+        """Window-only shrink (unknown screen) -> no rescale."""
+        entry = cache.record_hit("app.exe", "btn", 400, 300, win_w=1600, win_h=1200)
+        rx, ry = MuscleMemoryCache.rescale_coords(entry, 800, 600)
+        assert rx == 400.0
+        assert ry == 300.0
+
+    def test_rescale_legacy_entry_unchanged(self, cache):
+        """Legacy entries (win_w=0) pass through without rescaling."""
+        entry = cache.record_hit("app.exe", "btn", 200, 150)
+        assert entry.win_w == 0
+        rx, ry = MuscleMemoryCache.rescale_coords(entry, 1600, 1200)
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_rescale_zero_current_dims_unchanged(self, cache):
+        """Current dims of 0 returns original coords (no fg window)."""
+        entry = cache.record_hit("app.exe", "btn", 200, 150, win_w=800, win_h=600)
+        rx, ry = MuscleMemoryCache.rescale_coords(entry, 0, 0)
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_win_dims_persist_across_reopen(self):
+        """win_w/win_h survive close and reopen."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            c1 = MuscleMemoryCache(path)
+            c1.record_hit("app.exe", "btn", 100, 200, win_w=1920, win_h=1080)
+            c1.close()
+
+            c2 = MuscleMemoryCache(path)
+            entry = c2.lookup("app.exe", "btn")
+            assert entry is not None
+            assert entry.win_w == 1920
+            assert entry.win_h == 1080
+            c2.close()
+
+    def test_win_dims_updated_on_repeat_hit(self, cache):
+        """Subsequent hits update win_w/win_h to the latest value."""
+        cache.record_hit("app.exe", "btn", 100, 200, win_w=800, win_h=600)
+        entry = cache.record_hit("app.exe", "btn", 100, 200, win_w=1600, win_h=1200)
+        assert entry.win_w == 1600
+        assert entry.win_h == 1200
+
+    def test_win_dims_not_overwritten_by_zero(self, cache):
+        """A hit with win_w=0 preserves the existing stored dims."""
+        cache.record_hit("app.exe", "btn", 100, 200, win_w=800, win_h=600)
+        entry = cache.record_hit("app.exe", "btn", 100, 200, win_w=0, win_h=0)
+        assert entry.win_w == 800
+        assert entry.win_h == 600
+
+    def test_migration_adds_columns(self):
+        """Opening a DB without win_w/win_h runs migration successfully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "old.db")
+            # Create a "v1" database without win_w/win_h columns
+            import sqlite3
+            conn = sqlite3.connect(path)
+            conn.execute("""
+                CREATE TABLE memories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    element_hint TEXT NOT NULL,
+                    x REAL NOT NULL,
+                    y REAL NOT NULL,
+                    width REAL NOT NULL DEFAULT 40,
+                    height REAL NOT NULL DEFAULT 24,
+                    hit_count INTEGER NOT NULL DEFAULT 1,
+                    miss_count INTEGER NOT NULL DEFAULT 0,
+                    last_hit_ts REAL NOT NULL,
+                    created_ts REAL NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    prev_hint TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_memories_app_hint
+                ON memories (app_name, element_hint)
+            """)
+            conn.execute("""
+                CREATE VIRTUAL TABLE memories_rtree USING rtree (
+                    id, min_x, max_x, min_y, max_y
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE sequences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    from_hint TEXT NOT NULL,
+                    to_hint TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 1,
+                    last_ts REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_seq_app_from_to
+                ON sequences (app_name, from_hint, to_hint)
+            """)
+            # Insert a legacy entry
+            now = time.time()
+            conn.execute(
+                "INSERT INTO memories (app_name, element_hint, x, y, "
+                "hit_count, last_hit_ts, created_ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("app.exe", "btn", 100.0, 200.0, 5, now, now),
+            )
+            conn.execute(
+                "INSERT INTO memories_rtree VALUES (1, 100, 140, 200, 224)"
+            )
+            conn.commit()
+            conn.close()
+
+            # Open with MuscleMemoryCache -- migration should run
+            cache = MuscleMemoryCache(path)
+            entry = cache.lookup("app.exe", "btn")
+            assert entry is not None
+            assert entry.win_w == 0  # default for migrated entry
+            assert entry.win_h == 0
+
+            # New records should store win_w/win_h
+            cache.record_hit("app.exe", "btn", 100, 200, win_w=1920, win_h=1080)
+            entry = cache.lookup("app.exe", "btn")
+            assert entry.win_w == 1920
+            assert entry.win_h == 1080
+            cache.close()
+
+
+class TestScreenAwareRescaling:
+    """Tests for screen-aware (DPI/monitor) coordinate rescaling."""
+
+    def test_record_stores_screen_dims(self, cache):
+        """screen_w/screen_h are stored on the entry."""
+        entry = cache.record_hit(
+            "app.exe", "btn", 100, 200,
+            win_w=800, win_h=600, screen_w=1920, screen_h=1080,
+        )
+        assert entry.screen_w == 1920
+        assert entry.screen_h == 1080
+
+    def test_rescale_screen_changed_scales(self, cache):
+        """Different screen resolution -> rescale proportionally."""
+        entry = cache.record_hit(
+            "app.exe", "btn", 200, 150,
+            win_w=800, win_h=600, screen_w=1920, screen_h=1080,
+        )
+        rx, ry = MuscleMemoryCache.rescale_coords(
+            entry, 1600, 1200,
+            current_screen_w=3840, current_screen_h=2160,
+        )
+        assert rx == pytest.approx(400.0)  # 200 * 1600/800
+        assert ry == pytest.approx(300.0)  # 150 * 1200/600
+
+    def test_rescale_same_screen_no_scale(self, cache):
+        """Same screen + different window size -> no rescale."""
+        entry = cache.record_hit(
+            "app.exe", "btn", 200, 150,
+            win_w=800, win_h=600, screen_w=1920, screen_h=1080,
+        )
+        rx, ry = MuscleMemoryCache.rescale_coords(
+            entry, 1600, 1200,
+            current_screen_w=1920, current_screen_h=1080,
+        )
+        # Same screen -> return original coords, no rescaling
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_rescale_legacy_screen_no_scale(self, cache):
+        """Legacy entries (screen_w=0) pass through without rescaling."""
+        entry = cache.record_hit(
+            "app.exe", "btn", 200, 150,
+            win_w=800, win_h=600,  # screen_w/h default to 0
+        )
+        rx, ry = MuscleMemoryCache.rescale_coords(
+            entry, 1600, 1200,
+            current_screen_w=3840, current_screen_h=2160,
+        )
+        # screen_w=0 in entry -> can't determine if screen changed -> no rescale
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_rescale_unknown_current_screen_no_scale(self, cache):
+        """Unknown current screen (0) -> no rescale even if entry has screen dims."""
+        entry = cache.record_hit(
+            "app.exe", "btn", 200, 150,
+            win_w=800, win_h=600, screen_w=1920, screen_h=1080,
+        )
+        rx, ry = MuscleMemoryCache.rescale_coords(
+            entry, 1600, 1200,
+            current_screen_w=0, current_screen_h=0,
+        )
+        assert rx == 200.0
+        assert ry == 150.0
+
+    def test_screen_dims_persist_across_reopen(self):
+        """screen_w/screen_h survive close and reopen."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "test.db")
+            c1 = MuscleMemoryCache(path)
+            c1.record_hit(
+                "app.exe", "btn", 100, 200,
+                win_w=800, win_h=600, screen_w=3840, screen_h=2160,
+            )
+            c1.close()
+
+            c2 = MuscleMemoryCache(path)
+            entry = c2.lookup("app.exe", "btn")
+            assert entry is not None
+            assert entry.screen_w == 3840
+            assert entry.screen_h == 2160
+            c2.close()
+
+    def test_screen_dims_updated_on_repeat_hit(self, cache):
+        """Subsequent hits update screen_w/screen_h."""
+        cache.record_hit(
+            "app.exe", "btn", 100, 200,
+            screen_w=1920, screen_h=1080,
+        )
+        entry = cache.record_hit(
+            "app.exe", "btn", 100, 200,
+            screen_w=3840, screen_h=2160,
+        )
+        assert entry.screen_w == 3840
+        assert entry.screen_h == 2160
+
+    def test_screen_dims_not_overwritten_by_zero(self, cache):
+        """A hit with screen_w=0 preserves existing stored screen dims."""
+        cache.record_hit(
+            "app.exe", "btn", 100, 200,
+            screen_w=1920, screen_h=1080,
+        )
+        entry = cache.record_hit(
+            "app.exe", "btn", 100, 200,
+            screen_w=0, screen_h=0,
+        )
+        assert entry.screen_w == 1920
+        assert entry.screen_h == 1080
+
+    def test_migration_v3_adds_screen_columns(self):
+        """Opening a DB without screen_w/screen_h runs v3 migration."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "old.db")
+            import sqlite3
+            conn = sqlite3.connect(path)
+            # Create a "v2" database: has win_w/win_h but NOT screen_w/screen_h
+            conn.execute("""
+                CREATE TABLE memories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    element_hint TEXT NOT NULL,
+                    x REAL NOT NULL,
+                    y REAL NOT NULL,
+                    width REAL NOT NULL DEFAULT 40,
+                    height REAL NOT NULL DEFAULT 24,
+                    hit_count INTEGER NOT NULL DEFAULT 1,
+                    miss_count INTEGER NOT NULL DEFAULT 0,
+                    last_hit_ts REAL NOT NULL,
+                    created_ts REAL NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    prev_hint TEXT NOT NULL DEFAULT '',
+                    win_w INTEGER NOT NULL DEFAULT 0,
+                    win_h INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_memories_app_hint
+                ON memories (app_name, element_hint)
+            """)
+            conn.execute("""
+                CREATE VIRTUAL TABLE memories_rtree USING rtree (
+                    id, min_x, max_x, min_y, max_y
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE sequences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    from_hint TEXT NOT NULL,
+                    to_hint TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 1,
+                    last_ts REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_seq_app_from_to
+                ON sequences (app_name, from_hint, to_hint)
+            """)
+            conn.execute("""
+                CREATE TABLE cross_sequences (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_app TEXT NOT NULL,
+                    from_hint TEXT NOT NULL,
+                    to_app TEXT NOT NULL,
+                    to_hint TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 1,
+                    last_ts REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                CREATE UNIQUE INDEX idx_cross_seq
+                ON cross_sequences (from_app, from_hint, to_app, to_hint)
+            """)
+            now = time.time()
+            conn.execute(
+                "INSERT INTO memories (app_name, element_hint, x, y, "
+                "hit_count, last_hit_ts, created_ts, win_w, win_h) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("app.exe", "btn", 100.0, 200.0, 5, now, now, 800, 600),
+            )
+            conn.execute(
+                "INSERT INTO memories_rtree VALUES (1, 100, 140, 200, 224)"
+            )
+            conn.commit()
+            conn.close()
+
+            # Open with MuscleMemoryCache -- v3 migration should add screen columns
+            cache = MuscleMemoryCache(path)
+            entry = cache.lookup("app.exe", "btn")
+            assert entry is not None
+            assert entry.screen_w == 0  # default for migrated entry
+            assert entry.screen_h == 0
+            assert entry.win_w == 800   # preserved from v2
+
+            # New records should store screen_w/screen_h
+            cache.record_hit(
+                "app.exe", "btn", 100, 200,
+                win_w=800, win_h=600, screen_w=1920, screen_h=1080,
+            )
+            entry = cache.lookup("app.exe", "btn")
+            assert entry.screen_w == 1920
+            assert entry.screen_h == 1080
+            cache.close()
+
+
 class TestMergePlatformEntries:
     """Tests for merging wsl2 entries into real-app entries."""
 

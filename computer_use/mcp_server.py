@@ -16,6 +16,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("computer_use.mcp_server")
 
+# Debug screenshot saving -- set AGENT_FORGE_DEBUG=1 to enable
+_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
+_DEBUG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".debug")
+_debug_counter = 0
+
+
+def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
+    """Save PNG to .debug/ when AGENT_FORGE_DEBUG=1."""
+    if not _DEBUG:
+        return
+    global _debug_counter
+    os.makedirs(_DEBUG_DIR, exist_ok=True)
+    _debug_counter += 1
+    path = os.path.join(_DEBUG_DIR, f"{prefix}_{_debug_counter:04d}.png")
+    with open(path, "wb") as f:
+        f.write(data)
+    logger.info("Debug screenshot saved: %s", path)
+
 from mcp.server.fastmcp import FastMCP, Image
 from PIL import Image as PILImage
 
@@ -127,26 +145,29 @@ def _from_real(x: int, y: int) -> tuple[int, int]:
 def screenshot() -> Image:
     """Capture the full virtual screen (all monitors). Returns PNG image.
 
-    IMPORTANT: The image pixel dimensions are the real screen coordinates.
-    Use get_screen_size() to know the coordinate space. When the image is
-    displayed smaller in your UI, you must still pass coordinates in the
-    original pixel space (e.g. if the screen is 4096x1440, a button visually
-    at the center is at approximately x=2048, y=720).
+    IMPORTANT: The image pixel dimensions ARE the coordinate space for all
+    tools (click, screenshot_region, etc.). Use get_screen_size() to know
+    the dimensions. If the image is 1366x853, coordinates range from
+    (0,0) to (1366,853).
     """
     engine = _get_engine()
     state = engine.screenshot()
     data = _downscale(state.image_bytes, state.offset_x, state.offset_y)
+    _debug_save(data, "screenshot")
     return Image(data=data, format="png")
 
 
 @mcp.tool()
 def screenshot_region(x: int, y: int, width: int, height: int) -> Image:
-    """Capture a rectangular region of the screen. Coordinates are in real screen pixels."""
+    """Capture a rectangular region of the screen. Coordinates are in display space."""
     engine = _get_engine()
     rx, ry = _to_real(x, y)
     rw, rh = int(width * _scale_x), int(height * _scale_y)
     state = engine.screenshot_region(rx, ry, rw, rh)
-    return Image(data=_downscale(state.image_bytes), format="png")
+    # Don't pass through _downscale — it would clobber the global scale factors
+    # that screenshot() established. Just return the raw region bytes.
+    _debug_save(state.image_bytes, "region")
+    return Image(data=state.image_bytes, format="png")
 
 
 @mcp.tool()
@@ -247,10 +268,16 @@ def key_press(keys: str) -> str:
 
 @mcp.tool()
 def get_screen_size() -> str:
-    """Returns "WIDTHxHEIGHT" in pixels."""
+    """Returns "WIDTHxHEIGHT" in display pixels (the coordinate space for all tools)."""
+    if _display_w > 0 and _display_h > 0:
+        return f"{_display_w}x{_display_h}"
+    # No screenshot taken yet — compute what the display size would be.
     engine = _get_engine()
     w, h = engine.get_screen_size()
-    return f"{w}x{h}"
+    if w <= _MAX_WIDTH:
+        return f"{w}x{h}"
+    ratio = _MAX_WIDTH / w
+    return f"{_MAX_WIDTH}x{int(h * ratio)}"
 
 
 @mcp.tool()

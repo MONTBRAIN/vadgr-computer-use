@@ -66,6 +66,10 @@ class _CacheContext:
     cache_x: int        # window-relative X for cache storage
     cache_y: int        # window-relative Y for cache storage
     layer: int          # which layer resolved: 1, 2, or 3
+    win_w: int = 0      # foreground window width at record time
+    win_h: int = 0      # foreground window height at record time
+    screen_w: int = 0   # screen width at record time
+    screen_h: int = 0   # screen height at record time
 
 # Default cache location (platform-appropriate).
 _CACHE_DIR_ENV = "AGENT_FORGE_DATA"
@@ -127,6 +131,8 @@ class ComputerUseEngine:
         # absolute screen coordinate (x + offset_x, y + offset_y).
         self._vs_offset_x: int = 0
         self._vs_offset_y: int = 0
+        self._screen_w: int = 0
+        self._screen_h: int = 0
 
         # Muscle memory cache (cross-platform).
         db_path = _default_cache_path()
@@ -146,6 +152,8 @@ class ComputerUseEngine:
         state = self._capture.capture_full()
         self._vs_offset_x = state.offset_x
         self._vs_offset_y = state.offset_y
+        self._screen_w = state.width
+        self._screen_h = state.height
         return state
 
     def _to_abs(self, x: int, y: int) -> tuple[int, int]:
@@ -200,16 +208,25 @@ class ComputerUseEngine:
         if fg and fg.width > 0 and fg.height > 0:
             cache_x = x - fg.x + self._vs_offset_x
             cache_y = y - fg.y + self._vs_offset_y
+            fg_w = fg.width
+            fg_h = fg.height
         else:
             # No window info — use absolute coords as fallback
             cache_x = x
             cache_y = y
+            fg_w = 0
+            fg_h = 0
+
+        scr_w = self._screen_w
+        scr_h = self._screen_h
 
         # Layer 3: caller-provided hint
         if element_hint:
             return _CacheContext(
                 app_name=app_name, hint=element_hint,
                 cache_x=cache_x, cache_y=cache_y, layer=3,
+                win_w=fg_w, win_h=fg_h,
+                screen_w=scr_w, screen_h=scr_h,
             )
 
         # Layer 2: accessibility API
@@ -223,14 +240,16 @@ class ComputerUseEngine:
                     return _CacheContext(
                         app_name=app_name, hint=hint,
                         cache_x=cache_x, cache_y=cache_y, layer=2,
+                        win_w=fg_w, win_h=fg_h,
+                        screen_w=scr_w, screen_h=scr_h,
                     )
             except Exception:
                 pass
 
         # Layer 1: percentage-bucketed coords (survives resize)
-        if fg and fg.width > 0 and fg.height > 0:
-            pct_x = int(cache_x * 100 / fg.width)
-            pct_y = int(cache_y * 100 / fg.height)
+        if fg_w > 0 and fg_h > 0:
+            pct_x = int(cache_x * 100 / fg_w)
+            pct_y = int(cache_y * 100 / fg_h)
             bx = (pct_x // _PCT_BUCKET) * _PCT_BUCKET
             by = (pct_y // _PCT_BUCKET) * _PCT_BUCKET
             hint = f"@{bx}%,{by}%"
@@ -242,6 +261,8 @@ class ComputerUseEngine:
         return _CacheContext(
             app_name=app_name, hint=hint,
             cache_x=cache_x, cache_y=cache_y, layer=1,
+            win_w=fg_w, win_h=fg_h,
+            screen_w=scr_w, screen_h=scr_h,
         )
 
     def _cache_lookup(self, ctx: _CacheContext) -> int:
@@ -257,6 +278,10 @@ class ComputerUseEngine:
             ctx.app_name, ctx.hint, ctx.cache_x, ctx.cache_y,
             prev_hint=self._last_hint,
             prev_app=self._last_app,
+            win_w=ctx.win_w,
+            win_h=ctx.win_h,
+            screen_w=ctx.screen_w,
+            screen_h=ctx.screen_h,
         )
         self._last_hint = ctx.hint
         self._last_app = ctx.app_name
@@ -346,16 +371,50 @@ class ComputerUseEngine:
     # --- Navigation Batch API ---
 
     def _cache_to_screen(
-        self, cache_x: float, cache_y: float
+        self,
+        cache_x: float,
+        cache_y: float,
+        stored_win_w: int = 0,
+        stored_win_h: int = 0,
+        stored_screen_w: int = 0,
+        stored_screen_h: int = 0,
     ) -> Optional[tuple[int, int]]:
         """Convert window-relative cache coords to absolute screen coords.
 
-        Uses the current foreground window position. Returns None if
-        no foreground window is available.
+        Uses the current foreground window position and smart screen-aware
+        rescaling:
+        - Screen resolution changed (DPI/monitor switch) -> rescale
+        - Same screen, window resized, coords in bounds -> use original
+        - Same screen, window resized, coords out of bounds -> None (miss)
+
+        Returns None if no foreground window is available or if cached
+        coords fall outside the current window (bounds check failure).
         """
         fg = self._get_fg_window()
         if fg is None or fg.width <= 0:
             return None
+
+        cur_win_w = fg.width
+        cur_win_h = fg.height
+
+        # Determine if screen resolution changed
+        screen_changed = (
+            stored_screen_w > 0 and stored_screen_h > 0
+            and self._screen_w > 0 and self._screen_h > 0
+            and (stored_screen_w != self._screen_w
+                 or stored_screen_h != self._screen_h)
+        )
+
+        if screen_changed and stored_win_w > 0 and stored_win_h > 0:
+            # DPI/monitor change -> rescale proportionally
+            cache_x = cache_x * cur_win_w / stored_win_w
+            cache_y = cache_y * cur_win_h / stored_win_h
+        elif (stored_win_w > 0 and stored_win_h > 0
+              and (stored_win_w != cur_win_w or stored_win_h != cur_win_h)):
+            # Same screen (or unknown), window resized -> bounds check
+            if cache_x < 0 or cache_y < 0 or cache_x >= cur_win_w or cache_y >= cur_win_h:
+                return None  # coords outside current window -> cache miss
+
         screen_x = int(fg.x + cache_x) - self._vs_offset_x
         screen_y = int(fg.y + cache_y) - self._vs_offset_y
         return screen_x, screen_y
@@ -469,12 +528,32 @@ class ComputerUseEngine:
             if entry.app_name and entry.app_name.lower() != current_app:
                 current_app = entry.app_name.lower()
 
-            # Step 3: convert cache coords to screen coords
-            coords = self._cache_to_screen(entry.x, entry.y)
+            # Step 3: convert cache coords to screen coords (with rescaling)
+            coords = self._cache_to_screen(
+                entry.x, entry.y,
+                stored_win_w=entry.win_w, stored_win_h=entry.win_h,
+                stored_screen_w=entry.screen_w, stored_screen_h=entry.screen_h,
+            )
             if coords is None:
-                coords = (int(entry.x), int(entry.y))
+                return {
+                    "completed": completed, "total": len(hints),
+                    "last_hint": last_hint, "stopped": True,
+                    "reason": f"coords out of bounds on step {i}: '{hint}' "
+                              f"(app='{current_app}')",
+                }
 
             sx, sy = coords
+
+            # Compute rescaled cache coords for recording (keep x/y and
+            # win_w/win_h in sync -- store coords at current window size).
+            fg = self._get_fg_window()
+            rescaled_x, rescaled_y = MuscleMemoryCache.rescale_coords(
+                entry, fg.width if fg else 0, fg.height if fg else 0,
+                current_screen_w=self._screen_w,
+                current_screen_h=self._screen_h,
+            )
+            current_win_w = fg.width if fg else 0
+            current_win_h = fg.height if fg else 0
 
             # Step 4: click with muscle memory adaptation
             ax, ay = self._to_abs(sx, sy)
@@ -483,10 +562,12 @@ class ComputerUseEngine:
             except TypeError:
                 self._executor.click(ax, ay)
 
-            # Record the hit and update sequence tracking
+            # Record the hit with rescaled coords + current dims
             ctx = _CacheContext(
                 app_name=current_app, hint=hint,
-                cache_x=int(entry.x), cache_y=int(entry.y), layer=3,
+                cache_x=int(rescaled_x), cache_y=int(rescaled_y), layer=3,
+                win_w=current_win_w, win_h=current_win_h,
+                screen_w=self._screen_w, screen_h=self._screen_h,
             )
             self._cache_record(ctx)
 

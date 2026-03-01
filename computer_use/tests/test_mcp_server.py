@@ -255,11 +255,39 @@ class TestKeyboardTools:
 
 
 class TestInfoTools:
-    def test_get_screen_size(self, mock_engine):
+    def test_get_screen_size_returns_display_dims_before_screenshot(self, mock_engine):
+        """Before any screenshot, get_screen_size computes display dims from _MAX_WIDTH."""
+        import computer_use.mcp_server as mod
         from computer_use.mcp_server import get_screen_size
 
+        # Fixture sets _MAX_WIDTH=1024, engine returns (1920,1080).
+        # Display should be 1024 x int(1080 * 1024/1920) = 1024x576
+        mod._display_w = 0
+        mod._display_h = 0
         result = get_screen_size()
-        assert result == "1920x1080"
+        assert result == "1024x576"
+
+    def test_get_screen_size_returns_display_dims_after_screenshot(self, mock_engine):
+        """After screenshot(), get_screen_size returns the downscaled dimensions."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, get_screen_size
+
+        # Engine returns 1920x1080, _MAX_WIDTH=1024 -> downscale to 1024x576
+        screenshot()
+        result = get_screen_size()
+        assert result == f"{mod._display_w}x{mod._display_h}"
+        assert mod._display_w == 1024
+
+    def test_get_screen_size_no_downscale_when_small(self, mock_engine):
+        """If the real screen is smaller than _MAX_WIDTH, return real size."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import get_screen_size
+
+        mod._display_w = 0
+        mod._MAX_WIDTH = 1366
+        mock_engine.get_screen_size.return_value = (1024, 768)
+        result = get_screen_size()
+        assert result == "1024x768"
 
     def test_get_platform(self, mock_engine):
         from computer_use.mcp_server import get_platform
@@ -320,6 +348,88 @@ class TestElementFinding:
         mock_engine.find_element.return_value = None
         result = find_element("nonexistent")
         assert "not found" in result.lower()
+
+
+class TestScreenshotRegionScalePreservation:
+    """Regression tests: screenshot_region must NOT clobber the global scale state."""
+
+    def test_region_preserves_scale_factors(self, mock_engine):
+        """After screenshot() sets scale, screenshot_region() must not reset it."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, screenshot_region
+
+        screenshot()
+        scale_x_before = mod._scale_x
+        scale_y_before = mod._scale_y
+        assert scale_x_before > 1.0, "Precondition: screenshot should set scale > 1"
+
+        screenshot_region(100, 200, 50, 30)
+
+        assert mod._scale_x == scale_x_before
+        assert mod._scale_y == scale_y_before
+
+    def test_region_preserves_display_dims(self, mock_engine):
+        """screenshot_region() must not change _display_w/_display_h."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, screenshot_region
+
+        screenshot()
+        dw_before = mod._display_w
+        dh_before = mod._display_h
+
+        screenshot_region(100, 200, 50, 30)
+
+        assert mod._display_w == dw_before
+        assert mod._display_h == dh_before
+
+    def test_click_after_region_uses_correct_scale(self, mock_engine):
+        """Full integration: screenshot -> region -> click should use the original scale."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, screenshot_region, click
+
+        screenshot()
+        scale_x = mod._scale_x  # 1920/1024 = 1.875
+
+        screenshot_region(100, 200, 50, 30)
+
+        click(100, 200)
+        expected_x = int(100 * scale_x)
+        expected_y = int(200 * scale_x)  # scale_x == scale_y for uniform downscale
+        mock_engine.click.assert_called_once_with(expected_x, expected_y)
+
+    def test_region_preserves_offset(self, mock_engine):
+        """screenshot_region() must not change _offset_x/_offset_y."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, screenshot_region
+
+        mock_engine.screenshot.return_value = ScreenState(
+            image_bytes=_make_png(1920, 1080),
+            width=1920,
+            height=1080,
+            offset_x=200,
+            offset_y=100,
+        )
+        screenshot()
+        assert mod._offset_x == 200
+        assert mod._offset_y == 100
+
+        screenshot_region(50, 50, 100, 100)
+
+        assert mod._offset_x == 200
+        assert mod._offset_y == 100
+
+    def test_multiple_regions_dont_drift(self, mock_engine):
+        """Calling screenshot_region repeatedly must not degrade scale accuracy."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot, screenshot_region
+
+        screenshot()
+        original_scale_x = mod._scale_x
+
+        for _ in range(5):
+            screenshot_region(10, 10, 50, 50)
+
+        assert mod._scale_x == original_scale_x
 
 
 class TestEngineSingleton:

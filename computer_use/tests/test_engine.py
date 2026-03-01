@@ -343,6 +343,9 @@ class TestThreeLayerResolution:
         ):
             engine = ComputerUseEngine()
 
+        # Disable locator so Layer 2 doesn't interfere with pure Layer 1 test
+        engine._get_locator = lambda: None
+
         engine.click(200, 150)  # 25%, 25% -> bucket @24%,24%
 
         # Simulate resize to 1200x900
@@ -391,11 +394,16 @@ class TestNavigationBatch:
             engine = ComputerUseEngine()
         return engine, capture, executor
 
-    def _warm_cache(self, engine, app, hint, x, y, count=None):
+    def _warm_cache(self, engine, app, hint, x, y, count=None,
+                    win_w=0, win_h=0, screen_w=0, screen_h=0):
         """Record enough hits to make an entry nav-eligible."""
         n = count if count is not None else MIN_NAV_HIT_COUNT + 1
         for _ in range(n):
-            engine._cache.record_hit(app, hint, x, y)
+            engine._cache.record_hit(
+                app, hint, x, y,
+                win_w=win_w, win_h=win_h,
+                screen_w=screen_w, screen_h=screen_h,
+            )
 
     @patch("computer_use.core.engine.time")
     def test_navigate_chain_all_cached(self, mock_time, mock_backend):
@@ -513,14 +521,18 @@ class TestNavigationBatch:
         # get_foreground_window returns code.exe initially, then search.exe.
         # navigate_chain calls _get_fg_window in:
         #   1. _cache_to_screen (step 0)
-        #   2. _wait_for_nav_transition poll (between steps 0→1)
-        #   3. fg detection (step 1, i > 0)
-        #   4. _cache_to_screen (step 1)
+        #   2. rescale_coords fg (step 0)
+        #   3. _wait_for_nav_transition poll (between steps 0→1)
+        #   4. fg detection (step 1, i > 0)
+        #   5. _cache_to_screen (step 1)
+        #   6. rescale_coords fg (step 1)
         backend.get_foreground_window.side_effect = [
             fg_code,     # _cache_to_screen for step 0
+            fg_code,     # rescale_coords fg for step 0
             fg_search,   # _wait_for_nav_transition poll (step 0→1)
             fg_search,   # step 1: fg detection (i > 0)
             fg_search,   # _cache_to_screen for step 1
+            fg_search,   # rescale_coords fg for step 1
         ]
 
         with (
@@ -562,9 +574,11 @@ class TestNavigationBatch:
         )
         backend.get_foreground_window.side_effect = [
             fg_code,     # _cache_to_screen for step 0
+            fg_code,     # rescale_coords fg for step 0
             fg_search,   # _wait_for_nav_transition poll (step 0→1)
             fg_search,   # step 1: fg detection (i > 0)
             fg_search,   # _cache_to_screen for step 1
+            fg_search,   # rescale_coords fg for step 1
         ]
 
         with (
@@ -634,3 +648,163 @@ class TestNavigationBatch:
         click_args = executor.click.call_args
         assert click_args[0][0] == 100  # x from app.exe entry
         assert click_args[0][1] == 200  # y from app.exe entry
+
+    def test_cache_to_screen_rescales_on_screen_change(self, mock_backend):
+        """_cache_to_screen rescales when screen resolution changed."""
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=1600, height=1200,
+        )
+        engine, _, _ = self._make_engine(mock_backend, fg_window=fg)
+        # Simulate current screen is 3840x2160
+        engine._screen_w = 3840
+        engine._screen_h = 2160
+        # Cached at 800x600 window on 1920x1080 screen -> screen changed -> rescale
+        result = engine._cache_to_screen(
+            200, 150,
+            stored_win_w=800, stored_win_h=600,
+            stored_screen_w=1920, stored_screen_h=1080,
+        )
+        assert result is not None
+        sx, sy = result
+        assert sx == 400  # 200 * 1600/800
+        assert sy == 300  # 150 * 1200/600
+
+    def test_cache_to_screen_no_rescale_when_zero(self, mock_backend):
+        """Legacy entries (stored_win_w=0) pass through without rescaling."""
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=1600, height=1200,
+        )
+        engine, _, _ = self._make_engine(mock_backend, fg_window=fg)
+        result = engine._cache_to_screen(200, 150, stored_win_w=0, stored_win_h=0)
+        assert result is not None
+        sx, sy = result
+        assert sx == 200  # unchanged
+        assert sy == 150  # unchanged
+
+    def test_cache_to_screen_same_screen_no_rescale(self, mock_backend):
+        """Same screen + window resize -> pass through without rescaling."""
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=1600, height=1200,
+        )
+        engine, _, _ = self._make_engine(mock_backend, fg_window=fg)
+        engine._screen_w = 1920
+        engine._screen_h = 1080
+        # Same screen, window resized from 800x600 to 1600x1200
+        result = engine._cache_to_screen(
+            200, 150,
+            stored_win_w=800, stored_win_h=600,
+            stored_screen_w=1920, stored_screen_h=1080,
+        )
+        assert result is not None
+        sx, sy = result
+        assert sx == 200  # NOT rescaled (same screen)
+        assert sy == 150
+
+    def test_cache_to_screen_bounds_check_returns_none(self, mock_backend):
+        """Same screen + coords out of bounds -> returns None."""
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=400, height=300,
+        )
+        engine, _, _ = self._make_engine(mock_backend, fg_window=fg)
+        engine._screen_w = 1920
+        engine._screen_h = 1080
+        # Coords (500, 400) cached at 800x600, now window is 400x300
+        # 500 >= 400 -> out of bounds
+        result = engine._cache_to_screen(
+            500, 400,
+            stored_win_w=800, stored_win_h=600,
+            stored_screen_w=1920, stored_screen_h=1080,
+        )
+        assert result is None
+
+    @patch("computer_use.core.engine.time")
+    def test_navigate_chain_rescales_on_screen_change(self, mock_time, mock_backend):
+        """Screen changed -> rescales coords proportionally."""
+        _t = [0.0]
+        def _tick():
+            _t[0] += 2.0
+            return _t[0]
+        mock_time.monotonic.side_effect = _tick
+        mock_time.sleep = MagicMock()
+        # Window is now 1600x1200 on a 3840x2160 screen
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=1600, height=1200,
+        )
+        engine, _, executor = self._make_engine(mock_backend, fg_window=fg)
+        engine._screen_w = 3840
+        engine._screen_h = 2160
+        # Cache was recorded at 800x600 on a 1920x1080 screen
+        self._warm_cache(engine, "app.exe", "btn_a", 200, 150,
+                         win_w=800, win_h=600,
+                         screen_w=1920, screen_h=1080)
+
+        result = engine.navigate_chain("app.exe", ["btn_a"])
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        # Should click at rescaled coords: (200*1600/800, 150*1200/600) = (400, 300)
+        click_args = executor.click.call_args
+        assert click_args[0][0] == 400  # rescaled x
+        assert click_args[0][1] == 300  # rescaled y
+
+    @patch("computer_use.core.engine.time")
+    def test_navigate_chain_same_screen_no_rescale(self, mock_time, mock_backend):
+        """Same screen + window resize -> uses original coords (in bounds)."""
+        _t = [0.0]
+        def _tick():
+            _t[0] += 2.0
+            return _t[0]
+        mock_time.monotonic.side_effect = _tick
+        mock_time.sleep = MagicMock()
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=1600, height=1200,
+        )
+        engine, _, executor = self._make_engine(mock_backend, fg_window=fg)
+        engine._screen_w = 1920
+        engine._screen_h = 1080
+        # Cached at 800x600 on SAME screen -> window-only resize
+        self._warm_cache(engine, "app.exe", "btn_a", 200, 150,
+                         win_w=800, win_h=600,
+                         screen_w=1920, screen_h=1080)
+
+        result = engine.navigate_chain("app.exe", ["btn_a"])
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        # Same screen -> no rescale, uses original coords (200, 150)
+        click_args = executor.click.call_args
+        assert click_args[0][0] == 200  # original x
+        assert click_args[0][1] == 150  # original y
+
+    @patch("computer_use.core.engine.time")
+    def test_navigate_chain_bounds_check_stops(self, mock_time, mock_backend):
+        """Same screen + window shrunk + coords out of bounds -> stops."""
+        _t = [0.0]
+        def _tick():
+            _t[0] += 2.0
+            return _t[0]
+        mock_time.monotonic.side_effect = _tick
+        mock_time.sleep = MagicMock()
+        # Window shrunk to 400x300 (same screen)
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=400, height=300,
+        )
+        engine, _, executor = self._make_engine(mock_backend, fg_window=fg)
+        engine._screen_w = 1920
+        engine._screen_h = 1080
+        # Cached at (500, 400) in 800x600 window on same screen
+        # 500 >= 400 (current width) -> out of bounds
+        self._warm_cache(engine, "app.exe", "far_btn", 500, 400,
+                         win_w=800, win_h=600,
+                         screen_w=1920, screen_h=1080)
+
+        result = engine.navigate_chain("app.exe", ["far_btn"])
+        assert result["completed"] == 0
+        assert result["stopped"] is True
+        assert "out of bounds" in result["reason"]
+        assert executor.click.call_count == 0

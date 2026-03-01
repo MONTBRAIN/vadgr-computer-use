@@ -65,6 +65,10 @@ class CacheEntry:
     created_ts: float
     confidence: float
     prev_hint: str
+    win_w: int = 0  # window width at record time (0 = unknown/legacy)
+    win_h: int = 0  # window height at record time (0 = unknown/legacy)
+    screen_w: int = 0  # screen width at record time (0 = unknown/legacy)
+    screen_h: int = 0  # screen height at record time (0 = unknown/legacy)
 
 
 class MuscleMemoryCache:
@@ -149,6 +153,42 @@ class MuscleMemoryCache:
             ON cross_sequences (from_app, from_hint, to_app, to_hint)
         """)
         c.commit()
+        self._migrate_v2()
+        self._migrate_v3()
+
+    def _migrate_v2(self) -> None:
+        """Add win_w, win_h columns for resolution-independent rescaling."""
+        cols = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(memories)"
+        ).fetchall()}
+        if "win_w" not in cols:
+            self._conn.execute(
+                "ALTER TABLE memories ADD COLUMN win_w INTEGER NOT NULL DEFAULT 0"
+            )
+            self._conn.execute(
+                "ALTER TABLE memories ADD COLUMN win_h INTEGER NOT NULL DEFAULT 0"
+            )
+            self._conn.commit()
+            logger.info("Migrated DB: added win_w, win_h columns")
+
+    def _migrate_v3(self) -> None:
+        """Add screen_w, screen_h columns for DPI-aware rescaling.
+
+        Distinguishes monitor/DPI changes (rescale) from window resizes
+        on the same screen (don't rescale).
+        """
+        cols = {row[1] for row in self._conn.execute(
+            "PRAGMA table_info(memories)"
+        ).fetchall()}
+        if "screen_w" not in cols:
+            self._conn.execute(
+                "ALTER TABLE memories ADD COLUMN screen_w INTEGER NOT NULL DEFAULT 0"
+            )
+            self._conn.execute(
+                "ALTER TABLE memories ADD COLUMN screen_h INTEGER NOT NULL DEFAULT 0"
+            )
+            self._conn.commit()
+            logger.info("Migrated DB: added screen_w, screen_h columns")
 
     def _load_hot_cache(self) -> None:
         """Load all entries into the in-memory dict."""
@@ -179,6 +219,10 @@ class MuscleMemoryCache:
             created_ts=row["created_ts"],
             confidence=row["confidence"],
             prev_hint=row["prev_hint"],
+            win_w=row["win_w"],
+            win_h=row["win_h"],
+            screen_w=row["screen_w"],
+            screen_h=row["screen_h"],
         )
 
     def _apply_decay(self, entry: CacheEntry) -> float:
@@ -248,11 +292,20 @@ class MuscleMemoryCache:
         height: int = 24,
         prev_hint: str = "",
         prev_app: str = "",
+        win_w: int = 0,
+        win_h: int = 0,
+        screen_w: int = 0,
+        screen_h: int = 0,
     ) -> CacheEntry:
         """Record a successful interaction at (x, y).
 
         If an entry exists, applies EMA position smoothing and increments hit_count.
         Otherwise creates a new entry. Updates the R-Tree and hot cache.
+
+        win_w/win_h store the foreground window dimensions at record time.
+        screen_w/screen_h store the screen resolution at record time.
+        Together they enable smart rescaling: only rescale when the screen
+        changed (DPI/monitor switch), not when just the window resized.
 
         When prev_app differs from app_name, records a cross-app sequence
         so BFS path finding can traverse application boundaries.
@@ -275,17 +328,26 @@ class MuscleMemoryCache:
             new_w = existing.width + EMA_ALPHA * (width - existing.width)
             new_h = existing.height + EMA_ALPHA * (height - existing.height)
             new_count = existing.hit_count + 1
+            # Window/screen dims: take the latest non-zero value
+            new_win_w = win_w if win_w > 0 else existing.win_w
+            new_win_h = win_h if win_h > 0 else existing.win_h
+            new_screen_w = screen_w if screen_w > 0 else existing.screen_w
+            new_screen_h = screen_h if screen_h > 0 else existing.screen_h
 
             self._conn.execute(
                 """
                 UPDATE memories SET
                     x = ?, y = ?, width = ?, height = ?,
                     hit_count = ?, last_hit_ts = ?,
-                    confidence = 1.0, prev_hint = ?
+                    confidence = 1.0, prev_hint = ?,
+                    win_w = ?, win_h = ?,
+                    screen_w = ?, screen_h = ?
                 WHERE id = ?
                 """,
                 (new_x, new_y, new_w, new_h, new_count, now,
-                 prev_hint or existing.prev_hint, existing.id),
+                 prev_hint or existing.prev_hint,
+                 new_win_w, new_win_h,
+                 new_screen_w, new_screen_h, existing.id),
             )
             # Update R-Tree
             self._conn.execute(
@@ -309,6 +371,10 @@ class MuscleMemoryCache:
             existing.hit_count = new_count
             existing.last_hit_ts = now
             existing.confidence = 1.0
+            existing.win_w = new_win_w
+            existing.win_h = new_win_h
+            existing.screen_w = new_screen_w
+            existing.screen_h = new_screen_h
             if prev_hint:
                 existing.prev_hint = prev_hint
             return existing
@@ -320,12 +386,14 @@ class MuscleMemoryCache:
                 INSERT INTO memories
                     (app_name, element_hint, x, y, width, height,
                      hit_count, miss_count, last_hit_ts, created_ts,
-                     confidence, prev_hint)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 1.0, ?)
+                     confidence, prev_hint, win_w, win_h,
+                     screen_w, screen_h)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 1.0, ?, ?, ?, ?, ?)
                 """,
                 (app_name.lower(), element_hint.lower(),
                  float(x), float(y), float(width), float(height),
-                 now, now, prev_hint),
+                 now, now, prev_hint, win_w, win_h,
+                 screen_w, screen_h),
             )
             row_id = cursor.lastrowid
             self._conn.execute(
@@ -342,6 +410,8 @@ class MuscleMemoryCache:
                 hit_count=1, miss_count=0,
                 last_hit_ts=now, created_ts=now,
                 confidence=1.0, prev_hint=prev_hint,
+                win_w=win_w, win_h=win_h,
+                screen_w=screen_w, screen_h=screen_h,
             )
             self._hot[key] = entry
 
@@ -375,6 +445,48 @@ class MuscleMemoryCache:
         self._conn.commit()
         entry.confidence = new_conf
         entry.miss_count = new_miss
+
+    @staticmethod
+    def rescale_coords(
+        entry: CacheEntry,
+        current_win_w: int,
+        current_win_h: int,
+        current_screen_w: int = 0,
+        current_screen_h: int = 0,
+    ) -> tuple[float, float]:
+        """Rescale cached coords using smart screen-aware logic.
+
+        Decision tree:
+        1. Legacy entry (win_w=0) -> return original (no data to rescale)
+        2. Same window size -> return original (no change needed)
+        3. Screen resolution changed -> rescale proportionally (DPI/monitor)
+        4. Same screen, window-only resize -> return original (don't rescale)
+
+        Returns (rescaled_x, rescaled_y). Callers should bounds-check
+        the result against the current window dimensions.
+        """
+        if entry.win_w <= 0 or entry.win_h <= 0:
+            return entry.x, entry.y
+        if current_win_w <= 0 or current_win_h <= 0:
+            return entry.x, entry.y
+        if entry.win_w == current_win_w and entry.win_h == current_win_h:
+            return entry.x, entry.y
+
+        # Window size differs -- determine if this is a screen/DPI change
+        screen_changed = (
+            entry.screen_w > 0 and entry.screen_h > 0
+            and current_screen_w > 0 and current_screen_h > 0
+            and (entry.screen_w != current_screen_w
+                 or entry.screen_h != current_screen_h)
+        )
+        if screen_changed:
+            # Different monitor/DPI -> rescale proportionally
+            rescaled_x = entry.x * current_win_w / entry.win_w
+            rescaled_y = entry.y * current_win_h / entry.win_h
+            return rescaled_x, rescaled_y
+
+        # Same screen (or unknown screen) + window-only resize -> don't rescale
+        return entry.x, entry.y
 
     def lookup_for_nav(
         self, app_name: str, element_hint: str
