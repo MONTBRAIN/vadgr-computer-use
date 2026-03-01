@@ -634,6 +634,70 @@ class ComputerUseEngine:
         # Direct: just try clicking the target
         return self.navigate_chain(target_app, [target_hint])
 
+    def execute_template(self, name: str) -> dict:
+        """Execute a named action template.
+
+        Looks up the template from the cache and replays each step:
+        - click: uses navigate_chain single-step logic (cache lookup + muscle memory)
+        - type_text: types the text string
+        - key_press: presses the key combination (e.g. "ctrl+s")
+        - wait: sleeps for wait_ms
+
+        Returns dict with completed/total/stopped/reason (same format as
+        navigate_chain). Increments use_count on successful completion.
+        """
+        result_tpl = self._cache.get_template(name)
+        if result_tpl is None:
+            return {
+                "completed": 0, "total": 0, "last_hint": "",
+                "stopped": True, "reason": f"template '{name}' not found",
+            }
+
+        info, steps = result_tpl
+        app_name = info["app_name"]
+        completed = 0
+
+        for step in steps:
+            try:
+                if step.action_type == "click":
+                    chain_result = self.navigate_chain(app_name, [step.hint])
+                    if chain_result["stopped"]:
+                        return {
+                            "completed": completed, "total": len(steps),
+                            "last_hint": step.hint, "stopped": True,
+                            "reason": f"click failed at step {step.step_index}: "
+                                      f"{chain_result['reason']}",
+                        }
+                elif step.action_type == "type_text":
+                    self.type_text(step.text)
+                elif step.action_type == "key_press":
+                    keys = [k.strip() for k in step.text.split("+")]
+                    self.key_press(*keys)
+                elif step.action_type == "wait":
+                    time.sleep(step.wait_ms / 1000.0)
+            except Exception as exc:
+                logger.debug(
+                    "Template '%s' failed at step %d (%s): %s",
+                    name, step.step_index, step.action_type, exc,
+                )
+                return {
+                    "completed": completed, "total": len(steps),
+                    "last_hint": step.hint if step.action_type == "click" else "",
+                    "stopped": True,
+                    "reason": f"step {step.step_index} ({step.action_type}) error: {exc}",
+                }
+
+            # Wait between steps
+            if step.wait_ms > 0 and step.action_type != "wait":
+                time.sleep(step.wait_ms / 1000.0)
+            completed += 1
+
+        self._cache.increment_template_use(name)
+        return {
+            "completed": completed, "total": len(steps),
+            "last_hint": "", "stopped": False, "reason": "",
+        }
+
     def execute_action(self, action: Action) -> None:
         """Execute an Action dataclass directly."""
         self._executor.execute_action(action)

@@ -432,6 +432,97 @@ class TestScreenshotRegionScalePreservation:
         assert mod._scale_x == original_scale_x
 
 
+class TestTemplateTools:
+    """Tests for the action template MCP tools."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_cache(self, mock_engine):
+        """Give the mock engine a real cache for template operations."""
+        from computer_use.core.spatial_cache import MuscleMemoryCache
+        mock_engine._cache = MuscleMemoryCache(":memory:")
+        yield
+        mock_engine._cache.close()
+
+    def test_create_template(self):
+        import computer_use.mcp_server as mod
+        result = mod.create_template(
+            name="test-save",
+            app_name="notepad.exe",
+            steps=[
+                {"action": "key_press", "text": "ctrl+s", "wait_ms": 200},
+            ],
+        )
+        assert "created" in result
+        assert "test-save" in result
+
+    def test_create_template_invalid_action(self):
+        import computer_use.mcp_server as mod
+        result = mod.create_template(
+            name="bad",
+            app_name="app.exe",
+            steps=[{"action": "fly"}],
+        )
+        assert "Error" in result
+
+    def test_list_templates(self):
+        import computer_use.mcp_server as mod
+        mod.create_template("a", "app.exe", [{"action": "wait"}])
+        mod.create_template("b", "app.exe", [{"action": "wait"}, {"action": "click", "hint": "OK"}])
+        result = mod.list_templates()
+        assert "2" in result  # "Templates (2):"
+        assert "a" in result
+        assert "b" in result
+
+    def test_list_templates_empty(self):
+        import computer_use.mcp_server as mod
+        result = mod.list_templates()
+        assert "No templates" in result
+
+    def test_list_templates_filtered(self):
+        import computer_use.mcp_server as mod
+        mod.create_template("x", "app1.exe", [{"action": "wait"}])
+        mod.create_template("y", "app2.exe", [{"action": "wait"}])
+        result = mod.list_templates(app_name="app1.exe")
+        assert "x" in result
+        assert "y" not in result
+
+    def test_delete_template(self):
+        import computer_use.mcp_server as mod
+        mod.create_template("del-me", "app.exe", [{"action": "wait"}])
+        result = mod.delete_template("del-me")
+        assert "deleted" in result
+
+    def test_delete_nonexistent(self):
+        import computer_use.mcp_server as mod
+        result = mod.delete_template("nope")
+        assert "not found" in result
+
+    def test_execute_template_not_found(self):
+        import computer_use.mcp_server as mod
+        # execute_template calls engine.execute_template which needs the real method
+        # Since mock_engine is a MagicMock, engine.execute_template will return a MagicMock
+        # We need to configure it
+        mock_engine = mod._engine
+        mock_engine.execute_template.return_value = {
+            "completed": 0, "total": 0, "last_hint": "",
+            "stopped": True, "reason": "template 'nope' not found",
+        }
+        result = mod.execute_template("nope")
+        assert "stopped" in result
+        assert "not found" in result
+
+    def test_execute_template_success(self):
+        import computer_use.mcp_server as mod
+        mock_engine = mod._engine
+        mock_engine.execute_template.return_value = {
+            "completed": 3, "total": 3, "last_hint": "",
+            "stopped": False, "reason": "",
+        }
+        result = mod.execute_template("my-template")
+        assert "complete" in result
+        assert "3/3" in result
+
+
 class TestEngineSingleton:
     def test_lazy_init(self):
         import computer_use.mcp_server as mod

@@ -57,7 +57,10 @@ mcp = FastMCP(
         "used 3+ times), use navigate_to or navigate_chain instead of "
         "screenshot+click cycles. These skip LLM roundtrips for cached targets.\n"
         "7. Navigation tools only work for well-cached targets (3+ hits). "
-        "For new/unfamiliar targets, use screenshot+click as usual."
+        "For new/unfamiliar targets, use screenshot+click as usual.\n"
+        "8. For REPEATED multi-step workflows (save file, new tab, copy-paste), "
+        "use create_template to define them once, then execute_template to replay. "
+        "Templates support click, type_text, key_press, and wait actions."
     ),
 )
 
@@ -376,6 +379,80 @@ def navigate_chain(hints: list, app_name: str = "") -> str:
         f"Chain complete: {result['completed']}/{result['total']} steps. "
         f"Now at: {result['last_hint']}"
     )
+
+
+@mcp.tool()
+def create_template(name: str, app_name: str, steps: list) -> str:
+    """Define a reusable action template for multi-step workflows.
+
+    name: unique template name (e.g. "save-as-txt", "new-document")
+    app_name: the application this template runs in (e.g. "notepad.exe")
+    steps: ordered list of step dicts, each with:
+        - action: "click", "type_text", "key_press", or "wait"
+        - hint: element_hint for click steps (e.g. "File menu")
+        - text: text for type_text, key combo for key_press (e.g. "ctrl+s")
+        - wait_ms: pause after step in ms (default 100)
+
+    Example step: {"action": "key_press", "text": "ctrl+s", "wait_ms": 200}
+    """
+    engine = _get_engine()
+    step_dicts = [dict(s) if not isinstance(s, dict) else s for s in steps]
+    try:
+        tid = engine._cache.create_template(name, app_name, step_dicts)
+    except ValueError as e:
+        return f"Error: {e}"
+    except Exception as e:
+        return f"Error creating template: {e}"
+    return f"Template '{name}' created (id={tid}, {len(step_dicts)} steps)"
+
+
+@mcp.tool()
+def execute_template(name: str) -> str:
+    """Execute a named action template (multi-step workflow without screenshots).
+
+    Replays all steps in the template: clicks use cached positions,
+    type_text types strings, key_press sends key combos.
+    Returns completion status.
+    """
+    engine = _get_engine()
+    result = engine.execute_template(name)
+    if result["stopped"]:
+        return (
+            f"Template stopped: {result['reason']}. "
+            f"Completed {result['completed']}/{result['total']} steps. "
+            f"Take a screenshot to re-evaluate."
+        )
+    return (
+        f"Template '{name}' complete: {result['completed']}/{result['total']} steps."
+    )
+
+
+@mcp.tool()
+def list_templates(app_name: str = "") -> str:
+    """List available action templates, optionally filtered by app.
+
+    Returns a summary of each template with name, app, use count, and step count.
+    """
+    engine = _get_engine()
+    templates = engine._cache.list_templates(app_name=app_name or None)
+    if not templates:
+        return "No templates found."
+    lines = []
+    for t in templates:
+        lines.append(
+            f"  {t['name']} ({t['app_name']}) -- "
+            f"{t['steps_count']} steps, used {t['use_count']}x"
+        )
+    return f"Templates ({len(templates)}):\n" + "\n".join(lines)
+
+
+@mcp.tool()
+def delete_template(name: str) -> str:
+    """Delete an action template by name."""
+    engine = _get_engine()
+    if engine._cache.delete_template(name):
+        return f"Template '{name}' deleted."
+    return f"Template '{name}' not found."
 
 
 def main():

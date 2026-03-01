@@ -957,3 +957,179 @@ class TestLayer2Integration:
         # Stored under custom hint, not a11y hint
         entry = engine._cache.lookup("notepad.exe", "My Custom Hint", 100, 200)
         assert entry is not None
+
+
+# ---------------------------------------------------------------------------
+# TestTemplateExecution -- execute_template() integration tests
+# ---------------------------------------------------------------------------
+
+class TestTemplateExecution:
+    """Tests for engine.execute_template() with mocked backends."""
+
+    def _make_engine(self, mock_backend, fg_window=None):
+        backend, capture, executor = mock_backend
+        backend.get_foreground_window.return_value = fg_window
+        with (
+            patch("computer_use.core.engine.detect_platform", return_value=Platform.WSL2),
+            patch("computer_use.core.engine.get_backend", return_value=backend),
+            patch("computer_use.core.engine.yaml"),
+            patch("computer_use.core.engine._default_cache_path", return_value=":memory:"),
+        ):
+            engine = ComputerUseEngine()
+        return engine, capture, executor
+
+    def _warm_cache(self, engine, app, hint, x, y, count=None):
+        """Record enough hits to make an entry nav-eligible."""
+        n = count if count is not None else MIN_NAV_HIT_COUNT + 1
+        for _ in range(n):
+            engine._cache.record_hit(app, hint, x, y)
+
+    def test_nonexistent_template(self, mock_backend):
+        """execute_template returns stopped=True for unknown template."""
+        engine, _, _ = self._make_engine(mock_backend)
+        result = engine.execute_template("nonexistent")
+        assert result["stopped"] is True
+        assert "not found" in result["reason"]
+        assert result["completed"] == 0
+
+    @patch("computer_use.core.engine.time")
+    def test_type_text_step(self, mock_time, mock_backend):
+        """Template with type_text step calls engine.type_text."""
+        mock_time.time.return_value = 1000.0
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        engine, _, executor = self._make_engine(mock_backend)
+
+        engine._cache.create_template("type-test", "app.exe", [
+            {"action": "type_text", "text": "hello world", "wait_ms": 50},
+        ])
+        result = engine.execute_template("type-test")
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        executor.type_text.assert_called_once_with("hello world")
+
+    @patch("computer_use.core.engine.time")
+    def test_key_press_step(self, mock_time, mock_backend):
+        """Template with key_press step calls engine.key_press."""
+        mock_time.time.return_value = 1000.0
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        engine, _, executor = self._make_engine(mock_backend)
+
+        engine._cache.create_template("key-test", "app.exe", [
+            {"action": "key_press", "text": "ctrl+s", "wait_ms": 50},
+        ])
+        result = engine.execute_template("key-test")
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        executor.key_press.assert_called_once_with(["ctrl", "s"])
+
+    @patch("computer_use.core.engine.time")
+    def test_wait_step(self, mock_time, mock_backend):
+        """Template with wait step sleeps for the specified duration."""
+        mock_time.time.return_value = 1000.0
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        engine, _, _ = self._make_engine(mock_backend)
+
+        engine._cache.create_template("wait-test", "app.exe", [
+            {"action": "wait", "wait_ms": 500},
+        ])
+        result = engine.execute_template("wait-test")
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        # wait step sleeps for 500ms = 0.5s
+        mock_time.sleep.assert_any_call(0.5)
+
+    @patch("computer_use.core.engine.time")
+    def test_click_step_uses_cache(self, mock_time, mock_backend):
+        """Template click step uses navigate_chain -> cache lookup."""
+        _t = [0.0]
+        def _tick():
+            _t[0] += 2.0
+            return _t[0]
+        mock_time.monotonic.side_effect = _tick
+        mock_time.time.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=800, height=600,
+        )
+        engine, _, executor = self._make_engine(mock_backend, fg_window=fg)
+        self._warm_cache(engine, "app.exe", "save button", 300, 400)
+
+        engine._cache.create_template("click-test", "app.exe", [
+            {"action": "click", "hint": "save button", "wait_ms": 50},
+        ])
+        result = engine.execute_template("click-test")
+        assert result["completed"] == 1
+        assert result["stopped"] is False
+        assert executor.click.call_count >= 1
+
+    @patch("computer_use.core.engine.time")
+    def test_click_step_cache_miss_stops(self, mock_time, mock_backend):
+        """Template click step with cache miss stops execution."""
+        mock_time.time.return_value = 1000.0
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        fg = ForegroundWindow(
+            app_name="app.exe", title="test", x=0, y=0,
+            width=800, height=600,
+        )
+        engine, _, _ = self._make_engine(mock_backend, fg_window=fg)
+
+        engine._cache.create_template("miss-test", "app.exe", [
+            {"action": "click", "hint": "unknown button", "wait_ms": 50},
+        ])
+        result = engine.execute_template("miss-test")
+        assert result["stopped"] is True
+        assert result["completed"] == 0
+
+    @patch("computer_use.core.engine.time")
+    def test_mixed_steps(self, mock_time, mock_backend):
+        """Template with mixed action types executes in order."""
+        _t = [0.0]
+        def _tick():
+            _t[0] += 2.0
+            return _t[0]
+        mock_time.monotonic.side_effect = _tick
+        mock_time.time.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        fg = ForegroundWindow(
+            app_name="notepad.exe", title="test", x=0, y=0,
+            width=800, height=600,
+        )
+        engine, _, executor = self._make_engine(mock_backend, fg_window=fg)
+        self._warm_cache(engine, "notepad.exe", "file menu", 50, 10)
+        self._warm_cache(engine, "notepad.exe", "save as", 60, 80)
+
+        engine._cache.create_template("save-workflow", "notepad.exe", [
+            {"action": "click", "hint": "file menu", "wait_ms": 100},
+            {"action": "click", "hint": "save as", "wait_ms": 100},
+            {"action": "type_text", "text": "output.txt", "wait_ms": 50},
+            {"action": "key_press", "text": "enter", "wait_ms": 50},
+        ])
+        result = engine.execute_template("save-workflow")
+        assert result["completed"] == 4
+        assert result["stopped"] is False
+        # 2 clicks (from navigate_chain), 1 type_text, 1 key_press
+        assert executor.click.call_count >= 2
+        executor.type_text.assert_called_once_with("output.txt")
+        executor.key_press.assert_called_once_with(["enter"])
+
+    @patch("computer_use.core.engine.time")
+    def test_template_increments_use_count(self, mock_time, mock_backend):
+        """Successful execution increments the template's use_count."""
+        mock_time.time.return_value = 1000.0
+        mock_time.monotonic.return_value = 1000.0
+        mock_time.sleep = MagicMock()
+        engine, _, _ = self._make_engine(mock_backend)
+
+        engine._cache.create_template("counter", "app.exe", [
+            {"action": "wait", "wait_ms": 10},
+        ])
+        engine.execute_template("counter")
+        engine.execute_template("counter")
+
+        info, _ = engine._cache.get_template("counter")
+        assert info["use_count"] == 2

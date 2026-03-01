@@ -39,7 +39,16 @@
 - **Workaround**: None needed; only affects first click per session. All subsequent clicks are DPI-aware.
 - **Status**: Open. Low impact (1 click per session).
 
-### 6. Vision struggles with small/dense UI elements
+### 6. WSL2 app-name splitting breaks cache hit thresholds
+- **Found**: 2026-03-01
+- **Symptom**: Cache hits for the same UI element get split between the real app name (e.g., `applicationframehost.exe`) and `wsl2`. Neither reaches `MIN_NAV_HIT_COUNT=3` individually, so `navigate_chain`/`execute_template` click steps fail even though total hits across both names exceed the threshold.
+- **Root cause**: Foreground window detection from WSL2 sometimes returns `wsl2` as the process name instead of the actual Windows app (timing-dependent). UWP apps compound this because Windows reports the container process (`applicationframehost.exe`) rather than the app itself (e.g., `calculatorapp.exe`).
+- **Affected features**: `navigate_chain`, `navigate_to`, `execute_template` (click steps) -- any feature gated by `MIN_NAV_HIT_COUNT`
+- **Workaround**: Extra cache warming rounds so one app name accumulates enough hits. The `lookup_for_nav_any_app` fallback helps when a single name has 3+ hits.
+- **Potential fix**: Merge entries across app-name variants (e.g., treat `wsl2` hits as belonging to the most recent real app name), or normalize UWP container names to the actual app at recording time.
+- **Status**: Open. Affects UWP apps most; classic Win32 apps are less affected.
+
+### 7. Vision struggles with small/dense UI elements
 - **Found**: 2026-03-01
 - **Symptom**: LLM cannot reliably identify individual stickers, small icons, or dense grid items from screenshots. Zooming in via `screenshot_region` helps but adds roundtrips and the region coordinates themselves can be imprecise.
 - **Status**: Inherent vision model limitation. Could potentially be improved with better region capture or element-level accessibility data for sticker grids.

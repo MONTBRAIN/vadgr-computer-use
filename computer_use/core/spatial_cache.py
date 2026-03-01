@@ -71,6 +71,20 @@ class CacheEntry:
     screen_h: int = 0  # screen height at record time (0 = unknown/legacy)
 
 
+# Valid action types for template steps.
+TEMPLATE_ACTION_TYPES = {"click", "type_text", "key_press", "wait"}
+
+
+@dataclass
+class TemplateStep:
+    """A single step within an action template."""
+    step_index: int
+    action_type: str      # "click", "type_text", "key_press", "wait"
+    hint: str = ""        # element_hint for click steps
+    text: str = ""        # text for type_text, key combo for key_press (e.g. "ctrl+s")
+    wait_ms: int = 100    # pause after this step (ms)
+
+
 class MuscleMemoryCache:
     """Spatially-indexed memory of UI target locations.
 
@@ -155,6 +169,7 @@ class MuscleMemoryCache:
         c.commit()
         self._migrate_v2()
         self._migrate_v3()
+        self._migrate_v4()
 
     def _migrate_v2(self) -> None:
         """Add win_w, win_h columns for resolution-independent rescaling."""
@@ -189,6 +204,44 @@ class MuscleMemoryCache:
             )
             self._conn.commit()
             logger.info("Migrated DB: added screen_w, screen_h columns")
+
+    def _migrate_v4(self) -> None:
+        """Add action_templates and template_steps tables.
+
+        Templates store named multi-step workflows (click + type + key_press)
+        that can be replayed without LLM roundtrips.
+        """
+        tables = {
+            row[0]
+            for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "action_templates" not in tables:
+            self._conn.execute("""
+                CREATE TABLE action_templates (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name       TEXT NOT NULL UNIQUE,
+                    app_name   TEXT NOT NULL,
+                    use_count  INTEGER NOT NULL DEFAULT 0,
+                    created_ts REAL NOT NULL,
+                    last_ts    REAL NOT NULL
+                )
+            """)
+            self._conn.execute("""
+                CREATE TABLE template_steps (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    template_id INTEGER NOT NULL REFERENCES action_templates(id) ON DELETE CASCADE,
+                    step_index  INTEGER NOT NULL,
+                    action_type TEXT NOT NULL,
+                    hint        TEXT NOT NULL DEFAULT '',
+                    text        TEXT NOT NULL DEFAULT '',
+                    wait_ms     INTEGER NOT NULL DEFAULT 100,
+                    UNIQUE(template_id, step_index)
+                )
+            """)
+            self._conn.commit()
+            logger.info("Migrated DB: added action_templates and template_steps tables")
 
     def _load_hot_cache(self) -> None:
         """Load all entries into the in-memory dict."""
@@ -833,6 +886,167 @@ class MuscleMemoryCache:
                 "Merged %d '%s' entries into real-app entries", merged, platform_name,
             )
         return merged
+
+    # ── Action template methods ──
+
+    def create_template(
+        self,
+        name: str,
+        app_name: str,
+        steps: list[dict],
+    ) -> int:
+        """Create a named action template with ordered steps.
+
+        Each step dict should have:
+            action: str  -- "click", "type_text", "key_press", "wait"
+            hint: str    -- element_hint for clicks (optional)
+            text: str    -- text for type_text / key combo for key_press (optional)
+            wait_ms: int -- pause after step in ms (default 100)
+
+        Returns the template id. Raises ValueError on invalid input.
+        """
+        if not name or not name.strip():
+            raise ValueError("Template name must not be empty")
+        if not steps:
+            raise ValueError("Template must have at least one step")
+
+        for i, step in enumerate(steps):
+            action = step.get("action", "")
+            if action not in TEMPLATE_ACTION_TYPES:
+                raise ValueError(
+                    f"Step {i}: invalid action '{action}'. "
+                    f"Must be one of {sorted(TEMPLATE_ACTION_TYPES)}"
+                )
+
+        now = time.time()
+        cursor = self._conn.execute(
+            """
+            INSERT INTO action_templates (name, app_name, use_count, created_ts, last_ts)
+            VALUES (?, ?, 0, ?, ?)
+            """,
+            (name.lower(), app_name.lower(), now, now),
+        )
+        template_id = cursor.lastrowid
+
+        for i, step in enumerate(steps):
+            self._conn.execute(
+                """
+                INSERT INTO template_steps
+                    (template_id, step_index, action_type, hint, text, wait_ms)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    template_id,
+                    i,
+                    step["action"],
+                    step.get("hint", ""),
+                    step.get("text", ""),
+                    step.get("wait_ms", 100),
+                ),
+            )
+        self._conn.commit()
+        logger.info("Created template '%s' with %d steps", name, len(steps))
+        return template_id
+
+    def get_template(
+        self, name: str
+    ) -> Optional[tuple[dict, list[TemplateStep]]]:
+        """Look up a template by name.
+
+        Returns (template_info_dict, ordered_steps) or None if not found.
+        template_info_dict has keys: id, name, app_name, use_count, created_ts, last_ts.
+        """
+        row = self._conn.execute(
+            "SELECT * FROM action_templates WHERE name = ?",
+            (name.lower(),),
+        ).fetchone()
+        if row is None:
+            return None
+
+        info = {
+            "id": row["id"],
+            "name": row["name"],
+            "app_name": row["app_name"],
+            "use_count": row["use_count"],
+            "created_ts": row["created_ts"],
+            "last_ts": row["last_ts"],
+        }
+
+        step_rows = self._conn.execute(
+            "SELECT * FROM template_steps WHERE template_id = ? ORDER BY step_index",
+            (row["id"],),
+        ).fetchall()
+
+        steps = [
+            TemplateStep(
+                step_index=sr["step_index"],
+                action_type=sr["action_type"],
+                hint=sr["hint"],
+                text=sr["text"],
+                wait_ms=sr["wait_ms"],
+            )
+            for sr in step_rows
+        ]
+        return info, steps
+
+    def list_templates(self, app_name: Optional[str] = None) -> list[dict]:
+        """List all templates, optionally filtered by app.
+
+        Returns list of dicts with: name, app_name, use_count, steps_count.
+        """
+        if app_name:
+            rows = self._conn.execute(
+                """
+                SELECT t.name, t.app_name, t.use_count,
+                       (SELECT COUNT(*) FROM template_steps s WHERE s.template_id = t.id) AS steps_count
+                FROM action_templates t
+                WHERE t.app_name = ?
+                ORDER BY t.use_count DESC
+                """,
+                (app_name.lower(),),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """
+                SELECT t.name, t.app_name, t.use_count,
+                       (SELECT COUNT(*) FROM template_steps s WHERE s.template_id = t.id) AS steps_count
+                FROM action_templates t
+                ORDER BY t.use_count DESC
+                """,
+            ).fetchall()
+
+        return [
+            {
+                "name": r["name"],
+                "app_name": r["app_name"],
+                "use_count": r["use_count"],
+                "steps_count": r["steps_count"],
+            }
+            for r in rows
+        ]
+
+    def delete_template(self, name: str) -> bool:
+        """Delete a template by name. Returns True if deleted, False if not found."""
+        # Enable FK enforcement for CASCADE delete
+        self._conn.execute("PRAGMA foreign_keys = ON")
+        cursor = self._conn.execute(
+            "DELETE FROM action_templates WHERE name = ?",
+            (name.lower(),),
+        )
+        self._conn.commit()
+        deleted = cursor.rowcount > 0
+        if deleted:
+            logger.info("Deleted template '%s'", name)
+        return deleted
+
+    def increment_template_use(self, name: str) -> None:
+        """Increment the use_count and update last_ts for a template."""
+        now = time.time()
+        self._conn.execute(
+            "UPDATE action_templates SET use_count = use_count + 1, last_ts = ? WHERE name = ?",
+            (now, name.lower()),
+        )
+        self._conn.commit()
 
     def flush(self) -> None:
         """Force WAL checkpoint."""

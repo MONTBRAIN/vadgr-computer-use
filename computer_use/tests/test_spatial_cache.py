@@ -881,3 +881,159 @@ class TestMergePlatformEntries:
         # Two wsl2 entries each have a real-app counterpart
         merged = cache.merge_platform_entries("wsl2")
         assert merged == 2
+
+
+# ---------------------------------------------------------------------------
+# TestActionTemplates -- CRUD and lifecycle for action templates
+# ---------------------------------------------------------------------------
+
+class TestActionTemplates:
+    """Test action template create/get/list/delete/increment."""
+
+    @pytest.fixture
+    def cache(self):
+        c = MuscleMemoryCache(":memory:")
+        yield c
+        c.close()
+
+    def test_create_and_get(self, cache):
+        """Create a template and retrieve it by name."""
+        steps = [
+            {"action": "key_press", "text": "ctrl+s", "wait_ms": 200},
+            {"action": "click", "hint": "Save", "wait_ms": 100},
+        ]
+        tid = cache.create_template("save-file", "notepad.exe", steps)
+        assert tid > 0
+
+        result = cache.get_template("save-file")
+        assert result is not None
+        info, step_list = result
+        assert info["name"] == "save-file"
+        assert info["app_name"] == "notepad.exe"
+        assert info["use_count"] == 0
+        assert len(step_list) == 2
+        assert step_list[0].action_type == "key_press"
+        assert step_list[0].text == "ctrl+s"
+        assert step_list[0].wait_ms == 200
+        assert step_list[1].action_type == "click"
+        assert step_list[1].hint == "Save"
+
+    def test_get_nonexistent(self, cache):
+        """get_template returns None for unknown names."""
+        assert cache.get_template("nonexistent") is None
+
+    def test_name_is_case_insensitive(self, cache):
+        """Template names are stored and looked up lowercase."""
+        steps = [{"action": "wait", "wait_ms": 50}]
+        cache.create_template("My-Template", "app.exe", steps)
+        result = cache.get_template("MY-TEMPLATE")
+        assert result is not None
+        info, _ = result
+        assert info["name"] == "my-template"
+
+    def test_duplicate_name_raises(self, cache):
+        """Creating a template with an existing name raises IntegrityError."""
+        steps = [{"action": "wait", "wait_ms": 50}]
+        cache.create_template("dup", "app.exe", steps)
+        with pytest.raises(Exception):  # sqlite3.IntegrityError
+            cache.create_template("dup", "app.exe", steps)
+
+    def test_empty_name_raises(self, cache):
+        """Empty template name raises ValueError."""
+        steps = [{"action": "wait", "wait_ms": 50}]
+        with pytest.raises(ValueError, match="name must not be empty"):
+            cache.create_template("", "app.exe", steps)
+
+    def test_empty_steps_raises(self, cache):
+        """Template with no steps raises ValueError."""
+        with pytest.raises(ValueError, match="at least one step"):
+            cache.create_template("empty", "app.exe", [])
+
+    def test_invalid_action_type_raises(self, cache):
+        """Step with invalid action type raises ValueError."""
+        steps = [{"action": "fly", "text": "wings"}]
+        with pytest.raises(ValueError, match="invalid action"):
+            cache.create_template("bad", "app.exe", steps)
+
+    def test_list_all(self, cache):
+        """list_templates returns all templates sorted by use_count."""
+        cache.create_template("a", "app.exe", [{"action": "wait"}])
+        cache.create_template("b", "app.exe", [{"action": "wait"}, {"action": "click", "hint": "OK"}])
+        cache.create_template("c", "other.exe", [{"action": "type_text", "text": "hello"}])
+
+        all_templates = cache.list_templates()
+        assert len(all_templates) == 3
+        names = [t["name"] for t in all_templates]
+        assert "a" in names
+        assert "b" in names
+        assert "c" in names
+        # Check steps_count
+        b_info = next(t for t in all_templates if t["name"] == "b")
+        assert b_info["steps_count"] == 2
+
+    def test_list_filtered_by_app(self, cache):
+        """list_templates(app_name) filters by application."""
+        cache.create_template("x", "app.exe", [{"action": "wait"}])
+        cache.create_template("y", "other.exe", [{"action": "wait"}])
+
+        filtered = cache.list_templates(app_name="app.exe")
+        assert len(filtered) == 1
+        assert filtered[0]["name"] == "x"
+
+    def test_list_empty(self, cache):
+        """list_templates returns empty list when no templates exist."""
+        assert cache.list_templates() == []
+
+    def test_delete(self, cache):
+        """delete_template removes the template and its steps."""
+        cache.create_template("del-me", "app.exe", [
+            {"action": "click", "hint": "File"},
+            {"action": "click", "hint": "Save"},
+        ])
+        assert cache.delete_template("del-me") is True
+        assert cache.get_template("del-me") is None
+
+    def test_delete_nonexistent(self, cache):
+        """delete_template returns False for unknown names."""
+        assert cache.delete_template("nope") is False
+
+    def test_increment_use(self, cache):
+        """increment_template_use increases use_count."""
+        cache.create_template("inc", "app.exe", [{"action": "wait"}])
+        cache.increment_template_use("inc")
+        cache.increment_template_use("inc")
+        cache.increment_template_use("inc")
+
+        result = cache.get_template("inc")
+        assert result is not None
+        info, _ = result
+        assert info["use_count"] == 3
+
+    def test_step_order_preserved(self, cache):
+        """Steps are returned in step_index order."""
+        steps = [
+            {"action": "click", "hint": "File"},
+            {"action": "click", "hint": "Save As"},
+            {"action": "type_text", "text": "output.txt"},
+            {"action": "key_press", "text": "enter"},
+        ]
+        cache.create_template("ordered", "notepad.exe", steps)
+        _, step_list = cache.get_template("ordered")
+        assert [s.action_type for s in step_list] == ["click", "click", "type_text", "key_press"]
+        assert [s.hint for s in step_list] == ["File", "Save As", "", ""]
+        assert [s.text for s in step_list] == ["", "", "output.txt", "enter"]
+
+    def test_default_wait_ms(self, cache):
+        """Steps without explicit wait_ms default to 100."""
+        cache.create_template("defaults", "app.exe", [{"action": "click", "hint": "OK"}])
+        _, step_list = cache.get_template("defaults")
+        assert step_list[0].wait_ms == 100
+
+    def test_migrate_v4_idempotent(self):
+        """Calling _migrate_v4 multiple times doesn't error."""
+        cache = MuscleMemoryCache(":memory:")
+        cache._migrate_v4()  # second call should be no-op
+        cache._migrate_v4()  # third call
+        # Should not raise
+        cache.create_template("test", "app.exe", [{"action": "wait"}])
+        cache.close()
