@@ -51,14 +51,15 @@ class BridgeActionExecutor(ActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
+        hit_count: int = 0,
     ) -> None:
-        self._act(
-            "drag",
-            {
-                "start_x": start_x,
-                "start_y": start_y,
-                "end_x": end_x,
-                "end_y": end_y,
-                "duration": duration,
-            },
-        )
+        params = {
+            "start_x": start_x,
+            "start_y": start_y,
+            "end_x": end_x,
+            "end_y": end_y,
+            "duration": duration,
+        }
+        if hit_count > 0:
+            params["hit_count"] = hit_count
+        self._act("drag", params)

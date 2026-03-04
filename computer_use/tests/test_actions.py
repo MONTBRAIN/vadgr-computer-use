@@ -13,13 +13,13 @@ class MockExecutor(ActionExecutor):
     def __init__(self):
         self.calls = []
 
-    def move_mouse(self, x, y):
+    def move_mouse(self, x, y, hit_count=0):
         self.calls.append(("move_mouse", x, y))
 
-    def click(self, x, y, button="left"):
+    def click(self, x, y, button="left", hit_count=0):
         self.calls.append(("click", x, y, button))
 
-    def double_click(self, x, y):
+    def double_click(self, x, y, hit_count=0):
         self.calls.append(("double_click", x, y))
 
     def type_text(self, text):
@@ -31,7 +31,7 @@ class MockExecutor(ActionExecutor):
     def scroll(self, x, y, amount):
         self.calls.append(("scroll", x, y, amount))
 
-    def drag(self, start_x, start_y, end_x, end_y, duration=0.5):
+    def drag(self, start_x, start_y, end_x, end_y, duration=0.5, hit_count=0):
         self.calls.append(("drag", start_x, start_y, end_x, end_y, duration))
 
 

@@ -301,13 +301,7 @@ class ComputerUseEngine:
         ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
         hit_count = self._cache_lookup(ctx)
-        if hit_count > 0:
-            try:
-                self._executor.click(ax, ay, hit_count=hit_count)
-            except TypeError:
-                self._executor.click(ax, ay)
-        else:
-            self._executor.click(ax, ay)
+        self._executor.click(ax, ay, hit_count=hit_count)
         self._cache_record(ctx)
 
     def double_click(self, x: int, y: int, element_hint: str = None) -> None:
@@ -315,13 +309,7 @@ class ComputerUseEngine:
         ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
         hit_count = self._cache_lookup(ctx)
-        if hit_count > 0:
-            try:
-                self._executor.double_click(ax, ay, hit_count=hit_count)
-            except TypeError:
-                self._executor.double_click(ax, ay)
-        else:
-            self._executor.double_click(ax, ay)
+        self._executor.double_click(ax, ay, hit_count=hit_count)
         self._cache_record(ctx)
 
     def right_click(self, x: int, y: int, element_hint: str = None) -> None:
@@ -329,13 +317,7 @@ class ComputerUseEngine:
         ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
         hit_count = self._cache_lookup(ctx)
-        if hit_count > 0:
-            try:
-                self._executor.click(ax, ay, button="right", hit_count=hit_count)
-            except TypeError:
-                self._executor.click(ax, ay, button="right")
-        else:
-            self._executor.click(ax, ay, button="right")
+        self._executor.click(ax, ay, button="right", hit_count=hit_count)
         self._cache_record(ctx)
 
     def type_text(self, text: str) -> None:
@@ -369,13 +351,7 @@ class ComputerUseEngine:
         ctx = self._resolve_cache_context(element_hint, x, y)
         ax, ay = self._to_abs(x, y)
         hit_count = self._cache_lookup(ctx)
-        if hit_count > 0:
-            try:
-                self._executor.move_mouse(ax, ay, hit_count=hit_count)
-            except TypeError:
-                self._executor.move_mouse(ax, ay)
-        else:
-            self._executor.move_mouse(ax, ay)
+        self._executor.move_mouse(ax, ay, hit_count=hit_count)
         self._cache_record(ctx)
 
     # --- Navigation Batch API ---
