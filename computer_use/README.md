@@ -4,11 +4,16 @@ Gives LLM agents eyes (screenshots) and hands (mouse, keyboard) to execute tasks
 
 ## Setup
 
-```bash
-python3 -m venv computer_use/.venv
-source computer_use/.venv/bin/activate
-pip install -r computer_use/requirements.txt
-```
+Each platform has its own setup script. Run the one for your OS:
+
+| Platform | Script |
+|----------|--------|
+| Linux | `bash computer_use/setup-linux.sh` |
+| WSL2 | TBD |
+| macOS | TBD |
+| Windows | TBD |
+
+The script installs system deps, creates a venv, installs Python packages, generates `.mcp.json`, and verifies everything works. Restart Claude Code after running it.
 
 ## Two Modes
 
@@ -53,6 +58,8 @@ PYTHONPATH=. python -m computer_use --info
 | Platform | Screenshots | Actions | Accessibility |
 |----------|-------------|---------|---------------|
 | WSL2 | PowerShell bridge | PowerShell bridge | UI Automation via PS |
+| Linux/GNOME Wayland | gnome-screenshot | Mutter RemoteDesktop (DBus) | AT-SPI2 (stub) |
+| Linux/wlroots Wayland | grim | evdev | AT-SPI2 (stub) |
 | Linux/X11 | mss | xdotool | AT-SPI2 (stub) |
 | Windows | Win32 GDI | SendInput | UI Automation (stub) |
 | macOS | screencapture | osascript/cliclick | AX API (stub) |

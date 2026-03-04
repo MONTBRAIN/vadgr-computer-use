@@ -285,10 +285,16 @@ class TestMutterRemoteDesktopExecutor:
 
     def test_move_mouse_absolute(self):
         ex = self._make_executor()
-        ex.move_mouse(500, 400)
+        # Test raw move directly (smooth_move generates multiple intermediate calls)
+        ex._raw_move(500, 400)
         ex._session.NotifyPointerMotionAbsolute.assert_called_once()
         args = ex._session.NotifyPointerMotionAbsolute.call_args[0]
         assert args[0] == ex._stream_path
+
+    def test_move_mouse_updates_tracker(self):
+        ex = self._make_executor()
+        ex._raw_move(500, 400)
+        assert ex._tracker.get_pos() == (500, 400)
 
     def test_click(self):
         ex = self._make_executor()
@@ -449,7 +455,8 @@ class TestEvdevActionExecutor:
     def test_move_mouse_abs(self):
         from computer_use.platform.linux import ecodes
         ex = self._make_executor()
-        ex.move_mouse(960, 540)
+        # Test raw move directly (smooth_move generates multiple intermediate calls)
+        ex._raw_move(960, 540)
 
         # Filter for EV_ABS events only
         calls = ex._mouse.write.call_args_list
@@ -459,6 +466,11 @@ class TestEvdevActionExecutor:
         assert len(abs_y_call) == 1
         # Center of 1920 screen on 0-32767 range should be ~16383
         assert abs(abs_x_call[0][0][2] - 16383) < 2
+
+    def test_raw_move_updates_tracker(self):
+        ex = self._make_executor()
+        ex._raw_move(960, 540)
+        assert ex._tracker.get_pos() == (960, 540)
 
     def test_click_sends_button_events(self):
         from computer_use.platform.linux import ecodes

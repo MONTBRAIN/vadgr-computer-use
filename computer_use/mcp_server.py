@@ -9,15 +9,14 @@ import logging
 import os
 import sys
 
+_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if _DEBUG else logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     stream=sys.stderr,
 )
 logger = logging.getLogger("computer_use.mcp_server")
-
-# Debug screenshot saving -- set AGENT_FORGE_DEBUG=1 to enable
-_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
 _DEBUG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".debug")
 _debug_counter = 0
 

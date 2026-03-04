@@ -10,17 +10,17 @@ class ActionExecutor(ABC):
     """Abstract base for executing mouse and keyboard actions."""
 
     @abstractmethod
-    def move_mouse(self, x: int, y: int) -> None:
+    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
         """Move mouse cursor to absolute screen position."""
         ...
 
     @abstractmethod
-    def click(self, x: int, y: int, button: str = "left") -> None:
+    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
         """Click at position. button: 'left', 'right', 'middle'."""
         ...
 
     @abstractmethod
-    def double_click(self, x: int, y: int) -> None:
+    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
         """Double-click at position."""
         ...
 
@@ -47,6 +47,7 @@ class ActionExecutor(ABC):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
+        hit_count: int = 0,
     ) -> None:
         """Drag from start to end position."""
         ...

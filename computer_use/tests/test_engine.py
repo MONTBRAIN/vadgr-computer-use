@@ -76,17 +76,17 @@ class TestEngine:
     def test_click(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
         engine.click(500, 300)
-        executor.click.assert_called_once_with(500, 300)
+        executor.click.assert_called_once_with(500, 300, hit_count=0)
 
     def test_double_click(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
         engine.double_click(100, 200)
-        executor.double_click.assert_called_once_with(100, 200)
+        executor.double_click.assert_called_once_with(100, 200, hit_count=0)
 
     def test_right_click(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
         engine.right_click(100, 200)
-        executor.click.assert_called_once_with(100, 200, button="right")
+        executor.click.assert_called_once_with(100, 200, button="right", hit_count=0)
 
     def test_type_text(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
@@ -141,9 +141,9 @@ class TestMuscleMemoryIntegration:
     def test_click_without_hint_auto_learns_layer1(self, mock_backend):
         """No element_hint => Layer 1 synthetic hint => still learns."""
         engine, _, executor = self._make_engine(mock_backend)
-        # First click: cache miss, no hit_count
+        # First click: cache miss, hit_count=0
         engine.click(100, 200)
-        executor.click.assert_called_once_with(100, 200)
+        executor.click.assert_called_once_with(100, 200, hit_count=0)
 
         # Second click at same coords: cache hit from Layer 1
         executor.reset_mock()
@@ -154,9 +154,9 @@ class TestMuscleMemoryIntegration:
         """First click with hint records it; second click passes hit_count."""
         engine, _, executor = self._make_engine(mock_backend)
 
-        # First click: cache miss, no hit_count passed
+        # First click: cache miss, hit_count=0
         engine.click(100, 200, element_hint="Save button")
-        executor.click.assert_called_with(100, 200)
+        executor.click.assert_called_with(100, 200, hit_count=0)
 
         executor.reset_mock()
         engine.click(100, 200, element_hint="Save button")
@@ -166,7 +166,7 @@ class TestMuscleMemoryIntegration:
         engine, _, executor = self._make_engine(mock_backend)
         engine.double_click(50, 75, element_hint="icon")
         # First call: miss
-        executor.double_click.assert_called_with(50, 75)
+        executor.double_click.assert_called_with(50, 75, hit_count=0)
 
         executor.reset_mock()
         engine.double_click(50, 75, element_hint="icon")
@@ -175,7 +175,7 @@ class TestMuscleMemoryIntegration:
     def test_right_click_with_hint_passes_hit_count(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
         engine.right_click(300, 400, element_hint="context target")
-        executor.click.assert_called_with(300, 400, button="right")
+        executor.click.assert_called_with(300, 400, button="right", hit_count=0)
 
         executor.reset_mock()
         engine.right_click(300, 400, element_hint="context target")
@@ -184,7 +184,7 @@ class TestMuscleMemoryIntegration:
     def test_move_mouse_with_hint_passes_hit_count(self, mock_backend):
         engine, _, executor = self._make_engine(mock_backend)
         engine.move_mouse(200, 300, element_hint="hover target")
-        executor.move_mouse.assert_called_with(200, 300)
+        executor.move_mouse.assert_called_with(200, 300, hit_count=0)
 
         executor.reset_mock()
         engine.move_mouse(200, 300, element_hint="hover target")
@@ -207,9 +207,9 @@ class TestMuscleMemoryIntegration:
         engine.click(100, 200, element_hint="button A")
         engine.click(300, 400, element_hint="button B")
 
-        # button B is first time, should be default path
+        # button B is first time, hit_count=0
         last_call = executor.click.call_args_list[-1]
-        assert last_call == ((300, 400,), {})
+        assert last_call == ((300, 400,), {"hit_count": 0})
 
 
 class TestThreeLayerResolution:
@@ -253,7 +253,7 @@ class TestThreeLayerResolution:
 
         # Click at (300, 200) => window-relative (200, 150) => bucket @200,150
         engine.click(300, 200)
-        executor.click.assert_called_with(300, 200)
+        executor.click.assert_called_with(300, 200, hit_count=0)
 
         # Same click again: cache hit
         executor.reset_mock()
@@ -266,7 +266,7 @@ class TestThreeLayerResolution:
 
         # Should still work with platform name as app and absolute coords
         engine.click(100, 200)
-        executor.click.assert_called_with(100, 200)
+        executor.click.assert_called_with(100, 200, hit_count=0)
 
         executor.reset_mock()
         engine.click(100, 200)
@@ -886,7 +886,7 @@ class TestLayer2Integration:
 
         engine.click(100, 200)
         # Click should still execute
-        executor.click.assert_called_once_with(100, 200)
+        executor.click.assert_called_once_with(100, 200, hit_count=0)
         # Layer 1 should be used as fallback
         bx = (12 // _PCT_BUCKET) * _PCT_BUCKET
         by = (33 // _PCT_BUCKET) * _PCT_BUCKET
