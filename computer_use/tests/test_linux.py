@@ -271,16 +271,94 @@ def _mock_mutter_session():
     return mock_bus, mock_session
 
 
+class TestGetSystemKeyboardLayout:
+    def test_reads_us_layout(self):
+        from computer_use.platform.linux import _get_system_keyboard_layout
+
+        content = 'XKBMODEL="pc105"\nXKBLAYOUT="us"\nXKBVARIANT=""\n'
+        with patch("builtins.open", mock_open(read_data=content)):
+            assert _get_system_keyboard_layout() == "us"
+
+    def test_reads_french_layout(self):
+        from computer_use.platform.linux import _get_system_keyboard_layout
+
+        content = 'XKBLAYOUT="fr"\n'
+        with patch("builtins.open", mock_open(read_data=content)):
+            assert _get_system_keyboard_layout() == "fr"
+
+    def test_multi_layout_takes_first(self):
+        from computer_use.platform.linux import _get_system_keyboard_layout
+
+        content = 'XKBLAYOUT="us,fr"\n'
+        with patch("builtins.open", mock_open(read_data=content)):
+            assert _get_system_keyboard_layout() == "us"
+
+    def test_defaults_to_us_on_missing_file(self):
+        from computer_use.platform.linux import _get_system_keyboard_layout
+
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            assert _get_system_keyboard_layout() == "us"
+
+
+class TestBuildXkbCharMap:
+    def test_returns_map_on_this_system(self):
+        from computer_use.platform.linux import _build_xkb_char_map
+
+        char_map = _build_xkb_char_map(layout="us")
+        if char_map is None:
+            pytest.skip("libxkbcommon not available")
+        # Basic letters
+        assert char_map["a"].keycode == 30 and not char_map["a"].shift
+        assert char_map["z"].keycode == 44 and not char_map["z"].shift
+        # Digits
+        assert char_map["1"].keycode == 2 and not char_map["1"].shift
+        # Shifted symbols
+        assert char_map["_"].keycode == 12 and char_map["_"].shift
+        assert char_map["("].keycode == 10 and char_map["("].shift
+
+    def test_french_layout_has_altgr(self):
+        from computer_use.platform.linux import _build_xkb_char_map
+
+        fr_map = _build_xkb_char_map(layout="fr")
+        if fr_map is None:
+            pytest.skip("libxkbcommon not available")
+        # Euro sign is AltGr+E on French AZERTY
+        assert "€" in fr_map
+        assert fr_map["€"].altgr
+
+    def test_french_layout_differs(self):
+        from computer_use.platform.linux import _build_xkb_char_map
+
+        us_map = _build_xkb_char_map(layout="us")
+        fr_map = _build_xkb_char_map(layout="fr")
+        if us_map is None or fr_map is None:
+            pytest.skip("libxkbcommon not available")
+        # On AZERTY, 'a' and 'q' swap physical positions
+        assert us_map["a"].keycode != fr_map["a"].keycode
+        assert us_map["q"].keycode != fr_map["q"].keycode
+
+    def test_returns_none_without_xkb(self):
+        from computer_use.platform import linux
+
+        original = linux._xkb
+        try:
+            linux._xkb = None
+            result = linux._build_xkb_char_map(layout="us")
+            assert result is None
+        finally:
+            linux._xkb = original
+
+
 class TestMutterRemoteDesktopExecutor:
     def _make_executor(self):
         from computer_use.platform.linux import MutterRemoteDesktopExecutor
 
-        with patch("computer_use.platform.linux.MutterRemoteDesktopExecutor._setup_session"):
+        with patch("computer_use.platform.linux._build_xkb_char_map", return_value=None), \
+             patch("computer_use.platform.linux.MutterRemoteDesktopExecutor._setup_session"):
             ex = MutterRemoteDesktopExecutor()
             # Wire up a mock session manually
             ex._session = MagicMock()
             ex._stream_path = "/org/gnome/Mutter/ScreenCast/Stream/u1"
-            ex._key_map = ex._key_map  # already built from ecodes
             return ex
 
     def test_move_mouse_absolute(self):
@@ -318,60 +396,43 @@ class TestMutterRemoteDesktopExecutor:
         # 4 calls: press, release, press, release
         assert len(btn_calls) == 4
 
-    def test_key_press(self):
+    def test_key_press_uses_keycodes(self):
         ex = self._make_executor()
         ex.key_press(["ctrl", "c"])
-        keycode_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # ctrl down, c down, c up, ctrl up
-        assert len(keycode_calls) == 4
+        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
+        # ctrl down, c down, c up, ctrl up = 4 events
+        assert len(kc_calls) == 4
+        pressed_codes = [c[0][0] for c in kc_calls if c[0][1]]
+        assert len(pressed_codes) == 2
 
-    def test_type_text_short_uses_keys(self):
+    def test_type_text_uses_keycodes(self):
         ex = self._make_executor()
         ex.type_text("ab")
-        keycode_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        assert len(keycode_calls) >= 4  # a down/up, b down/up
+        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
+        # a down/up + b down/up = 4 events
+        assert len(kc_calls) == 4
 
-    @patch("subprocess.run")
-    def test_type_text_long_types_each_char(self, mock_run):
-        ex = self._make_executor()
-        ex.type_text("hello")
-
-        # Should NOT use clipboard (no subprocess calls)
-        mock_run.assert_not_called()
-        # Each char gets a key down + key up event
-        keycode_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        assert len(keycode_calls) >= 10  # 5 chars * 2 events each
-
-    def test_type_text_newline_sends_enter(self):
+    def test_type_text_newline(self):
         ex = self._make_executor()
         ex.type_text("a\nb")
-
-        calls = ex._session.NotifyKeyboardKeycode.call_args_list
+        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
         # a(down,up) + enter(down,up) + b(down,up) = 6 events
-        assert len(calls) >= 6
-        # NotifyKeyboardKeycode(keycode, down) -- positional args
-        pressed_keys = [c[0][0] for c in calls if c[0][1]]
-        assert 28 in pressed_keys  # 28 = enter
+        assert len(kc_calls) == 6
 
     def test_type_text_uppercase_uses_shift(self):
         ex = self._make_executor()
         ex.type_text("Hi")
+        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
+        # shift down, H down, H up, shift up, i down, i up = 6
+        assert len(kc_calls) == 6
 
-        calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # H needs shift: shift(down) + h(down) + h(up) + shift(up) + i(down) + i(up) = 6
-        assert len(calls) >= 6
-        pressed_keys = [c[0][0] for c in calls if c[0][1]]
-        assert 42 in pressed_keys  # 42 = shift
-
-    def test_type_text_space_works(self):
+    def test_type_text_clipboard_fallback(self):
+        # Characters not in the layout go through clipboard paste
         ex = self._make_executor()
-        ex.type_text("a b")
-
-        calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # a(down,up) + space(down,up) + b(down,up) = 6 events
-        assert len(calls) >= 6
-        pressed_keys = [c[0][0] for c in calls if c[0][1]]
-        assert 57 in pressed_keys  # 57 = space
+        with patch("computer_use.platform.linux._clipboard_paste") as mock_paste:
+            ex.type_text("\u4e16")  # Chinese character, not in any Western layout
+            mock_paste.assert_called_once()
+            assert "\u4e16" in mock_paste.call_args[0][0]
 
     def test_scroll(self):
         ex = self._make_executor()

@@ -50,6 +50,54 @@ try:
 except ImportError:
     dbus_import = None  # type: ignore[assignment]
 
+# libxkbcommon for layout-aware character-to-keycode mapping.
+# Available on every GNOME/Wayland desktop, loaded via ctypes (no pip package needed).
+import ctypes
+import ctypes.util
+
+_xkb = None  # type: Optional[ctypes.CDLL]
+try:
+    _xkb_path = ctypes.util.find_library("xkbcommon")
+    if _xkb_path:
+        _xkb = ctypes.CDLL(_xkb_path)
+except OSError:
+    _xkb = None
+
+
+class _XkbRuleNames(ctypes.Structure):
+    _fields_ = [
+        ("rules", ctypes.c_char_p),
+        ("model", ctypes.c_char_p),
+        ("layout", ctypes.c_char_p),
+        ("variant", ctypes.c_char_p),
+        ("options", ctypes.c_char_p),
+    ]
+
+
+if _xkb is not None:
+    _xkb.xkb_context_new.argtypes = [ctypes.c_int]
+    _xkb.xkb_context_new.restype = ctypes.c_void_p
+    _xkb.xkb_context_unref.argtypes = [ctypes.c_void_p]
+    _xkb.xkb_context_unref.restype = None
+    _xkb.xkb_keymap_new_from_names.argtypes = [
+        ctypes.c_void_p, ctypes.POINTER(_XkbRuleNames), ctypes.c_int,
+    ]
+    _xkb.xkb_keymap_new_from_names.restype = ctypes.c_void_p
+    _xkb.xkb_keymap_unref.argtypes = [ctypes.c_void_p]
+    _xkb.xkb_keymap_unref.restype = None
+    _xkb.xkb_state_new.argtypes = [ctypes.c_void_p]
+    _xkb.xkb_state_new.restype = ctypes.c_void_p
+    _xkb.xkb_state_unref.argtypes = [ctypes.c_void_p]
+    _xkb.xkb_state_unref.restype = None
+    _xkb.xkb_state_update_mask.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,  # mods: depressed, latched, locked
+        ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,  # layouts: depressed, latched, locked
+    ]
+    _xkb.xkb_state_update_mask.restype = ctypes.c_int
+    _xkb.xkb_state_key_get_utf32.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    _xkb.xkb_state_key_get_utf32.restype = ctypes.c_uint32
+
 
 # ---------------------------------------------------------------------------
 # Display session detection
@@ -387,7 +435,7 @@ _FALLBACK_EVDEV_KEYCODES: dict[str, int] = {
     "backspace": 14, "delete": 111, "del": 111,
     "up": 103, "down": 108, "left": 105, "right": 106,
     "home": 102, "end": 107, "pageup": 104, "pagedown": 109,
-    "space": 57, " ": 57, "ctrl": 29, "control": 29, "alt": 56,
+    "space": 57, " ": 57, "ctrl": 29, "control": 29, "alt": 56, "rightalt": 100,
     "shift": 42, "super": 125,
     "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64,
     "f7": 65, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88,
@@ -400,6 +448,131 @@ _FALLBACK_EVDEV_KEYCODES: dict[str, int] = {
 }
 
 _FALLBACK_BUTTON_CODES: dict[str, int] = {"left": 272, "right": 273, "middle": 274}
+
+# Maps shifted characters to their unshifted base key (US QWERTY layout).
+# type_text looks up ch.lower() in the keymap, but shifted symbols like _ ( ) don't
+# lowercase to their base key. This table bridges the gap.
+_SHIFT_TO_BASE: dict[str, str] = {
+    "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0", "_": "-",
+    "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'",
+    "<": ",", ">": ".", "?": "/",
+}
+
+
+_XKB_EVDEV_OFFSET = 8  # XKB keycodes = evdev keycodes + 8
+
+
+def _clipboard_paste(text: str, key_press_fn) -> None:
+    """Paste text via wl-copy + Ctrl+V. Used for characters not in the keyboard layout."""
+    try:
+        # -o makes wl-copy exit after the first paste instead of blocking forever.
+        subprocess.run(
+            ["wl-copy", "-o"], input=text.encode("utf-8"),
+            check=True, timeout=5, capture_output=True,
+        )
+        time.sleep(0.1)
+        key_press_fn(["ctrl", "v"])
+        time.sleep(0.15)
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning("wl-copy not available, cannot paste: %r", text[:20])
+
+
+def _get_system_keyboard_layout() -> str:
+    """Read the system keyboard layout from /etc/default/keyboard. Returns 'us' as default."""
+    try:
+        with open("/etc/default/keyboard") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("XKBLAYOUT="):
+                    layout = line.split("=", 1)[1].strip('"').strip("'")
+                    # Multi-layout configs use comma separation (e.g. "us,fr"). Take the first.
+                    return layout.split(",")[0].strip() or "us"
+    except (FileNotFoundError, PermissionError):
+        pass
+    return "us"
+
+
+class _CharEntry:
+    """How to produce a character: keycode + which modifiers to hold."""
+    __slots__ = ("keycode", "shift", "altgr")
+
+    def __init__(self, keycode: int, shift: bool = False, altgr: bool = False):
+        self.keycode = keycode
+        self.shift = shift
+        self.altgr = altgr
+
+
+_SHIFT_MASK = 0x01
+_ALTGR_MASK = 0x80
+# Standard main keyboard range (evdev keycodes 1-88 covers Esc through F12,
+# all alphanumeric, punctuation, modifiers, and number row).
+_MAIN_KBD_MIN = 1
+_MAIN_KBD_MAX = 88
+
+
+def _build_xkb_char_map(layout: Optional[str] = None) -> Optional[dict[str, _CharEntry]]:
+    """Build char -> _CharEntry map using xkb_state.
+
+    For each physical key on the main keyboard, asks xkb_state what character
+    it produces with no mods, shift, altgr, and shift+altgr. Simpler combos
+    are checked first so they naturally win (first match kept).
+    Returns None if libxkbcommon is not available.
+    """
+    if _xkb is None:
+        return None
+
+    if layout is None:
+        layout = _get_system_keyboard_layout()
+
+    ctx = _xkb.xkb_context_new(0)
+    if not ctx:
+        return None
+
+    names = _XkbRuleNames(
+        rules=b"evdev", model=b"pc105",
+        layout=layout.encode(),
+        variant=None, options=None,
+    )
+    keymap = _xkb.xkb_keymap_new_from_names(ctx, ctypes.byref(names), 0)
+    if not keymap:
+        _xkb.xkb_context_unref(ctx)
+        return None
+
+    state = _xkb.xkb_state_new(keymap)
+    if not state:
+        _xkb.xkb_keymap_unref(keymap)
+        _xkb.xkb_context_unref(ctx)
+        return None
+
+    # Check modifier combos in order of simplicity (fewest mods first).
+    # First match wins, so plain keys beat shifted, shifted beats altgr, etc.
+    _MOD_COMBOS = [
+        (0,                          False, False),  # plain
+        (_SHIFT_MASK,                True,  False),  # shift
+        (_ALTGR_MASK,                False, True),   # altgr
+        (_SHIFT_MASK | _ALTGR_MASK,  True,  True),   # shift+altgr
+    ]
+
+    try:
+        char_map: dict[str, _CharEntry] = {}
+
+        for mask, shift, altgr in _MOD_COMBOS:
+            _xkb.xkb_state_update_mask(state, mask, 0, 0, 0, 0, 0)
+            for evdev_kc in range(_MAIN_KBD_MIN, _MAIN_KBD_MAX + 1):
+                xkb_kc = evdev_kc + _XKB_EVDEV_OFFSET
+                cp = _xkb.xkb_state_key_get_utf32(state, xkb_kc)
+                if cp == 0:
+                    continue
+                ch = chr(cp)
+                if ch not in char_map:
+                    char_map[ch] = _CharEntry(evdev_kc, shift, altgr)
+
+        return char_map if char_map else None
+    finally:
+        _xkb.xkb_state_unref(state)
+        _xkb.xkb_keymap_unref(keymap)
+        _xkb.xkb_context_unref(ctx)
 
 
 def _build_evdev_key_map() -> dict[str, int]:
@@ -416,7 +589,8 @@ def _build_evdev_key_map() -> dict[str, int]:
         "pageup": ecodes.KEY_PAGEUP, "pagedown": ecodes.KEY_PAGEDOWN,
         "space": ecodes.KEY_SPACE, " ": ecodes.KEY_SPACE,
         "ctrl": ecodes.KEY_LEFTCTRL, "control": ecodes.KEY_LEFTCTRL,
-        "alt": ecodes.KEY_LEFTALT, "shift": ecodes.KEY_LEFTSHIFT, "super": ecodes.KEY_LEFTMETA,
+        "alt": ecodes.KEY_LEFTALT, "rightalt": ecodes.KEY_RIGHTALT,
+        "shift": ecodes.KEY_LEFTSHIFT, "super": ecodes.KEY_LEFTMETA,
         "f1": ecodes.KEY_F1, "f2": ecodes.KEY_F2, "f3": ecodes.KEY_F3,
         "f4": ecodes.KEY_F4, "f5": ecodes.KEY_F5, "f6": ecodes.KEY_F6,
         "f7": ecodes.KEY_F7, "f8": ecodes.KEY_F8, "f9": ecodes.KEY_F9,
@@ -447,6 +621,7 @@ class _WaylandActionExecutor(ActionExecutor):
     def __init__(self):
         self._key_map = _build_evdev_key_map()
         self._btn_map = _build_button_map()
+        self._char_map = _build_xkb_char_map()  # layout-aware, None if xkb unavailable
         self._tracker = CursorTracker()
 
     def _key_event(self, keycode: int, down: bool) -> None:
@@ -462,6 +637,7 @@ class _WaylandActionExecutor(ActionExecutor):
         # 50ms between events avoids key repeat from Mutter's DBus processing.
         delay = 0.05
         shift_code = self._key_map.get("shift", 42)
+        altgr_code = self._key_map.get("rightalt", 100)
         special = {"\n": "enter", "\t": "tab"}
         for ch in text:
             if ch in special:
@@ -471,16 +647,33 @@ class _WaylandActionExecutor(ActionExecutor):
                 self._key_event(code, False)
                 time.sleep(delay)
                 continue
-            keycode = self._key_map.get(ch.lower())
-            if keycode is None:
-                continue
-            needs_shift = ch.isupper() or ch in '~!@#$%^&*()_+{}|:"<>?'
+
+            # Try layout-aware xkb map first, fall back to hardcoded US QWERTY.
+            entry = self._char_map.get(ch) if self._char_map else None
+            if entry:
+                keycode = entry.keycode
+                needs_shift = entry.shift
+                needs_altgr = entry.altgr
+            else:
+                needs_shift = ch.isupper() or ch in _SHIFT_TO_BASE
+                needs_altgr = False
+                base_ch = _SHIFT_TO_BASE.get(ch, ch.lower())
+                keycode = self._key_map.get(base_ch)
+                if keycode is None:
+                    continue
+
             if needs_shift:
                 self._key_event(shift_code, True)
+                time.sleep(delay)
+            if needs_altgr:
+                self._key_event(altgr_code, True)
                 time.sleep(delay)
             self._key_event(keycode, True)
             time.sleep(delay)
             self._key_event(keycode, False)
+            if needs_altgr:
+                time.sleep(delay)
+                self._key_event(altgr_code, False)
             if needs_shift:
                 time.sleep(delay)
                 self._key_event(shift_code, False)
@@ -491,7 +684,16 @@ class _WaylandActionExecutor(ActionExecutor):
             return
         codes = []
         for k in keys:
-            code = self._key_map.get(k.lower())
+            code = None
+            if self._char_map and len(k) == 1:
+                # Single character: use layout-aware xkb map so shortcuts
+                # work correctly on non-US layouts (e.g. Ctrl+A on AZERTY).
+                entry = self._char_map.get(k)
+                if entry:
+                    code = entry.keycode
+            if code is None:
+                # Named keys (ctrl, enter, f1, etc.) or fallback.
+                code = self._key_map.get(k.lower())
             if code is None:
                 logger.warning("Unknown key: %s", k)
                 continue
@@ -795,6 +997,95 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         self._ensure_session()
         self._session.NotifyKeyboardKeycode(
             dbus_import.UInt32(keycode), dbus_import.Boolean(down))
+
+    def _keysym_event(self, keysym: int, down: bool) -> None:
+        self._ensure_session()
+        self._session.NotifyKeyboardKeysym(
+            dbus_import.UInt32(keysym), dbus_import.Boolean(down))
+
+    def type_text(self, text: str) -> None:
+        # Use keycodes from xkb char map (layout-aware). Characters not in the
+        # layout (dead-key combos, CJK, etc.) go through clipboard paste.
+        delay = 0.05
+        shift_code = self._key_map.get("shift", 42)
+        altgr_code = self._key_map.get("rightalt", 100)
+        special = {"\n": "enter", "\t": "tab"}
+
+        # Split text into runs: keycode-typeable chars vs clipboard-needed chars.
+        clipboard_buf: list[str] = []
+
+        def _flush_clipboard() -> None:
+            if not clipboard_buf:
+                return
+            chunk = "".join(clipboard_buf)
+            clipboard_buf.clear()
+            _clipboard_paste(chunk, self.key_press)
+
+        for ch in text:
+            if ch in special:
+                _flush_clipboard()
+                code = self._key_map.get(special[ch], 28)
+                self._key_event(code, True)
+                time.sleep(delay)
+                self._key_event(code, False)
+                time.sleep(delay)
+                continue
+
+            entry = self._char_map.get(ch) if self._char_map else None
+            if entry is None:
+                # Fallback for hardcoded US QWERTY
+                needs_shift = ch.isupper() or ch in _SHIFT_TO_BASE
+                base_ch = _SHIFT_TO_BASE.get(ch, ch.lower())
+                kc = self._key_map.get(base_ch)
+                if kc is not None:
+                    entry = _CharEntry(kc, needs_shift)
+
+            if entry is None:
+                # Not in layout — queue for clipboard paste
+                clipboard_buf.append(ch)
+                continue
+
+            _flush_clipboard()
+            if entry.shift:
+                self._key_event(shift_code, True)
+                time.sleep(delay)
+            if entry.altgr:
+                self._key_event(altgr_code, True)
+                time.sleep(delay)
+            self._key_event(entry.keycode, True)
+            time.sleep(delay)
+            self._key_event(entry.keycode, False)
+            if entry.altgr:
+                time.sleep(delay)
+                self._key_event(altgr_code, False)
+            if entry.shift:
+                time.sleep(delay)
+                self._key_event(shift_code, False)
+            time.sleep(delay)
+
+        _flush_clipboard()
+
+    def key_press(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        codes = []
+        for k in keys:
+            code = None
+            if self._char_map and len(k) == 1:
+                entry = self._char_map.get(k)
+                if entry:
+                    code = entry.keycode
+            if code is None:
+                code = self._key_map.get(k.lower())
+            if code is None:
+                logger.warning("Unknown key: %s", k)
+                continue
+            codes.append(code)
+        for code in codes:
+            self._key_event(code, True)
+        time.sleep(0.03)
+        for code in reversed(codes):
+            self._key_event(code, False)
 
     def scroll(self, x: int, y: int, amount: int) -> None:
         self._raw_move(x, y)
