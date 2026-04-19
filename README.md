@@ -8,13 +8,7 @@ Local-first MCP server for desktop automation. Accessibility-first (UIA / AT-SPI
 pip install vadgr-computer-use
 ```
 
-Optional extras:
-
-```bash
-pip install "vadgr-computer-use[vision]"     # OmniParser / YOLO
-pip install "vadgr-computer-use[anthropic]"  # Claude vision fallback
-pip install "vadgr-computer-use[openai]"     # GPT-4V vision fallback
-```
+The providers for Claude / GPT-4V vision fallback use stdlib `urllib` — no extra dependency needed. Just set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` to enable them.
 
 ## Run as MCP server
 

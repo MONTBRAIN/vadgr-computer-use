@@ -21,8 +21,7 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY computer_use/ ./computer_use/
 
-RUN pip install . && \
-    pip install 'vadgr-computer-use[vision]' || true
+RUN pip install .
 
 EXPOSE 8000
 
