@@ -64,16 +64,43 @@ class DaemonSupervisor:
         """Return a working BridgeClient, or None if the daemon can't be brought up.
 
         Decision tree:
-          1. Probe. If healthy, return client.
-          2. Locate Windows Python and deploy dir. If either missing, return None.
-          3. Run `deployer.ensure(...)`. If it fails, return None.
-          4. Launch the daemon (detached Windows process).
-          5. Poll until the daemon responds on its port, or time out.
+          1. Probe. If healthy AND version matches, return client.
+          2. If healthy but stale (hash mismatch or legacy daemon with no
+             version_hash), stop and fall through to redeploy.
+          3. Locate Windows Python and deploy dir. If either missing, return None.
+          4. Run `deployer.ensure(...)`. If it fails, return None.
+          5. Launch the daemon (detached Windows process).
+          6. Poll until the daemon responds on its port, or time out.
         """
         client = self._client_factory()
         if client.is_available():
-            return client
+            if self._is_up_to_date(client):
+                return client
+            logger.info(
+                "Daemon version drift detected; stopping and redeploying"
+            )
+            self.stop()
+            # fall through to redeploy + relaunch
 
+        return self._deploy_and_launch()
+
+    def _is_up_to_date(self, client: BridgeClient) -> bool:
+        """True if the running daemon's version hash matches the shipped one.
+
+        Missing `version_hash` in the handshake is treated as drift: it's a
+        pre-handshake daemon whose code we can't vouch for, so redeploy.
+        """
+        expected = self._deployer.current_daemon_hash()
+        try:
+            resp = client.handshake()
+        except Exception:
+            return False
+        if not isinstance(resp, dict):
+            return False
+        return resp.get("version_hash") == expected
+
+    def _deploy_and_launch(self) -> Optional[BridgeClient]:
+        """Common path for first-time launch and post-drift relaunch."""
         win_python = self._deployer.find_windows_python()
         if win_python is None:
             logger.warning(

@@ -37,9 +37,10 @@ def fake_deployer(tmp_path):
 
 @pytest.fixture
 def healthy_client():
-    """BridgeClient that reports the daemon is alive."""
+    """BridgeClient that reports the daemon is alive AND on the current version."""
     client = MagicMock()
     client.is_available.return_value = True
+    client.handshake.return_value = {"pong": True, "version_hash": "deadbeef"}
     return client
 
 
@@ -48,6 +49,29 @@ def dead_client():
     """BridgeClient that reports the daemon is not reachable."""
     client = MagicMock()
     client.is_available.return_value = False
+    client.handshake.return_value = None
+    return client
+
+
+@pytest.fixture
+def stale_client():
+    """BridgeClient that reports a running daemon with the wrong version hash."""
+    client = MagicMock()
+    client.is_available.return_value = True
+    client.handshake.return_value = {"pong": True, "version_hash": "oldhash"}
+    return client
+
+
+@pytest.fixture
+def legacy_client():
+    """Pre-handshake daemon: ping returns {pong: True} but no version_hash.
+
+    Treated as a drift (we don't know what version it is) so the supervisor
+    redeploys + restarts to get a known-good state.
+    """
+    client = MagicMock()
+    client.is_available.return_value = True
+    client.handshake.return_value = {"pong": True}
     return client
 
 
@@ -137,6 +161,53 @@ class TestEnsureRunningLaunch:
             patch.object(supervisor, "_poll_for_ready", return_value=None),
         ):
             assert supervisor.ensure_running() is None
+
+
+# --- ensure_running: version drift / self-healing ---
+
+
+class TestEnsureRunningDrift:
+    def test_redeploys_when_daemon_hash_stale(self, fake_deployer, stale_client):
+        supervisor = _supervisor(fake_deployer, stale_client)
+        with (
+            patch.object(supervisor, "stop") as mock_stop,
+            patch.object(supervisor, "_launch"),
+            patch.object(
+                supervisor, "_poll_for_ready", return_value=stale_client
+            ),
+        ):
+            supervisor.ensure_running()
+            # stop was called because of the hash mismatch
+            mock_stop.assert_called_once()
+            # deployer.ensure fired the redeploy
+            fake_deployer.ensure.assert_called_once()
+
+    def test_redeploys_when_daemon_has_no_version_field(
+        self, fake_deployer, legacy_client
+    ):
+        """A daemon with no version_hash is pre-handshake; upgrade it."""
+        supervisor = _supervisor(fake_deployer, legacy_client)
+        with (
+            patch.object(supervisor, "stop") as mock_stop,
+            patch.object(supervisor, "_launch"),
+            patch.object(
+                supervisor, "_poll_for_ready", return_value=legacy_client
+            ),
+        ):
+            supervisor.ensure_running()
+            mock_stop.assert_called_once()
+            fake_deployer.ensure.assert_called_once()
+
+    def test_does_not_redeploy_when_hashes_match(
+        self, fake_deployer, healthy_client
+    ):
+        """No drift = no redeploy, no stop."""
+        supervisor = _supervisor(fake_deployer, healthy_client)
+        with patch.object(supervisor, "stop") as mock_stop:
+            result = supervisor.ensure_running()
+        assert result is healthy_client
+        mock_stop.assert_not_called()
+        fake_deployer.ensure.assert_not_called()
 
 
 # --- stop ---

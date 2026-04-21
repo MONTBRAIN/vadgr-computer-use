@@ -108,6 +108,19 @@ class BridgeClient:
         except Exception:
             return False
 
+    def handshake(self) -> dict | None:
+        """Return the raw `ping` response dict, or None if the daemon is unreachable.
+
+        Separate from `is_available()` because callers (supervisor) need the
+        full response to read `version_hash` for drift detection. A running
+        daemon returns at least `{"pong": True}`; absent fields are treated
+        as drift by the supervisor.
+        """
+        try:
+            return self.call("ping", timeout=2.0)
+        except Exception:
+            return None
+
     def call(self, method: str, params: dict | None = None, timeout: float = 10.0) -> dict:
         with self._lock:
             return self._call_locked(method, params, timeout, retry=True)

@@ -146,6 +146,51 @@ class TestBridgeClient:
         client.close()
         server.close()
 
+    def test_handshake_returns_full_ping_dict(self):
+        """handshake() exposes the raw ping response for version checks."""
+        response_data = {
+            "id": "",
+            "ok": True,
+            "result": {"pong": True, "version_hash": "abc123"},
+        }
+
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+
+        def serve():
+            conn, _ = server.accept()
+            header = conn.recv(HEADER_SIZE)
+            length = struct.unpack("!I", header)[0]
+            payload = conn.recv(length)
+            request = json.loads(payload)
+            response_data["id"] = request["id"]
+            resp_bytes = json.dumps(response_data, separators=(",", ":")).encode()
+            conn.sendall(struct.pack("!I", len(resp_bytes)) + resp_bytes)
+            conn.close()
+
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+
+        client = BridgeClient(host="127.0.0.1", port=port)
+        resp = client.handshake()
+        assert resp == {"pong": True, "version_hash": "abc123"}
+        client.close()
+        server.close()
+
+    def test_handshake_returns_none_when_unreachable(self):
+        """Unreachable daemon => handshake returns None (no exception)."""
+        # Bind a socket just to get a free port, then close it so nothing
+        # is listening. Any attempt to connect should fail cleanly.
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        client = BridgeClient(host="127.0.0.1", port=port)
+        assert client.handshake() is None
+
 
 class TestBridgeScreenCapture:
     def _make_client(self, result):

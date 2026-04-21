@@ -44,15 +44,31 @@ _set_dpi_awareness()
 
 import argparse
 import base64
+import hashlib
 import io
 import json
 import logging
 import math
+import os
 import random
 import socket
 import struct
 import threading
 import time
+
+
+def _compute_self_hash() -> str:
+    """SHA-256 of this daemon.py file. Used by the supervisor for
+    version-drift detection across package upgrades.
+    """
+    try:
+        with open(os.path.abspath(__file__), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+_VERSION_HASH = _compute_self_hash()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -790,7 +806,7 @@ class BridgeDaemon:
         return bytes(buf)
 
     def _handle_ping(self, params):
-        return {"pong": True}
+        return {"pong": True, "version_hash": _VERSION_HASH}
 
     def _handle_screenshot_full(self, params):
         quality = params.get("quality", 85)
