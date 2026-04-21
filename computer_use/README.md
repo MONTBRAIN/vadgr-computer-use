@@ -12,7 +12,6 @@ Provides programmatic control of the desktop through:
 - **Element grounding** - find UI elements via accessibility APIs + LLM vision
 - **Actions** - click, type, scroll, drag, key press
 - **Autonomous loop** - screenshot, decide, act, verify cycle
-- **Muscle memory** - learns element positions for faster repeated interactions
 
 ## Usage
 
@@ -36,7 +35,7 @@ results = engine.run_task("Open Notepad and type hello", max_steps=50)
 
 ### As an MCP server
 
-Exposes 20+ tools via Model Context Protocol for any MCP-compatible agent:
+Exposes 14 tools via Model Context Protocol for any MCP-compatible agent:
 
 ```bash
 python -m computer_use.mcp_server
@@ -80,7 +79,7 @@ export OPENAI_API_KEY="sk-..."
 
 ```
 computer_use/
-├── core/               # Engine facade, types, actions, loop, spatial cache
+├── core/               # Engine facade, types, actions, loop
 ├── platform/           # OS backends (Linux, Windows, macOS, WSL2)
 ├── grounding/          # UI element location (accessibility + vision)
 ├── providers/          # LLM adapters (Anthropic, OpenAI)
@@ -111,7 +110,7 @@ Edit `config.yaml` or use environment variables:
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `AGENT_FORGE_DEBUG` | Enable debug screenshots |
-| `AGENT_FORGE_DATA` | Custom data directory for cache |
+| `AGENT_FORGE_DATA` | Custom data directory for debug screenshots |
 | `CU_MAX_WIDTH` | Max screenshot width for vision |
 
 ## Tests

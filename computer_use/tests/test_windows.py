@@ -2,7 +2,6 @@
 
 Verifies that WindowsActionExecutor:
 - Uses smooth_move for human-like mouse movement (not raw SetCursorPos)
-- Accepts hit_count on all action methods (matching the ABC)
 - Delegates to _raw_move + CursorTracker like Linux does
 - Uses windmouse-based drag instead of linear interpolation
 """
@@ -52,12 +51,11 @@ class TestWindowsActionExecutorSmoothMove:
     @patch("computer_use.platform.windows.user32")
     def test_move_mouse_calls_smooth_move(self, mock_user32, mock_smooth):
         ex = self._make_executor()
-        ex.move_mouse(500, 300, hit_count=3)
+        ex.move_mouse(500, 300)
         mock_smooth.assert_called_once()
-        args, kwargs = mock_smooth.call_args
+        args, _ = mock_smooth.call_args
         assert args[0] == 500  # end_x
         assert args[1] == 300  # end_y
-        assert kwargs["hit_count"] == 3
 
     @patch("computer_use.platform.windows.user32")
     def test_raw_move_calls_set_cursor_pos(self, mock_user32):
@@ -75,7 +73,7 @@ class TestWindowsActionExecutorSmoothMove:
     @patch("computer_use.platform.windows.user32")
     def test_click_calls_smooth_move_then_input(self, mock_user32, mock_smooth):
         ex = self._make_executor()
-        ex.click(400, 300, hit_count=2)
+        ex.click(400, 300)
         # smooth_move should be called for movement
         mock_smooth.assert_called_once()
         # SendInput should be called for mouse down + up
@@ -85,7 +83,7 @@ class TestWindowsActionExecutorSmoothMove:
     @patch("computer_use.platform.windows.user32")
     def test_click_right_button(self, mock_user32, mock_smooth):
         ex = self._make_executor()
-        ex.click(400, 300, button="right", hit_count=0)
+        ex.click(400, 300, button="right")
         mock_smooth.assert_called_once()
         assert mock_user32.SendInput.call_count >= 2
 
@@ -93,7 +91,7 @@ class TestWindowsActionExecutorSmoothMove:
     @patch("computer_use.platform.windows.user32")
     def test_double_click_calls_smooth_move(self, mock_user32, mock_smooth):
         ex = self._make_executor()
-        ex.double_click(400, 300, hit_count=1)
+        ex.double_click(400, 300)
         mock_smooth.assert_called_once()
         # 4 SendInput calls: down, up, down, up
         assert mock_user32.SendInput.call_count >= 4
@@ -102,47 +100,13 @@ class TestWindowsActionExecutorSmoothMove:
     @patch("computer_use.platform.windows.user32")
     def test_drag_uses_smooth_move_and_windmouse(self, mock_user32, mock_smooth):
         ex = self._make_executor()
-        ex.drag(100, 100, 500, 500, duration=0.1, hit_count=2)
+        ex.drag(100, 100, 500, 500, duration=0.1)
         # smooth_move called to move to start position
         mock_smooth.assert_called_once()
         # SendInput called for mousedown + mouseup (intermediate moves use SetCursorPos)
         assert mock_user32.SendInput.call_count >= 2
         # SetCursorPos called for windmouse path intermediate points
         assert mock_user32.SetCursorPos.call_count >= 1
-
-
-# ---------------------------------------------------------------------------
-# WindowsActionExecutor -- ABC signature compliance
-# ---------------------------------------------------------------------------
-
-
-@_skip_not_win32
-class TestWindowsActionExecutorABCSignature:
-    """Verify method signatures match the ActionExecutor ABC (hit_count params)."""
-
-    def test_move_mouse_accepts_hit_count(self):
-        Cls, _, _ = _import_windows_module()
-        import inspect
-        sig = inspect.signature(Cls.move_mouse)
-        assert "hit_count" in sig.parameters
-
-    def test_click_accepts_hit_count(self):
-        Cls, _, _ = _import_windows_module()
-        import inspect
-        sig = inspect.signature(Cls.click)
-        assert "hit_count" in sig.parameters
-
-    def test_double_click_accepts_hit_count(self):
-        Cls, _, _ = _import_windows_module()
-        import inspect
-        sig = inspect.signature(Cls.double_click)
-        assert "hit_count" in sig.parameters
-
-    def test_drag_accepts_hit_count(self):
-        Cls, _, _ = _import_windows_module()
-        import inspect
-        sig = inspect.signature(Cls.drag)
-        assert "hit_count" in sig.parameters
 
 
 # ---------------------------------------------------------------------------

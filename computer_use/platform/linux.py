@@ -899,10 +899,9 @@ class EvdevActionExecutor(_WaylandActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
-        hit_count: int = 0,
     ) -> None:
         btn = self._btn_code("left")
-        self.move_mouse(start_x, start_y, hit_count=hit_count)
+        self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._mouse.write(ecodes.EV_KEY, btn, 1)
         self._mouse.write(ecodes.EV_SYN, ecodes.SYN_REPORT, 0)
@@ -1128,10 +1127,9 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
-        hit_count: int = 0,
     ) -> None:
         btn = self._btn_code("left")
-        self.move_mouse(start_x, start_y, hit_count=hit_count)
+        self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))
 
