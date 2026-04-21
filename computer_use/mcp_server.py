@@ -9,7 +9,7 @@ import logging
 import os
 import sys
 
-_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
+_DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
 logging.basicConfig(
     level=logging.DEBUG if _DEBUG else logging.INFO,
@@ -22,7 +22,7 @@ _debug_counter = 0
 
 
 def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
-    """Save PNG to .debug/ when AGENT_FORGE_DEBUG=1."""
+    """Save PNG to .debug/ when VADGR_DEBUG=1."""
     if not _DEBUG:
         return
     global _debug_counter

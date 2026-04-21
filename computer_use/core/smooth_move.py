@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable
 
 logger = logging.getLogger("computer_use.smooth_move")
-_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
+_DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
 # WindMouse path shape
 WIND_GRAVITY = 9.0       # pull toward target (higher = straighter path)

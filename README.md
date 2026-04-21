@@ -74,8 +74,8 @@ engine.type_text("hello")
 | `ANTHROPIC_API_KEY` | Enables Claude vision fallback for `find_element` |
 | `OPENAI_API_KEY` | Enables OpenAI vision fallback for `find_element` |
 | `CU_MAX_WIDTH` | Override downscale target (default: auto 1024/1280/1366) |
-| `AGENT_FORGE_DATA` | Override data directory for debug screenshots |
-| `AGENT_FORGE_DEBUG` | Set to `1` to dump screenshots to `$AGENT_FORGE_DATA/screenshots/` |
+| `VADGR_DATA` | Override data directory for debug screenshots |
+| `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
 
 Vision providers use stdlib `urllib`. No extra dependency is required; just set the API key to enable the fallback.
 

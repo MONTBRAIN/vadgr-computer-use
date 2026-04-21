@@ -109,8 +109,8 @@ Edit `config.yaml` or use environment variables:
 |----------|---------|
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key |
-| `AGENT_FORGE_DEBUG` | Enable debug screenshots |
-| `AGENT_FORGE_DATA` | Custom data directory for debug screenshots |
+| `VADGR_DEBUG` | Enable debug screenshots |
+| `VADGR_DATA` | Custom data directory for debug screenshots |
 | `CU_MAX_WIDTH` | Max screenshot width for vision |
 
 ## Tests

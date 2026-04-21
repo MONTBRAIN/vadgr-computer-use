@@ -752,7 +752,7 @@ Start-Sleep -Milliseconds 50
 
 
 # Daemon auto-launch settings.
-_DAEMON_DEPLOY_DIR_NAME = "AgentForge"  # under Windows user profile
+_DAEMON_DEPLOY_DIR_NAME = "vadgr"  # under Windows user profile
 _DAEMON_FILES = ("daemon.py",)
 _DAEMON_LAUNCH_WAIT = 3.0  # seconds to wait after launching before re-probe
 _DAEMON_LAUNCH_RETRIES = 2  # probe attempts after launch
@@ -830,7 +830,7 @@ class WSL2Backend(PlatformBackend):
     def _get_deploy_dir() -> Optional[str]:
         """Get the Windows directory to deploy daemon files to.
 
-        Returns the WSL-mounted path (e.g. /mnt/c/Users/Name/AgentForge).
+        Returns the WSL-mounted path (e.g. /mnt/c/Users/Name/vadgr).
         Creates the directory if it doesn't exist.
         """
         try:

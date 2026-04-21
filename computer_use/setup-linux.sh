@@ -65,7 +65,7 @@ if [ ! -f "$MCP_JSON" ]; then
       "cwd": "$ROOT",
       "env": {
         "PYTHONPATH": "$ROOT",
-        "AGENT_FORGE_DEBUG": "1"
+        "VADGR_DEBUG": "1"
       }
     }
   }
