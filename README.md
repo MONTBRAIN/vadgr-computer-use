@@ -32,12 +32,14 @@ That's it. The LLM owns the "where to click" decision; the server owns "how to c
 
 ## Platform support
 
-| Platform | Screenshots | Mouse / keyboard |
-|----------|-------------|------------------|
-| Linux / X11 | `mss` | `xdotool` |
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) |
-| Windows native | Win32 GDI | SendInput |
-| macOS | `screencapture` | `osascript` / `cliclick` |
+| Platform | Screenshots | Mouse / keyboard | Status |
+|----------|-------------|------------------|--------|
+| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | primary, well-tested |
+| Linux / X11 | `mss` | `xdotool` | works |
+| Windows native | Win32 GDI | SendInput | should work; not part of the v0.1.0 test matrix |
+| macOS | `screencapture` | `osascript` / `cliclick` | WIP, not functional yet |
+
+macOS is a work-in-progress: the backend imports but actions and screenshots do not round-trip correctly yet. Fixes welcome.
 
 On WSL2 the bridge daemon is launched automatically on first use and persists across MCP sessions; if it can't be started (e.g. no Windows Python available), the server silently falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
