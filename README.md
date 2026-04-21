@@ -18,24 +18,6 @@ vadgr-cua --transport sse --port 8000
 
 Wire it into any MCP client (Claude Desktop, Cursor, Cline, custom agents).
 
-## Daemon management (WSL2)
-
-On WSL2 the server reaches Windows through a small background daemon. It
-launches itself on first use and survives across sessions; most users
-never need to touch it. For when you do:
-
-```bash
-vadgr-cua doctor           # JSON: platform, Windows Python, daemon state, port, hash
-vadgr-cua install-daemon   # Eager deploy + launch (useful in provisioning scripts)
-vadgr-cua stop-daemon      # Kill the running daemon
-vadgr-cua restart-daemon   # Stop then start
-```
-
-The daemon is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on
-TCP `127.0.0.1:19542` (override with `CUE_BRIDGE_PORT`). After
-`pip install -U vadgr-computer-use`, the next session detects the
-version-hash drift and redeploys the daemon automatically.
-
 ## How it works
 
 The loop is intentionally simple:
@@ -52,9 +34,11 @@ For supported UIs, `find_element("Save button")` resolves a description to scree
 | Platform | Screenshots | Mouse / keyboard | Accessibility backend |
 |----------|-------------|------------------|------------------------|
 | Linux / X11 | `mss` | `xdotool` | AT-SPI2 (via `python3-gi` + `gir1.2-atspi-2.0`) |
-| WSL2 → Windows host | PowerShell bridge | PowerShell bridge | Windows UI Automation |
+| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | Windows UI Automation via PowerShell |
 | Windows native | Win32 GDI | SendInput | Windows UI Automation |
 | macOS | `screencapture` | `osascript` / `cliclick` | AX API |
+
+On WSL2 the bridge daemon is launched automatically on first use and persists across MCP sessions; if it can't be started (e.g. no Windows Python available), the server silently falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
 ## MCP tools
 
@@ -74,6 +58,21 @@ Accessibility-backed lookup
 Platform info
 - `get_platform()` / `get_platform_info()` / `get_screen_size()`
 
+## Daemon management (WSL2)
+
+On WSL2 the server reaches Windows through a small background daemon that
+launches on first use and survives across MCP sessions — most users never
+need to touch it. For when you do:
+
+```bash
+vadgr-cua doctor           # JSON: platform, Windows Python, daemon state, port, hash
+vadgr-cua install-daemon   # Eager deploy + launch (useful in provisioning scripts)
+vadgr-cua stop-daemon      # Kill the running daemon
+vadgr-cua restart-daemon   # Stop then start
+```
+
+The daemon file is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on TCP `127.0.0.1:19542`. After `pip install -U vadgr-computer-use`, the next MCP session detects the version-hash drift via a `ping` handshake and redeploys the daemon automatically — no manual restart required.
+
 ## Library usage
 
 ```python
@@ -92,6 +91,7 @@ engine.type_text("hello")
 | `ANTHROPIC_API_KEY` | Enables Claude vision fallback for `find_element` |
 | `OPENAI_API_KEY` | Enables OpenAI vision fallback for `find_element` |
 | `CU_MAX_WIDTH` | Override downscale target (default: auto 1024/1280/1366) |
+| `CUE_BRIDGE_PORT` | Override WSL2 bridge daemon TCP port (default: 19542) |
 | `VADGR_DATA` | Override data directory for debug screenshots |
 | `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
 
