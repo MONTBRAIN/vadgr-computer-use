@@ -1350,18 +1350,3 @@ class LinuxBackend(PlatformBackend):
     def get_foreground_window(self) -> Optional[ForegroundWindow]:
         return _get_foreground_window_linux()
 
-    def get_accessibility_info(self) -> dict:
-        try:
-            import pyatspi  # noqa: F401
-
-            return {
-                "available": True,
-                "api_name": "AT-SPI2",
-                "notes": "pyatspi library available",
-            }
-        except ImportError:
-            return {
-                "available": False,
-                "api_name": "AT-SPI2",
-                "notes": "pyatspi not installed. Run: pip install pyatspi",
-            }

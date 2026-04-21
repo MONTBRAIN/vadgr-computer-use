@@ -17,14 +17,6 @@ class ActionTimeoutError(ActionError):
     """Action did not complete within the timeout."""
 
 
-class GroundingError(ComputerUseError):
-    """Element grounding or location failed."""
-
-
-class ElementNotFoundError(GroundingError):
-    """Requested UI element was not found."""
-
-
 class ProviderError(ComputerUseError):
     """LLM provider call failed."""
 

@@ -25,8 +25,6 @@ from computer_use.core.errors import ProviderError
 from computer_use.core.types import (
     Action,
     ActionType,
-    Element,
-    Region,
     ScreenState,
 )
 from computer_use.providers.base import AgentDecision, VisionProvider
@@ -60,13 +58,6 @@ Respond with a JSON object:
 
 Be precise with coordinates. Look at the screenshot carefully."""
 
-LOCATE_PROMPT = """Look at this screenshot ({width}x{height} pixels). Find the UI element matching this description: "{description}"
-
-Respond with JSON:
-{{"x": int, "y": int, "width": int, "height": int, "name": "element name", "role": "element type", "confidence": 0.0-1.0}}
-
-Or respond with: {{"not_found": true}} if the element is not visible."""
-
 VERIFY_PROMPT = """Compare these two screenshots (before and after an action). The expected outcome was: "{expected}"
 
 Did the expected change occur? Respond with JSON:
@@ -85,7 +76,6 @@ class AnthropicProvider(VisionProvider):
         screen: ScreenState,
         task: str,
         history: list[dict],
-        elements: Optional[list[Element]] = None,
     ) -> AgentDecision:
         image_b64 = base64.b64encode(screen.image_bytes).decode("utf-8")
 
@@ -104,18 +94,6 @@ class AnthropicProvider(VisionProvider):
                 "text": f"Task: {task}\nScreen size: {screen.width}x{screen.height}",
             },
         ]
-
-        # Add element context if available
-        if elements:
-            element_desc = "\n".join(
-                f"- {e.name} ({e.role}) at ({e.region.x},{e.region.y}) "
-                f"size {e.region.width}x{e.region.height}"
-                for e in elements[:20]  # Limit to top 20
-            )
-            content.append({
-                "type": "text",
-                "text": f"Visible UI elements (from accessibility API):\n{element_desc}",
-            })
 
         # Add history
         if history:
@@ -138,42 +116,6 @@ class AnthropicProvider(VisionProvider):
 
         response = self._call_api(payload)
         return self._parse_decision(response)
-
-    def locate_element(
-        self, screen: ScreenState, description: str
-    ) -> Optional[Element]:
-        image_b64 = base64.b64encode(screen.image_bytes).decode("utf-8")
-
-        payload = {
-            "model": self._model,
-            "max_tokens": 512,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": image_b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": LOCATE_PROMPT.format(
-                                width=screen.width,
-                                height=screen.height,
-                                description=description,
-                            ),
-                        },
-                    ],
-                }
-            ],
-        }
-
-        response = self._call_api(payload)
-        return self._parse_element(response)
 
     def verify_action(
         self, before: ScreenState, after: ScreenState, expected: str
@@ -319,29 +261,3 @@ class AnthropicProvider(VisionProvider):
             target_y=data.get("target_y"),
         )
 
-    def _parse_element(self, response: dict) -> Optional[Element]:
-        """Parse element location response."""
-        text = self._extract_text(response)
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            return None
-
-        if data.get("not_found"):
-            return None
-
-        try:
-            return Element(
-                name=data.get("name", "unknown"),
-                role=data.get("role", "unknown"),
-                region=Region(
-                    x=int(data["x"]),
-                    y=int(data["y"]),
-                    width=int(data.get("width", 50)),
-                    height=int(data.get("height", 30)),
-                ),
-                confidence=float(data.get("confidence", 0.5)),
-                source="vision",
-            )
-        except (KeyError, ValueError):
-            return None

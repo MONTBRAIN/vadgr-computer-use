@@ -42,17 +42,6 @@ class PlatformBackend(ABC):
         ...
 
     @abstractmethod
-    def get_accessibility_info(self) -> dict:
-        """Return info about accessibility API availability.
-
-        Returns dict with keys:
-            available (bool): Whether the API is usable
-            api_name (str): Name of the API (e.g. "UI Automation", "AT-SPI2")
-            notes (str): Any relevant notes
-        """
-        ...
-
-    @abstractmethod
     def get_foreground_window(self) -> Optional[ForegroundWindow]:
         """Return info about the currently focused window.
 

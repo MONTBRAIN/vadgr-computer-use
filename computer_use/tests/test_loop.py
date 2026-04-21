@@ -17,8 +17,6 @@ class TestCoreLoop:
         capture.capture_full.return_value = _make_screen()
 
         executor = MagicMock()
-        locator = MagicMock()
-        locator.is_available.return_value = False
 
         provider = MagicMock()
         provider.decide_action.return_value = AgentDecision(
@@ -31,7 +29,6 @@ class TestCoreLoop:
         results = run_core_loop(
             capture=capture,
             executor=executor,
-            locator=locator,
             provider=provider,
             task="Test task",
             max_steps=10,
@@ -49,8 +46,6 @@ class TestCoreLoop:
         capture.capture_full.return_value = _make_screen()
 
         executor = MagicMock()
-        locator = MagicMock()
-        locator.is_available.return_value = False
 
         # First call: click, second call: done
         provider = MagicMock()
@@ -72,7 +67,6 @@ class TestCoreLoop:
         results = run_core_loop(
             capture=capture,
             executor=executor,
-            locator=locator,
             provider=provider,
             task="Click start",
             max_steps=10,
@@ -89,8 +83,6 @@ class TestCoreLoop:
         capture.capture_full.return_value = _make_screen()
 
         executor = MagicMock()
-        locator = MagicMock()
-        locator.is_available.return_value = False
 
         # Always returns a click, never completes
         provider = MagicMock()
@@ -104,7 +96,6 @@ class TestCoreLoop:
         results = run_core_loop(
             capture=capture,
             executor=executor,
-            locator=locator,
             provider=provider,
             task="Never-ending task",
             max_steps=3,
@@ -120,8 +111,6 @@ class TestCoreLoop:
         executor = MagicMock()
         executor.execute_action.side_effect = RuntimeError("Action failed")
 
-        locator = MagicMock()
-        locator.is_available.return_value = False
 
         provider = MagicMock()
         provider.decide_action.return_value = AgentDecision(
@@ -134,7 +123,6 @@ class TestCoreLoop:
         results = run_core_loop(
             capture=capture,
             executor=executor,
-            locator=locator,
             provider=provider,
             task="Failing task",
             max_steps=10,
@@ -150,8 +138,6 @@ class TestCoreLoop:
         capture.capture_full.return_value = _make_screen()
 
         executor = MagicMock()
-        locator = MagicMock()
-        locator.is_available.return_value = False
 
         provider = MagicMock()
         provider.decide_action.side_effect = [
@@ -173,7 +159,6 @@ class TestCoreLoop:
         results = run_core_loop(
             capture=capture,
             executor=executor,
-            locator=locator,
             provider=provider,
             task="Click button",
             max_steps=10,

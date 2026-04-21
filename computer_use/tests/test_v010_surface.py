@@ -33,7 +33,6 @@ V010_TOOLS = frozenset({
     "get_screen_size",
     "get_platform",
     "get_platform_info",
-    "find_element",
 })
 
 REMOVED_TOOLS = frozenset({
@@ -43,6 +42,7 @@ REMOVED_TOOLS = frozenset({
     "execute_template",
     "list_templates",
     "delete_template",
+    "find_element",  # dropped in v0.1.0 cleanup: 0/5 success rate in real usage
 })
 
 REMOVED_ENGINE_ATTRS = frozenset({
@@ -54,6 +54,12 @@ REMOVED_ENGINE_ATTRS = frozenset({
     "_cache_lookup",
     "_cache_record",
     "_cache_to_screen",
+    # Grounding subsystem, dropped alongside find_element:
+    "find_element",
+    "find_all_elements",
+    "click_element",
+    "_get_locator",
+    "_locator",
 })
 
 

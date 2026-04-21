@@ -3,7 +3,6 @@
 from computer_use.core.types import (
     Action,
     ActionType,
-    Element,
     ForegroundWindow,
     Platform,
     Region,
@@ -60,29 +59,6 @@ class TestRegion:
             assert False, "Should raise"
         except AttributeError:
             pass
-
-
-class TestElement:
-    def test_creation(self):
-        region = Region(x=100, y=200, width=80, height=30)
-        el = Element(
-            name="Save",
-            role="button",
-            region=region,
-            confidence=0.95,
-            source="accessibility",
-        )
-        assert el.name == "Save"
-        assert el.role == "button"
-        assert el.confidence == 0.95
-        assert el.region.center == (140, 215)
-
-    def test_default_properties(self):
-        region = Region(x=0, y=0, width=10, height=10)
-        el = Element(
-            name="test", role="text", region=region, confidence=1.0, source="vision"
-        )
-        assert el.properties == {}
 
 
 class TestAction:

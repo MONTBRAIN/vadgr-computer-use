@@ -131,11 +131,6 @@ def _to_real(x: int, y: int) -> tuple[int, int]:
     return int(x * _scale_x) + _offset_x, int(y * _scale_y) + _offset_y
 
 
-def _from_real(x: int, y: int) -> tuple[int, int]:
-    """Convert absolute screen coordinates to display coordinates."""
-    return int((x - _offset_x) / _scale_x), int((y - _offset_y) / _scale_y)
-
-
 @mcp.tool()
 def screenshot() -> Image:
     """Capture the full virtual screen (all monitors). Returns PNG image.
@@ -260,24 +255,9 @@ def get_platform() -> str:
 
 @mcp.tool()
 def get_platform_info() -> dict:
-    """Returns platform details + accessibility info."""
+    """Returns platform details."""
     engine = _get_engine()
     return engine.get_platform_info()
-
-
-@mcp.tool()
-def find_element(description: str) -> str:
-    """Find a UI element by description, e.g. "Save button". Returns position or not found."""
-    engine = _get_engine()
-    element = engine.find_element(description)
-    if element is None:
-        return f"Element not found: {description}"
-    cx, cy = element.region.center
-    dx, dy = _from_real(cx, cy)
-    return (
-        f"Found '{element.name}' (role={element.role}) at ({dx}, {dy}), "
-        f"confidence={element.confidence:.2f}"
-    )
 
 
 # --- CLI: management subcommands ---

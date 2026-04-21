@@ -10,8 +10,6 @@ from unittest.mock import MagicMock, patch
 from computer_use.core.errors import ProviderError
 from computer_use.core.types import (
     ActionType,
-    Element,
-    Region,
     ScreenState,
 )
 from computer_use.providers.openai import OpenAIProvider, API_URL
@@ -232,50 +230,6 @@ class TestParseDecision(unittest.TestCase):
         self.assertIn("Cannot parse", str(ctx.exception))
 
 
-class TestParseElement(unittest.TestCase):
-    def setUp(self):
-        self.provider = OpenAIProvider(api_key="sk-test", model="gpt-4o")
-
-    def test_parses_found_element(self):
-        resp = openai_response(json.dumps({
-            "x": 100, "y": 200, "width": 80, "height": 30,
-            "name": "Submit", "role": "button", "confidence": 0.9,
-        }))
-        elem = self.provider._parse_element(resp)
-        self.assertIsNotNone(elem)
-        self.assertEqual(elem.name, "Submit")
-        self.assertEqual(elem.role, "button")
-        self.assertEqual(elem.region.x, 100)
-        self.assertEqual(elem.region.y, 200)
-        self.assertEqual(elem.region.width, 80)
-        self.assertEqual(elem.region.height, 30)
-        self.assertAlmostEqual(elem.confidence, 0.9)
-        self.assertEqual(elem.source, "vision")
-
-    def test_not_found_returns_none(self):
-        resp = openai_response(json.dumps({"not_found": True}))
-        self.assertIsNone(self.provider._parse_element(resp))
-
-    def test_invalid_json_returns_none(self):
-        resp = openai_response("this is garbage")
-        self.assertIsNone(self.provider._parse_element(resp))
-
-    def test_missing_x_y_returns_none(self):
-        resp = openai_response(json.dumps({"name": "btn", "role": "button"}))
-        self.assertIsNone(self.provider._parse_element(resp))
-
-    def test_default_width_height(self):
-        resp = openai_response(json.dumps({"x": 10, "y": 20, "name": "a", "role": "b"}))
-        elem = self.provider._parse_element(resp)
-        self.assertEqual(elem.region.width, 50)
-        self.assertEqual(elem.region.height, 30)
-
-    def test_default_confidence(self):
-        resp = openai_response(json.dumps({"x": 10, "y": 20}))
-        elem = self.provider._parse_element(resp)
-        self.assertAlmostEqual(elem.confidence, 0.5)
-
-
 class TestDecideAction(unittest.TestCase):
     def setUp(self):
         self.provider = OpenAIProvider(api_key="sk-test-key", model="gpt-4o")
@@ -337,29 +291,6 @@ class TestDecideAction(unittest.TestCase):
         self.assertIn("2560x1440", text_block["text"])
 
     @patch("urllib.request.urlopen")
-    def test_includes_elements_when_provided(self, mock_open):
-        screen = make_screen()
-        elem = Element(
-            name="OK", role="button",
-            region=Region(x=10, y=20, width=60, height=25),
-            confidence=0.9, source="accessibility",
-        )
-        api_resp = openai_response(json.dumps({
-            "reasoning": "r", "action": {"action": "click", "x": 10, "y": 20},
-            "confidence": 0.9,
-        }))
-        mock_open.return_value = mock_urlopen(api_resp)
-
-        self.provider.decide_action(screen, "click ok", [], elements=[elem])
-
-        request_obj = mock_open.call_args[0][0]
-        payload = json.loads(request_obj.data.decode("utf-8"))
-        content_blocks = payload["messages"][1]["content"]
-        element_text = content_blocks[2]["text"]
-        self.assertIn("OK (button)", element_text)
-        self.assertIn("(10,20)", element_text)
-
-    @patch("urllib.request.urlopen")
     def test_includes_history_when_provided(self, mock_open):
         screen = make_screen()
         history = [
@@ -381,32 +312,6 @@ class TestDecideAction(unittest.TestCase):
         self.assertIn("Step 1", history_text)
         self.assertIn("OK", history_text)
         self.assertIn("FAILED", history_text)
-
-    @patch("urllib.request.urlopen")
-    def test_limits_elements_to_20(self, mock_open):
-        screen = make_screen()
-        elements = [
-            Element(
-                name=f"elem{i}", role="button",
-                region=Region(x=i, y=i, width=10, height=10),
-                confidence=0.5, source="vision",
-            )
-            for i in range(30)
-        ]
-        api_resp = openai_response(json.dumps({
-            "reasoning": "r", "action": {"action": "click", "x": 1, "y": 1},
-            "confidence": 0.5,
-        }))
-        mock_open.return_value = mock_urlopen(api_resp)
-
-        self.provider.decide_action(screen, "task", [], elements=elements)
-
-        request_obj = mock_open.call_args[0][0]
-        payload = json.loads(request_obj.data.decode("utf-8"))
-        content_blocks = payload["messages"][1]["content"]
-        element_text = content_blocks[2]["text"]
-        self.assertIn("elem19", element_text)
-        self.assertNotIn("elem20", element_text)
 
     @patch("urllib.request.urlopen")
     def test_limits_history_to_5(self, mock_open):
@@ -431,47 +336,6 @@ class TestDecideAction(unittest.TestCase):
         self.assertIn("action_9", history_text)
 
 
-class TestLocateElement(unittest.TestCase):
-    def setUp(self):
-        self.provider = OpenAIProvider(api_key="sk-test", model="gpt-4o")
-
-    @patch("urllib.request.urlopen")
-    def test_returns_element_on_success(self, mock_open):
-        api_resp = openai_response(json.dumps({
-            "x": 300, "y": 400, "width": 100, "height": 40,
-            "name": "Search", "role": "text_field", "confidence": 0.85,
-        }))
-        mock_open.return_value = mock_urlopen(api_resp)
-
-        screen = make_screen()
-        elem = self.provider.locate_element(screen, "search box")
-        self.assertIsNotNone(elem)
-        self.assertEqual(elem.name, "Search")
-        self.assertEqual(elem.region.x, 300)
-
-    @patch("urllib.request.urlopen")
-    def test_returns_none_when_not_found(self, mock_open):
-        api_resp = openai_response(json.dumps({"not_found": True}))
-        mock_open.return_value = mock_urlopen(api_resp)
-
-        screen = make_screen()
-        self.assertIsNone(self.provider.locate_element(screen, "invisible thing"))
-
-    @patch("urllib.request.urlopen")
-    def test_payload_includes_image_url_and_description(self, mock_open):
-        api_resp = openai_response(json.dumps({"not_found": True}))
-        mock_open.return_value = mock_urlopen(api_resp)
-
-        screen = make_screen(width=800, height=600, image_bytes=b"img")
-        self.provider.locate_element(screen, "the OK button")
-
-        request_obj = mock_open.call_args[0][0]
-        payload = json.loads(request_obj.data.decode("utf-8"))
-        user_content = payload["messages"][0]["content"]
-        self.assertEqual(user_content[0]["type"], "image_url")
-        text = user_content[1]["text"]
-        self.assertIn("the OK button", text)
-        self.assertIn("800x600", text)
 
 
 class TestVerifyAction(unittest.TestCase):

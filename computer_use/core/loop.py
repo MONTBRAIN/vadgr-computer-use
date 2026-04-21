@@ -20,8 +20,7 @@ from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.core.types import Element, StepResult
-from computer_use.grounding.base import ElementLocator
+from computer_use.core.types import StepResult
 from computer_use.providers.base import AgentDecision, VisionProvider
 
 logger = logging.getLogger("computer_use.loop")
@@ -34,7 +33,6 @@ RETRY_DELAY_SECONDS = 1.0
 def run_core_loop(
     capture: ScreenCapture,
     executor: ActionExecutor,
-    locator: Optional[ElementLocator],
     provider: VisionProvider,
     task: str,
     max_steps: int = 50,
@@ -64,22 +62,12 @@ def run_core_loop(
             len(screen_before.image_bytes),
         )
 
-        # 2. GROUND (find visible elements for context)
-        elements: list[Element] = []
-        if locator and locator.is_available():
-            try:
-                elements = locator.find_all_elements(screen_before)
-                logger.debug("Found %d UI elements", len(elements))
-            except Exception as e:
-                logger.warning("Grounding failed, continuing without elements: %s", e)
-
-        # 3. DECIDE (ask LLM what to do)
+        # 2. DECIDE (ask LLM what to do)
         try:
             decision: AgentDecision = provider.decide_action(
                 screen=screen_before,
                 task=task,
                 history=history,
-                elements=elements,
             )
             logger.info(
                 "Decision: %s (confidence: %.2f, reasoning: %s)",
@@ -96,7 +84,7 @@ def run_core_loop(
             time.sleep(RETRY_DELAY_SECONDS)
             continue
 
-        # 4. CHECK COMPLETION
+        # 3. CHECK COMPLETION
         if decision.is_task_complete:
             logger.info("Task marked complete: %s", decision.reasoning)
             results.append(
@@ -110,7 +98,7 @@ def run_core_loop(
             )
             break
 
-        # 5. ACT
+        # 4. ACT
         try:
             executor.execute_action(decision.action)
             logger.debug("Action executed: %s", decision.action.action_type.value)
@@ -132,10 +120,10 @@ def run_core_loop(
                 break
             continue
 
-        # 6. WAIT for UI to settle
+        # 5. WAIT for UI to settle
         time.sleep(ACTION_DELAY_SECONDS)
 
-        # 7. VERIFY
+        # 6. VERIFY
         screen_after = capture.capture_full()
         success = True
         error_msg = None
@@ -155,7 +143,7 @@ def run_core_loop(
                 # Don't count verification failures as action failures
                 success = True
 
-        # 8. RECORD
+        # 7. RECORD
         step_result = StepResult(
             action_taken=decision.action,
             screenshot_before=screen_before,
@@ -163,7 +151,6 @@ def run_core_loop(
             success=success,
             reasoning=decision.reasoning,
             error=error_msg,
-            elements_found=elements,
         )
         results.append(step_result)
 

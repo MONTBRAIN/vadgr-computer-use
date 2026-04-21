@@ -53,18 +53,6 @@ class Region:
 
 
 @dataclass(frozen=True)
-class Element:
-    """A UI element found by grounding."""
-
-    name: str
-    role: str  # button, text_field, menu_item, etc.
-    region: Region
-    confidence: float  # 0.0 to 1.0
-    source: str  # "accessibility" or "vision"
-    properties: dict = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class Action:
     """A single action to execute on the desktop."""
 
@@ -102,4 +90,3 @@ class StepResult:
     success: bool
     reasoning: str  # LLM explanation (autonomous mode)
     error: Optional[str] = None
-    elements_found: list[Element] = field(default_factory=list)

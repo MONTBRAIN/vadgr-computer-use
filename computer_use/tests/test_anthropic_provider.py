@@ -11,8 +11,6 @@ from computer_use.core.errors import ProviderError
 from computer_use.core.types import (
     Action,
     ActionType,
-    Element,
-    Region,
     ScreenState,
 )
 from computer_use.providers.anthropic import AnthropicProvider
@@ -281,64 +279,6 @@ class TestParseDecision:
             provider._parse_decision(response)
 
 
-class TestParseElement:
-    def test_found_element(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({
-            "x": 100, "y": 200, "width": 80, "height": 30,
-            "name": "Submit", "role": "button", "confidence": 0.95,
-        }))
-        elem = provider._parse_element(response)
-        assert elem is not None
-        assert elem.name == "Submit"
-        assert elem.role == "button"
-        assert elem.region == Region(x=100, y=200, width=80, height=30)
-        assert elem.confidence == 0.95
-        assert elem.source == "vision"
-
-    def test_not_found_returns_none(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({"not_found": True}))
-        assert provider._parse_element(response) is None
-
-    def test_invalid_json_returns_none(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response("no json here, sorry")
-        assert provider._parse_element(response) is None
-
-    def test_missing_x_returns_none(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({
-            "y": 200, "name": "Submit", "role": "button",
-        }))
-        assert provider._parse_element(response) is None
-
-    def test_missing_y_returns_none(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({
-            "x": 100, "name": "Submit", "role": "button",
-        }))
-        assert provider._parse_element(response) is None
-
-    def test_defaults_for_optional_fields(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({"x": 50, "y": 60}))
-        elem = provider._parse_element(response)
-        assert elem is not None
-        assert elem.name == "unknown"
-        assert elem.role == "unknown"
-        assert elem.region.width == 50
-        assert elem.region.height == 30
-        assert elem.confidence == 0.5
-
-    def test_non_numeric_x_returns_none(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        response = make_api_response(json.dumps({
-            "x": "abc", "y": 100, "name": "X", "role": "button",
-        }))
-        assert provider._parse_element(response) is None
-
-
 class TestDecideAction:
     def test_builds_payload_and_parses(self):
         provider = AnthropicProvider(api_key="sk-test", model="claude-test")
@@ -368,29 +308,6 @@ class TestDecideAction:
         assert user_content[0]["source"]["media_type"] == "image/png"
         assert "Save the file" in user_content[1]["text"]
         assert "1920x1080" in user_content[1]["text"]
-
-    def test_includes_elements_when_provided(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        screen = make_screen()
-        elements = [
-            Element(name="OK", role="button", region=Region(10, 20, 60, 30), confidence=0.9, source="a11y"),
-            Element(name="Cancel", role="button", region=Region(80, 20, 60, 30), confidence=0.8, source="a11y"),
-        ]
-        api_response = make_api_response(json.dumps({
-            "reasoning": "r", "action": {"action": "click", "x": 1, "y": 1}, "confidence": 0.5,
-        }))
-        mock_resp = make_urlopen_mock(api_response)
-
-        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
-            provider.decide_action(screen, "Click OK", [], elements=elements)
-
-        req = mock_urlopen.call_args[0][0]
-        sent = json.loads(req.data.decode("utf-8"))
-        content_texts = [c["text"] for c in sent["messages"][0]["content"] if c["type"] == "text"]
-        element_block = [t for t in content_texts if "UI elements" in t]
-        assert len(element_block) == 1
-        assert "OK (button)" in element_block[0]
-        assert "Cancel (button)" in element_block[0]
 
     def test_includes_history_when_provided(self):
         provider = AnthropicProvider(api_key="sk-test")
@@ -454,40 +371,6 @@ class TestDecideAction:
         assert "action_4" not in history_block
         assert "action_5" in history_block
         assert "action_9" in history_block
-
-
-class TestLocateElement:
-    def test_found(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        screen = make_screen(width=800, height=600)
-        api_response = make_api_response(json.dumps({
-            "x": 150, "y": 250, "width": 100, "height": 40,
-            "name": "Login", "role": "button", "confidence": 0.88,
-        }))
-        mock_resp = make_urlopen_mock(api_response)
-
-        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
-            elem = provider.locate_element(screen, "the Login button")
-
-        assert elem is not None
-        assert elem.name == "Login"
-        assert elem.region.x == 150
-
-        req = mock_urlopen.call_args[0][0]
-        sent = json.loads(req.data.decode("utf-8"))
-        assert sent["max_tokens"] == 512
-        text_parts = [c["text"] for c in sent["messages"][0]["content"] if c["type"] == "text"]
-        assert any("800x600" in t for t in text_parts)
-        assert any("the Login button" in t for t in text_parts)
-
-    def test_not_found(self):
-        provider = AnthropicProvider(api_key="sk-test")
-        screen = make_screen()
-        api_response = make_api_response(json.dumps({"not_found": True}))
-        mock_resp = make_urlopen_mock(api_response)
-
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            assert provider.locate_element(screen, "invisible thing") is None
 
 
 class TestVerifyAction:

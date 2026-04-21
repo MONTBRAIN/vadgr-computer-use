@@ -25,7 +25,6 @@ from computer_use.core.errors import ConfigError, PlatformNotSupportedError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.types import (
     Action,
-    Element,
     Platform,
     Region,
     ScreenState,
@@ -71,7 +70,6 @@ class ComputerUseEngine:
         self._executor: ActionExecutor = self._backend.get_action_executor()
         self._provider_name = provider or self._config.get("provider")
         self._provider = None
-        self._locator = None
         self._history: list[dict] = []
         # Virtual screen offset for multi-monitor coordinate translation.
         # Populated on first screenshot. Screenshot pixel (x, y) maps to
@@ -148,31 +146,6 @@ class ComputerUseEngine:
         """Execute an Action dataclass directly."""
         self._executor.execute_action(action)
 
-    def find_element(self, description: str) -> Optional[Element]:
-        """Find a UI element by natural-language description.
-
-        Uses accessibility API first, falls back to LLM vision.
-        Requires grounding layer to be initialized.
-        """
-        locator = self._get_locator()
-        if locator is None:
-            return None
-        screen = self.screenshot()
-        return locator.find_element(description, screen)
-
-    def find_all_elements(self) -> list[Element]:
-        """List all visible UI elements via accessibility API."""
-        locator = self._get_locator()
-        if locator is None:
-            return []
-        screen = self.screenshot()
-        return locator.find_all_elements(screen)
-
-    def click_element(self, element: Element) -> None:
-        """Click the center of a found UI element."""
-        cx, cy = element.region.center
-        self.click(cx, cy)
-
     def get_screen_size(self) -> tuple[int, int]:
         """Return (width, height) of the primary display."""
         return self._capture.get_screen_size()
@@ -182,11 +155,10 @@ class ComputerUseEngine:
         return self._platform
 
     def get_platform_info(self) -> dict:
-        """Return platform and accessibility information."""
+        """Return platform info."""
         return {
             "platform": self._platform.value,
             "backend_available": self._backend.is_available(),
-            "accessibility": self._backend.get_accessibility_info(),
         }
 
     # --- Autonomous Mode API ---
@@ -204,13 +176,11 @@ class ComputerUseEngine:
         unrecoverable, or max_steps is reached.
         """
         provider = self._get_provider()
-        locator = self._get_locator()
         from computer_use.core.loop import run_core_loop
 
         return run_core_loop(
             capture=self._capture,
             executor=self._executor,
-            locator=locator,
             provider=provider,
             task=task,
             max_steps=max_steps,
@@ -232,22 +202,6 @@ class ComputerUseEngine:
 
             self._provider = get_provider(self._provider_name, self._config)
         return self._provider
-
-    def _get_locator(self):
-        """Lazy-load the grounding locator."""
-        if self._locator is None:
-            try:
-                from computer_use.grounding.hybrid import HybridLocator
-
-                self._locator = HybridLocator(
-                    platform=self._platform,
-                    provider_name=self._provider_name,
-                    config=self._config,
-                )
-            except ImportError:
-                logger.debug("Grounding layer not available")
-                return None
-        return self._locator
 
     def _load_config(self, path: Optional[str]) -> dict:
         """Load config from YAML file."""

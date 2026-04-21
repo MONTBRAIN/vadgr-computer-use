@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local MCP server for desktop automation. The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Accessibility APIs (Windows UIA, macOS AX, Linux AT-SPI2) are used for description-to-coordinate lookup when available.
+Local MCP server for desktop automation. The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Pure screenshot-and-click: no accessibility tree walking, no server-side element lookup — the model picks coordinates directly from the image.
 
 ## Install
 
@@ -27,16 +27,14 @@ The loop is intentionally simple:
 3. Agent calls `click(x, y)` / `type_text(...)` / `key_press(...)`.
 4. Agent calls `screenshot()` again to verify the effect.
 
-For supported UIs, `find_element("Save button")` resolves a description to screen coordinates via the OS accessibility API (no vision required), with an optional LLM-vision fallback when accessibility cannot answer.
-
 ## Platform support
 
-| Platform | Screenshots | Mouse / keyboard | Accessibility backend |
-|----------|-------------|------------------|------------------------|
-| Linux / X11 | `mss` | `xdotool` | AT-SPI2 (via `python3-gi` + `gir1.2-atspi-2.0`) |
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | Windows UI Automation via PowerShell |
-| Windows native | Win32 GDI | SendInput | Windows UI Automation |
-| macOS | `screencapture` | `osascript` / `cliclick` | AX API |
+| Platform | Screenshots | Mouse / keyboard |
+|----------|-------------|------------------|
+| Linux / X11 | `mss` | `xdotool` |
+| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) |
+| Windows native | Win32 GDI | SendInput |
+| macOS | `screencapture` | `osascript` / `cliclick` |
 
 On WSL2 the bridge daemon is launched automatically on first use and persists across MCP sessions; if it can't be started (e.g. no Windows Python available), the server silently falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
@@ -51,9 +49,6 @@ Input
 - `move_mouse(x, y)` / `drag(x1, y1, x2, y2, duration=0.5)`
 - `scroll(x, y, amount)`
 - `type_text(text)` / `key_press(keys)` — keys like `ctrl+s`, `alt+tab`, `enter`.
-
-Accessibility-backed lookup
-- `find_element(description)` — returns `Found '<name>' (role=<role>) at (x, y)` or `Element not found`.
 
 Platform info
 - `get_platform()` / `get_platform_info()` / `get_screen_size()`
@@ -88,14 +83,10 @@ engine.type_text("hello")
 
 | Variable | Purpose |
 |----------|---------|
-| `ANTHROPIC_API_KEY` | Enables Claude vision fallback for `find_element` |
-| `OPENAI_API_KEY` | Enables OpenAI vision fallback for `find_element` |
 | `CU_MAX_WIDTH` | Override downscale target (default: auto 1024/1280/1366) |
 | `CUE_BRIDGE_PORT` | Override WSL2 bridge daemon TCP port (default: 19542) |
 | `VADGR_DATA` | Override data directory for debug screenshots |
 | `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
-
-Vision providers use stdlib `urllib`. No extra dependency is required; just set the API key to enable the fallback.
 
 ## Tests
 

@@ -825,9 +825,3 @@ class WSL2Backend(PlatformBackend):
                 return None
         return None
 
-    def get_accessibility_info(self) -> dict:
-        return {
-            "available": shutil.which("powershell.exe") is not None,
-            "api_name": "UI Automation (via PowerShell)",
-            "notes": "Uses Windows UI Automation API through PowerShell subprocess bridge",
-        }

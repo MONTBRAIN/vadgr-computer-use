@@ -405,18 +405,3 @@ class MacOSBackend(PlatformBackend):
     def get_foreground_window(self) -> "Optional[ForegroundWindow]":
         return _get_foreground_window_macos()
 
-    def get_accessibility_info(self) -> dict:
-        try:
-            import AppKit
-
-            return {
-                "available": True,
-                "api_name": "macOS Accessibility API",
-                "notes": "pyobjc available. Ensure accessibility permissions are granted in System Preferences.",
-            }
-        except ImportError:
-            return {
-                "available": False,
-                "api_name": "macOS Accessibility API",
-                "notes": "pyobjc not installed. Run: pip install pyobjc-framework-ApplicationServices",
-            }
