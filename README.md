@@ -1,6 +1,8 @@
 # vadgr-computer-use
 
-Local MCP server for desktop automation. The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Pure screenshot-and-click: no accessibility tree walking, no server-side element lookup — the model picks coordinates directly from the image.
+Local MCP server for desktop automation — 13 tools for capture, mouse, keyboard, and platform introspection.
+
+The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Pure screenshot-and-click: no accessibility tree walking, no server-side element lookup, no vision-grounding fallback — the model picks coordinates directly from the image.
 
 ## Install
 
@@ -11,9 +13,8 @@ pip install vadgr-computer-use
 ## Run as MCP server
 
 ```bash
-vadgr-cua --transport stdio
-# or over SSE
-vadgr-cua --transport sse --port 8000
+vadgr-cua                             # stdio (default) -- what MCP clients use
+vadgr-cua --transport sse --port 8000 # SSE variant
 ```
 
 Wire it into any MCP client (Claude Desktop, Cursor, Cline, custom agents).
@@ -27,6 +28,8 @@ The loop is intentionally simple:
 3. Agent calls `click(x, y)` / `type_text(...)` / `key_press(...)`.
 4. Agent calls `screenshot()` again to verify the effect.
 
+That's it. The LLM owns the "where to click" decision; the server owns "how to click it precisely". No other abstraction in between.
+
 ## Platform support
 
 | Platform | Screenshots | Mouse / keyboard |
@@ -38,19 +41,19 @@ The loop is intentionally simple:
 
 On WSL2 the bridge daemon is launched automatically on first use and persists across MCP sessions; if it can't be started (e.g. no Windows Python available), the server silently falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
-## MCP tools
+## MCP tools (13)
 
-Capture
+Capture (2)
 - `screenshot()` — full screen, downscaled to `CU_MAX_WIDTH` (auto-picks 1024 / 1280 / 1366).
 - `screenshot_region(x, y, w, h)` — cropped region.
 
-Input
+Input (8)
 - `click(x, y)` / `double_click(x, y)` / `right_click(x, y)`
-- `move_mouse(x, y)` / `drag(x1, y1, x2, y2, duration=0.5)`
-- `scroll(x, y, amount)`
-- `type_text(text)` / `key_press(keys)` — keys like `ctrl+s`, `alt+tab`, `enter`.
+- `move_mouse(x, y)` / `drag(start_x, start_y, end_x, end_y, duration=0.5)`
+- `scroll(x, y, amount)` — positive = up, negative = down
+- `type_text(text)` / `key_press(keys)` — keys like `ctrl+s`, `alt+tab`, `enter`
 
-Platform info
+Platform info (3)
 - `get_platform()` / `get_platform_info()` / `get_screen_size()`
 
 ## Daemon management (WSL2)
@@ -70,6 +73,8 @@ The daemon file is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on TC
 
 ## Library usage
 
+Direct (agent picks what to do):
+
 ```python
 from computer_use import ComputerUseEngine
 
@@ -79,14 +84,23 @@ engine.click(500, 300)
 engine.type_text("hello")
 ```
 
+Autonomous (engine drives itself via an LLM provider — optional):
+
+```python
+engine = ComputerUseEngine(provider="anthropic")  # reads ANTHROPIC_API_KEY
+results = engine.run_task("Open Notepad and type hello", max_steps=50)
+```
+
 ## Environment
 
 | Variable | Purpose |
 |----------|---------|
-| `CU_MAX_WIDTH` | Override downscale target (default: auto 1024/1280/1366) |
+| `CU_MAX_WIDTH` | Override screenshot downscale target (default: auto 1024/1280/1366) |
 | `CUE_BRIDGE_PORT` | Override WSL2 bridge daemon TCP port (default: 19542) |
 | `VADGR_DATA` | Override data directory for debug screenshots |
 | `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
+| `ANTHROPIC_API_KEY` | Only for autonomous mode (`provider="anthropic"`) |
+| `OPENAI_API_KEY` | Only for autonomous mode (`provider="openai"`) |
 
 ## Tests
 
