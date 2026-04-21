@@ -117,12 +117,10 @@ class TestEnsureRunningHealthy:
 class TestEnsureRunningLaunch:
     def test_launches_daemon_when_not_running(self, fake_deployer, dead_client):
         supervisor = _supervisor(fake_deployer, dead_client)
-        # After launch, pretend the poll brings the daemon up.
         with (
             patch.object(supervisor, "_launch") as mock_launch,
             patch.object(supervisor, "_poll_for_ready", return_value=dead_client),
         ):
-            dead_client.is_available.side_effect = [False, True]
             supervisor.ensure_running()
             mock_launch.assert_called_once()
             fake_deployer.ensure.assert_called_once()
@@ -207,6 +205,76 @@ class TestEnsureRunningDrift:
             result = supervisor.ensure_running()
         assert result is healthy_client
         mock_stop.assert_not_called()
+        fake_deployer.ensure.assert_not_called()
+
+
+# --- file lock / double-checked probe ---
+
+
+class TestConcurrencyLock:
+    def test_fast_path_does_not_acquire_lock(self, fake_deployer, healthy_client):
+        """Healthy daemon => no lock needed (fast path)."""
+        supervisor = _supervisor(fake_deployer, healthy_client)
+        with patch.object(supervisor, "_acquire_lock") as mock_lock:
+            supervisor.ensure_running()
+            mock_lock.assert_not_called()
+
+    def test_slow_path_acquires_lock(self, fake_deployer, dead_client):
+        """Launching the daemon runs inside the file lock."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def fake_lock():
+            yield
+
+        supervisor = _supervisor(fake_deployer, dead_client)
+        with (
+            patch.object(
+                supervisor, "_acquire_lock", side_effect=fake_lock
+            ) as mock_lock,
+            patch.object(supervisor, "_launch"),
+            patch.object(supervisor, "_poll_for_ready", return_value=dead_client),
+        ):
+            supervisor.ensure_running()
+            mock_lock.assert_called_once()
+
+    def test_rechecks_daemon_inside_lock(self, fake_deployer):
+        """Double-checked locking: if another process launched while we
+        were waiting for the lock, skip our own deploy."""
+        from contextlib import contextmanager
+
+        # First probe: daemon not up. Second probe (inside lock): up and healthy.
+        first = MagicMock()
+        first.is_available.return_value = False
+        first.handshake.return_value = None
+
+        second = MagicMock()
+        second.is_available.return_value = True
+        second.handshake.return_value = {"pong": True, "version_hash": "deadbeef"}
+
+        clients = iter([first, second])
+
+        from computer_use.bridge.supervisor import DaemonSupervisor
+
+        supervisor = DaemonSupervisor(
+            deployer=fake_deployer,
+            client_factory=lambda: next(clients),
+        )
+
+        @contextmanager
+        def fake_lock():
+            yield
+
+        with (
+            patch.object(supervisor, "_acquire_lock", side_effect=fake_lock),
+            patch.object(supervisor, "_launch") as mock_launch,
+            patch.object(supervisor, "_poll_for_ready") as mock_poll,
+        ):
+            result = supervisor.ensure_running()
+
+        assert result is second
+        mock_launch.assert_not_called()  # re-check saw the daemon was up
+        mock_poll.assert_not_called()
         fake_deployer.ensure.assert_not_called()
 
 

@@ -18,11 +18,14 @@ or the filesystem.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import logging
 import subprocess
+import tempfile
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional
 
 from computer_use.bridge.client import BridgeClient
 from computer_use.bridge.deployer import DaemonDeployer
@@ -50,6 +53,10 @@ class DaemonSupervisor:
     # Short timeout for stop-side PowerShell calls.
     _STOP_TIMEOUT: float = 10.0
 
+    # File lock serializes daemon launches across concurrent processes
+    # (e.g. two MCP clients starting at the same time).
+    _LOCK_PATH: Path = Path(tempfile.gettempdir()) / "vadgr-cua-daemon.lock"
+
     def __init__(
         self,
         deployer: Optional[DaemonDeployer] = None,
@@ -63,26 +70,33 @@ class DaemonSupervisor:
     def ensure_running(self) -> Optional[BridgeClient]:
         """Return a working BridgeClient, or None if the daemon can't be brought up.
 
-        Decision tree:
-          1. Probe. If healthy AND version matches, return client.
-          2. If healthy but stale (hash mismatch or legacy daemon with no
-             version_hash), stop and fall through to redeploy.
-          3. Locate Windows Python and deploy dir. If either missing, return None.
-          4. Run `deployer.ensure(...)`. If it fails, return None.
-          5. Launch the daemon (detached Windows process).
-          6. Poll until the daemon responds on its port, or time out.
+        Fast path (no lock): probe + version check. If the daemon is
+        healthy and on the current version, return the client immediately.
+
+        Slow path (under a file lock): if the daemon is missing or stale,
+        acquire a file lock before launching so concurrent MCP processes
+        don't race each other. Inside the lock we re-probe ("double-checked
+        locking") to benefit from whoever else just finished launching.
         """
         client = self._client_factory()
-        if client.is_available():
-            if self._is_up_to_date(client):
-                return client
-            logger.info(
-                "Daemon version drift detected; stopping and redeploying"
-            )
-            self.stop()
-            # fall through to redeploy + relaunch
+        if client.is_available() and self._is_up_to_date(client):
+            return client
 
-        return self._deploy_and_launch()
+        with self._acquire_lock():
+            # Re-probe under the lock: another process may have launched
+            # the daemon while we were waiting.
+            client = self._client_factory()
+            if client.is_available() and self._is_up_to_date(client):
+                return client
+
+            if client.is_available():
+                # Stale daemon (drift or legacy) -- stop before redeploying.
+                logger.info(
+                    "Daemon version drift detected; stopping and redeploying"
+                )
+                self.stop()
+
+            return self._deploy_and_launch()
 
     def _is_up_to_date(self, client: BridgeClient) -> bool:
         """True if the running daemon's version hash matches the shipped one.
@@ -181,6 +195,32 @@ class DaemonSupervisor:
         }
 
     # --- Internal hooks (patchable in tests) ---
+
+    @contextlib.contextmanager
+    def _acquire_lock(self) -> Iterator[None]:
+        """Acquire an exclusive file lock to serialize daemon launches.
+
+        Uses `fcntl.flock`, which provides advisory locking at the OS level
+        across processes (POSIX / WSL). Falls back to no-op on platforms
+        without flock (Windows native), which is fine because the native
+        Windows backend doesn't need a daemon at all.
+        """
+        self._LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Open in append mode so we neither truncate nor race on creation.
+        with open(self._LOCK_PATH, "a") as f:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except OSError as e:
+                logger.debug("flock unavailable (%s); proceeding without lock", e)
+                yield
+                return
+            try:
+                yield
+            finally:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    pass
 
     def _launch(self, win_python: str, win_dir: str) -> None:
         """Start the daemon as a detached Windows process.
