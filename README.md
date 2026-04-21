@@ -18,6 +18,24 @@ vadgr-cua --transport sse --port 8000
 
 Wire it into any MCP client (Claude Desktop, Cursor, Cline, custom agents).
 
+## Daemon management (WSL2)
+
+On WSL2 the server reaches Windows through a small background daemon. It
+launches itself on first use and survives across sessions; most users
+never need to touch it. For when you do:
+
+```bash
+vadgr-cua doctor           # JSON: platform, Windows Python, daemon state, port, hash
+vadgr-cua install-daemon   # Eager deploy + launch (useful in provisioning scripts)
+vadgr-cua stop-daemon      # Kill the running daemon
+vadgr-cua restart-daemon   # Stop then start
+```
+
+The daemon is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on
+TCP `127.0.0.1:19542` (override with `CUE_BRIDGE_PORT`). After
+`pip install -U vadgr-computer-use`, the next session detects the
+version-hash drift and redeploys the daemon automatically.
+
 ## How it works
 
 The loop is intentionally simple:
