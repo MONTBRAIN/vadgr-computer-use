@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
-from computer_use.core.types import Action, Element, ScreenState
+from computer_use.core.types import Action, ScreenState
 
 
 @dataclass
@@ -33,11 +33,7 @@ class AgentDecision:
 
 
 class VisionProvider(ABC):
-    """Abstract base for LLM vision providers.
-
-    Used in autonomous mode where the engine calls the LLM directly,
-    and for vision-based grounding fallback.
-    """
+    """Abstract base for LLM vision providers used in autonomous mode."""
 
     @abstractmethod
     def decide_action(
@@ -45,26 +41,8 @@ class VisionProvider(ABC):
         screen: ScreenState,
         task: str,
         history: list[dict],
-        elements: Optional[list[Element]] = None,
     ) -> AgentDecision:
-        """Given a screenshot and task, decide the next action.
-
-        Args:
-            screen: Current screenshot.
-            task: Natural-language task description.
-            history: List of prior actions and outcomes.
-            elements: Optional accessibility-grounded UI elements.
-
-        Returns:
-            AgentDecision with chosen action and reasoning.
-        """
-        ...
-
-    @abstractmethod
-    def locate_element(
-        self, screen: ScreenState, description: str
-    ) -> Optional[Element]:
-        """Use vision to locate a UI element matching a description."""
+        """Given a screenshot and task, decide the next action."""
         ...
 
     @abstractmethod

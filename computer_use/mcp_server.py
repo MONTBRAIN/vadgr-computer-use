@@ -8,8 +8,9 @@ import io
 import logging
 import os
 import sys
+from typing import Optional
 
-_DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
+_DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
 logging.basicConfig(
     level=logging.DEBUG if _DEBUG else logging.INFO,
@@ -22,7 +23,7 @@ _debug_counter = 0
 
 
 def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
-    """Save PNG to .debug/ when AGENT_FORGE_DEBUG=1."""
+    """Save PNG to .debug/ when VADGR_DEBUG=1."""
     if not _DEBUG:
         return
     global _debug_counter
@@ -128,11 +129,6 @@ def _downscale(png_bytes: bytes, offset_x: int = 0, offset_y: int = 0) -> bytes:
 def _to_real(x: int, y: int) -> tuple[int, int]:
     """Convert display coordinates to absolute screen coordinates."""
     return int(x * _scale_x) + _offset_x, int(y * _scale_y) + _offset_y
-
-
-def _from_real(x: int, y: int) -> tuple[int, int]:
-    """Convert absolute screen coordinates to display coordinates."""
-    return int((x - _offset_x) / _scale_x), int((y - _offset_y) / _scale_y)
 
 
 @mcp.tool()
@@ -259,30 +255,78 @@ def get_platform() -> str:
 
 @mcp.tool()
 def get_platform_info() -> dict:
-    """Returns platform details + accessibility info."""
+    """Returns platform details."""
     engine = _get_engine()
     return engine.get_platform_info()
 
 
-@mcp.tool()
-def find_element(description: str) -> str:
-    """Find a UI element by description, e.g. "Save button". Returns position or not found."""
-    engine = _get_engine()
-    element = engine.find_element(description)
-    if element is None:
-        return f"Element not found: {description}"
-    cx, cy = element.region.center
-    dx, dy = _from_real(cx, cy)
-    return (
-        f"Found '{element.name}' (role={element.role}) at ({dx}, {dy}), "
-        f"confidence={element.confidence:.2f}"
+# --- CLI: management subcommands ---
+#
+# The package ships a single entry point (`vadgr-cua`). With no arguments
+# it starts the MCP stdio server (the hot path). With a subcommand it
+# exposes daemon lifecycle controls that used to live in external tooling.
+# Keeping every subcommand as a small function makes them unit-testable
+# without spinning up argparse or touching sys.argv.
+
+from computer_use.bridge.supervisor import DaemonSupervisor  # noqa: E402
+
+
+def _cmd_doctor(args) -> int:
+    """Print structured status of the bridge daemon.
+
+    Exits 0 regardless of daemon state -- callers parse the JSON.
+    """
+    import json as _json
+
+    status = DaemonSupervisor().status()
+    print(_json.dumps(status, indent=2))
+    return 0
+
+
+def _cmd_install_daemon(args) -> int:
+    """Eager deploy + launch. Returns non-zero if the daemon can't come up."""
+    client = DaemonSupervisor().ensure_running()
+    if client is None:
+        print(
+            "Daemon install failed. Run `vadgr-cua doctor` for diagnostics.",
+            file=sys.stderr,
+        )
+        return 1
+    print("Daemon installed and running.")
+    return 0
+
+
+def _cmd_stop_daemon(args) -> int:
+    """Best-effort stop. Always returns 0 -- stop is idempotent."""
+    DaemonSupervisor().stop()
+    print("Daemon stopped.")
+    return 0
+
+
+def _cmd_restart_daemon(args) -> int:
+    """Stop then start. Returns non-zero if the restart didn't come up."""
+    client = DaemonSupervisor().restart()
+    if client is None:
+        print("Daemon restart failed.", file=sys.stderr)
+        return 1
+    print("Daemon restarted.")
+    return 0
+
+
+# Command -> module-level function name. Resolved via globals() at
+# dispatch time so tests that patch the module attribute see the fake.
+_SUBCOMMAND_NAMES: dict = {
+    "doctor": "_cmd_doctor",
+    "install-daemon": "_cmd_install_daemon",
+    "stop-daemon": "_cmd_stop_daemon",
+    "restart-daemon": "_cmd_restart_daemon",
+}
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="vadgr-cua", description="Computer Use MCP Server"
     )
-
-
-def main():
-    global _MAX_WIDTH
-
-    parser = argparse.ArgumentParser(description="Computer Use MCP Server")
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse"],
@@ -301,7 +345,22 @@ def main():
         default=_MAX_WIDTH,
         help="Max screenshot width in pixels (0=auto, env: CU_MAX_WIDTH)",
     )
-    args = parser.parse_args()
+
+    sub = parser.add_subparsers(dest="command", required=False)
+    sub.add_parser("doctor", help="Print daemon status as JSON")
+    sub.add_parser(
+        "install-daemon",
+        help="Deploy and launch the Windows bridge daemon (WSL2 only)",
+    )
+    sub.add_parser("stop-daemon", help="Stop the Windows bridge daemon")
+    sub.add_parser("restart-daemon", help="Stop then start the daemon")
+
+    return parser
+
+
+def _run_mcp_server(args) -> int:
+    """Run the FastMCP server with the parsed CLI args."""
+    global _MAX_WIDTH
     _MAX_WIDTH = args.max_width
 
     logger.info(
@@ -315,7 +374,16 @@ def main():
         logger.info("SSE server on port %d", args.port)
 
     mcp.run(transport=args.transport)
+    return 0
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = _build_parser().parse_args(argv)
+    handler_name = _SUBCOMMAND_NAMES.get(args.command)
+    if handler_name is not None:
+        return globals()[handler_name](args)
+    return _run_mcp_server(args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

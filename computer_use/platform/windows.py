@@ -405,9 +405,3 @@ class WindowsBackend(PlatformBackend):
         except Exception:
             return None
 
-    def get_accessibility_info(self) -> dict:
-        return {
-            "available": sys.platform == "win32",
-            "api_name": "UI Automation",
-            "notes": "Native Windows UI Automation via ctypes",
-        }

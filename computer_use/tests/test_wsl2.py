@@ -1,12 +1,11 @@
 """Tests for the WSL2 platform backend."""
 
-import subprocess
-from unittest.mock import MagicMock, patch, mock_open, PropertyMock, call
+from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
 
 from computer_use.core.errors import ActionError, ScreenCaptureError
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.types import Region
 from computer_use.platform.wsl2 import (
     wsl_to_win_path,
     win_to_wsl_path,
@@ -17,10 +16,7 @@ from computer_use.platform.wsl2 import (
     _get_windows_temp_dir,
     _run_ps,
     _run_ps_subprocess,
-    POWERSHELL,
     VK_CODES,
-    SENDKEYS_MAP,
-    MODIFIER_MAP,
 )
 
 

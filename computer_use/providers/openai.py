@@ -19,14 +19,11 @@ import json
 import logging
 import urllib.request
 import urllib.error
-from typing import Optional
 
 from computer_use.core.errors import ProviderError
 from computer_use.core.types import (
     Action,
     ActionType,
-    Element,
-    Region,
     ScreenState,
 )
 from computer_use.providers.base import AgentDecision, VisionProvider
@@ -73,7 +70,6 @@ class OpenAIProvider(VisionProvider):
         screen: ScreenState,
         task: str,
         history: list[dict],
-        elements: Optional[list[Element]] = None,
     ) -> AgentDecision:
         image_b64 = base64.b64encode(screen.image_bytes).decode("utf-8")
 
@@ -90,17 +86,6 @@ class OpenAIProvider(VisionProvider):
                 "text": f"Task: {task}\nScreen size: {screen.width}x{screen.height}",
             },
         ]
-
-        if elements:
-            element_desc = "\n".join(
-                f"- {e.name} ({e.role}) at ({e.region.x},{e.region.y}) "
-                f"size {e.region.width}x{e.region.height}"
-                for e in elements[:20]
-            )
-            user_content.append({
-                "type": "text",
-                "text": f"Visible UI elements:\n{element_desc}",
-            })
 
         if history:
             recent = history[-5:]
@@ -124,43 +109,6 @@ class OpenAIProvider(VisionProvider):
 
         response = self._call_api(payload)
         return self._parse_decision(response)
-
-    def locate_element(
-        self, screen: ScreenState, description: str
-    ) -> Optional[Element]:
-        image_b64 = base64.b64encode(screen.image_bytes).decode("utf-8")
-
-        payload = {
-            "model": self._model,
-            "max_tokens": 512,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_b64}",
-                                "detail": "high",
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                f"Find the UI element matching: '{description}'. "
-                                f"Screen: {screen.width}x{screen.height}. "
-                                "Reply JSON: {\"x\": int, \"y\": int, \"width\": int, "
-                                "\"height\": int, \"name\": str, \"role\": str, "
-                                "\"confidence\": float} or {\"not_found\": true}"
-                            ),
-                        },
-                    ],
-                }
-            ],
-        }
-
-        response = self._call_api(payload)
-        return self._parse_element(response)
 
     def verify_action(
         self, before: ScreenState, after: ScreenState, expected: str
@@ -300,28 +248,3 @@ class OpenAIProvider(VisionProvider):
             target_y=data.get("target_y"),
         )
 
-    def _parse_element(self, response: dict) -> Optional[Element]:
-        text = self._extract_text(response)
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            return None
-
-        if data.get("not_found"):
-            return None
-
-        try:
-            return Element(
-                name=data.get("name", "unknown"),
-                role=data.get("role", "unknown"),
-                region=Region(
-                    x=int(data["x"]),
-                    y=int(data["y"]),
-                    width=int(data.get("width", 50)),
-                    height=int(data.get("height", 30)),
-                ),
-                confidence=float(data.get("confidence", 0.5)),
-                source="vision",
-            )
-        except (KeyError, ValueError):
-            return None

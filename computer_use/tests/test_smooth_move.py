@@ -1,7 +1,6 @@
 """Tests for platform-agnostic smooth mouse movement."""
 
-import math
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from computer_use.core.smooth_move import (
     CursorTracker,

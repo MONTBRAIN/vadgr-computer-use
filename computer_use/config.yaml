@@ -4,8 +4,8 @@
 # Values: windows, macos, linux, wsl2
 # platform: auto
 
-# LLM provider for autonomous mode and vision fallback grounding.
-# Not needed for library mode (the calling agent provides its own decisions).
+# LLM provider for autonomous mode only (ComputerUseEngine.run_task).
+# Not needed for library/MCP mode (the calling agent provides its own decisions).
 # provider: anthropic
 
 providers:
@@ -28,12 +28,6 @@ actions:
   click_delay: 0.1                 # seconds between mouse down and up
   type_delay: 0.05                 # seconds between keystrokes
   action_settle_delay: 0.5         # seconds to wait after action before next screenshot
-
-# Grounding settings
-grounding:
-  strategy: hybrid                 # hybrid, accessibility_only, vision_only
-  accessibility_confidence_threshold: 0.7
-  vision_cache_ttl: 5.0
 
 # Core loop settings (autonomous mode)
 loop:

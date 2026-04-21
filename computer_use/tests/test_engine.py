@@ -13,7 +13,6 @@ from computer_use.core.errors import ConfigError, PlatformNotSupportedError
 from computer_use.core.types import (
     Action,
     ActionType,
-    Element,
     Platform,
     Region,
     ScreenState,
@@ -24,11 +23,6 @@ from computer_use.core.types import (
 def mock_backend():
     backend = MagicMock()
     backend.is_available.return_value = True
-    backend.get_accessibility_info.return_value = {
-        "available": True,
-        "api_name": "Mock",
-        "notes": "",
-    }
 
     capture = MagicMock()
     capture.capture_full.return_value = ScreenState(
@@ -153,40 +147,6 @@ class TestActionDataclass:
         executor.execute_action.assert_called_once_with(action)
 
 
-class TestGrounding:
-    def test_find_element_returns_none_when_no_locator(self, engine):
-        with patch.object(engine, "_get_locator", return_value=None):
-            assert engine.find_element("foo") is None
-
-    def test_find_element_uses_locator(self, engine):
-        locator = MagicMock()
-        element = Element(
-            role="button", name="OK",
-            region=Region(10, 20, 50, 30),
-            confidence=0.9,
-            source="accessibility",
-        )
-        locator.find_element.return_value = element
-        with patch.object(engine, "_get_locator", return_value=locator):
-            assert engine.find_element("OK button") is element
-
-    def test_find_all_elements_empty_when_no_locator(self, engine):
-        with patch.object(engine, "_get_locator", return_value=None):
-            assert engine.find_all_elements() == []
-
-    def test_click_element_clicks_center(self, engine, mock_backend):
-        _, _, executor = mock_backend
-        element = Element(
-            role="button", name="OK",
-            region=Region(100, 200, 40, 20),
-            confidence=1.0,
-            source="accessibility",
-        )
-        engine.click_element(element)
-        cx, cy = element.region.center
-        executor.click.assert_called_once_with(cx, cy)
-
-
 class TestPlatformInfo:
     def test_get_screen_size(self, engine):
         assert engine.get_screen_size() == (1920, 1080)
@@ -195,7 +155,7 @@ class TestPlatformInfo:
         info = engine.get_platform_info()
         assert info["platform"] == "linux"
         assert info["backend_available"] is True
-        assert info["accessibility"]["available"] is True
+        assert "accessibility" not in info
 
 
 class TestConfig:

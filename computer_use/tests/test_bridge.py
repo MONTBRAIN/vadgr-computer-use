@@ -6,7 +6,7 @@ import json
 import socket
 import struct
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
@@ -145,6 +145,51 @@ class TestBridgeClient:
         assert client.is_available() is True
         client.close()
         server.close()
+
+    def test_handshake_returns_full_ping_dict(self):
+        """handshake() exposes the raw ping response for version checks."""
+        response_data = {
+            "id": "",
+            "ok": True,
+            "result": {"pong": True, "version_hash": "abc123"},
+        }
+
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+
+        def serve():
+            conn, _ = server.accept()
+            header = conn.recv(HEADER_SIZE)
+            length = struct.unpack("!I", header)[0]
+            payload = conn.recv(length)
+            request = json.loads(payload)
+            response_data["id"] = request["id"]
+            resp_bytes = json.dumps(response_data, separators=(",", ":")).encode()
+            conn.sendall(struct.pack("!I", len(resp_bytes)) + resp_bytes)
+            conn.close()
+
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+
+        client = BridgeClient(host="127.0.0.1", port=port)
+        resp = client.handshake()
+        assert resp == {"pong": True, "version_hash": "abc123"}
+        client.close()
+        server.close()
+
+    def test_handshake_returns_none_when_unreachable(self):
+        """Unreachable daemon => handshake returns None (no exception)."""
+        # Bind a socket just to get a free port, then close it so nothing
+        # is listening. Any attempt to connect should fail cleanly.
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        client = BridgeClient(host="127.0.0.1", port=port)
+        assert client.handshake() is None
 
 
 class TestBridgeScreenCapture:
@@ -382,37 +427,30 @@ class TestWSL2BackendBridgeFallbackWiring:
 
 
 class TestWSL2BackendFallback:
-    def test_uses_bridge_when_available(self):
+    """WSL2Backend delegates daemon lifecycle to an injected DaemonSupervisor."""
+
+    def _backend_with_supervisor(self, supervisor):
         from computer_use.platform.wsl2 import WSL2Backend
 
-        backend = WSL2Backend()
-        with patch("computer_use.bridge.client.BridgeClient") as MockClient:
-            MockClient.return_value.is_available.return_value = True
-            backend._probe_bridge()
-            assert backend._use_bridge is True
+        return WSL2Backend(supervisor=supervisor)
 
-    def test_falls_back_when_bridge_unavailable(self):
-        from computer_use.platform.wsl2 import WSL2Backend
+    def test_uses_bridge_when_supervisor_returns_client(self):
+        supervisor = MagicMock()
+        supervisor.ensure_running.return_value = MagicMock()  # a live client
+        backend = self._backend_with_supervisor(supervisor)
+        assert backend._probe_bridge() is True
 
-        backend = WSL2Backend()
-        with (
-            patch("computer_use.bridge.client.BridgeClient") as MockClient,
-            patch.object(WSL2Backend, "_auto_launch_daemon", return_value=False),
-        ):
-            MockClient.return_value.is_available.return_value = False
-            backend._probe_bridge()
-            assert backend._use_bridge is False
+    def test_falls_back_when_supervisor_returns_none(self):
+        supervisor = MagicMock()
+        supervisor.ensure_running.return_value = None
+        backend = self._backend_with_supervisor(supervisor)
+        assert backend._probe_bridge() is False
 
     def test_probe_caches_result(self):
-        from computer_use.platform.wsl2 import WSL2Backend
-
-        backend = WSL2Backend()
-        with (
-            patch("computer_use.bridge.client.BridgeClient") as MockClient,
-            patch.object(WSL2Backend, "_auto_launch_daemon", return_value=False),
-        ):
-            MockClient.return_value.is_available.return_value = False
-            backend._probe_bridge()
-            backend._probe_bridge()
-            # Only one BridgeClient created despite two probes
-            assert MockClient.call_count == 1
+        """Calling _probe_bridge twice only asks the supervisor once."""
+        supervisor = MagicMock()
+        supervisor.ensure_running.return_value = None
+        backend = self._backend_with_supervisor(supervisor)
+        backend._probe_bridge()
+        backend._probe_bridge()
+        assert supervisor.ensure_running.call_count == 1

@@ -15,7 +15,6 @@
 """Abstract screenshot capture interface."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from computer_use.core.types import Region, ScreenState
 

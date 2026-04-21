@@ -1,13 +1,11 @@
 """Tests for the Linux platform backend."""
 
 import os
-import subprocess
-from unittest.mock import MagicMock, patch, mock_open, PropertyMock
+from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
 
-from computer_use.core.errors import ActionError, ScreenCaptureError
-from computer_use.core.types import Region, ScreenState
+from computer_use.core.errors import ScreenCaptureError
 
 from computer_use.platform.linux import dbus_import, evdev_import, ecodes
 
@@ -512,7 +510,6 @@ class TestIsMutterAvailable:
 
 def _mock_evdev():
     """Create mock evdev module and devices for testing."""
-    from computer_use.platform.linux import ecodes
 
     # Mock mouse with ABS support (like VBox tablet)
     mouse = MagicMock()
@@ -548,7 +545,6 @@ class TestEvdevActionExecutor:
         return EvdevActionExecutor(mouse, kbd, screen_w=1920, screen_h=1080)
 
     def test_move_mouse_abs(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         # Test raw move directly (smooth_move generates multiple intermediate calls)
         ex._raw_move(960, 540)
@@ -568,7 +564,6 @@ class TestEvdevActionExecutor:
         assert ex._tracker.get_pos() == (960, 540)
 
     def test_click_sends_button_events(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.click(100, 100)
 
@@ -579,7 +574,6 @@ class TestEvdevActionExecutor:
         assert any(c[0][2] == 0 for c in btn_calls)  # release
 
     def test_right_click(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.click(100, 100, button="right")
 
@@ -588,7 +582,6 @@ class TestEvdevActionExecutor:
         assert len(btn_calls) == 2  # press + release
 
     def test_double_click(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.double_click(100, 100)
 
@@ -597,7 +590,6 @@ class TestEvdevActionExecutor:
         assert len(btn_presses) == 2  # two clicks
 
     def test_scroll(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.scroll(100, 100, -3)
 
@@ -607,7 +599,6 @@ class TestEvdevActionExecutor:
         assert all(c[0][2] == -1 for c in wheel_calls)
 
     def test_key_press(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.key_press(["ctrl", "c"])
 
@@ -618,7 +609,6 @@ class TestEvdevActionExecutor:
 
     def test_type_text_short_uses_keys(self):
         """Short text (<=3 chars) should type char-by-char, not clipboard."""
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.type_text("hi")
 
@@ -629,7 +619,6 @@ class TestEvdevActionExecutor:
     @patch("subprocess.run")
     def test_type_text_long_types_each_char(self, mock_run):
         """Long text should type each character individually, not clipboard paste."""
-        from computer_use.platform.linux import ecodes
         mock_run.return_value = MagicMock(returncode=0)
 
         ex = self._make_executor()
@@ -643,7 +632,6 @@ class TestEvdevActionExecutor:
         assert len(key_calls) >= 10  # 5 chars * 2 (press + release)
 
     def test_type_text_newline_sends_enter(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.type_text("a\nb")
 
@@ -655,7 +643,6 @@ class TestEvdevActionExecutor:
         assert ecodes.KEY_ENTER in pressed_keycodes
 
     def test_type_text_uppercase_uses_shift(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.type_text("Hi")
 
@@ -667,7 +654,6 @@ class TestEvdevActionExecutor:
         assert ecodes.KEY_LEFTSHIFT in pressed_keycodes
 
     def test_type_text_space_works(self):
-        from computer_use.platform.linux import ecodes
         ex = self._make_executor()
         ex.type_text("a b")
 
@@ -819,7 +805,7 @@ class TestForegroundWindowWayland:
     @patch("computer_use.platform.linux._query_foreground_window_wayland")
     def test_dispatch_uses_wayland_on_wayland(self, mock_wayland):
         from computer_use.platform.linux import (
-            _query_foreground_window, _fg_window_cache,
+            _query_foreground_window,
         )
         import computer_use.platform.linux as linux_mod
 

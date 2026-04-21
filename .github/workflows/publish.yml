@@ -9,11 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  pypi:
+  build:
     runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,41 +20,72 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Read version from pyproject.toml
+        id: version
+        run: |
+          v=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Package version: $v"
+
+      - name: "Guard tag matches pyproject version"
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="${{ steps.version.outputs.version }}"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Tag v$tag does not match pyproject version $pkg"
+            exit 1
+          fi
+
       - name: Build distributions
         run: |
           python -m pip install --upgrade pip build
           python -m build
 
-      - name: Publish to PyPI
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: release
+      url: https://pypi.org/p/vadgr-computer-use
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
           skip-existing: true
 
-  docker:
+  github-release:
     runs-on: ubuntu-latest
     needs: pypi
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          name: dist
+          path: dist/
 
-      - name: Extract tag version
-        id: tag
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          context: .
-          push: true
-          tags: |
-            vadgr/computer-use:${{ steps.tag.outputs.version }}
-            vadgr/computer-use:latest
+          generate_release_notes: true
+          files: dist/*

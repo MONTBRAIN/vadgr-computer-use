@@ -1,6 +1,6 @@
 """Tests for action execution routing."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.types import Action, ActionType

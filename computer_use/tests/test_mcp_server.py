@@ -1,12 +1,12 @@
 """Tests for the MCP server tool wrappers."""
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
 
-from computer_use.core.types import Element, Platform, Region, ScreenState
+from computer_use.core.types import Platform, ScreenState
 
 
 def _make_png(width: int, height: int) -> bytes:
@@ -35,15 +35,7 @@ def mock_engine():
     engine.get_platform_info.return_value = {
         "platform": "wsl2",
         "backend_available": True,
-        "accessibility": {"available": True, "api_name": "UI Automation"},
     }
-    engine.find_element.return_value = Element(
-        name="Save",
-        role="button",
-        region=Region(100, 200, 80, 30),
-        confidence=0.95,
-        source="accessibility",
-    )
     return engine
 
 
@@ -302,52 +294,6 @@ class TestInfoTools:
         assert result["platform"] == "wsl2"
         assert result["backend_available"] is True
 
-
-class TestElementFinding:
-    def test_find_element_found(self, mock_engine):
-        from computer_use.mcp_server import find_element
-
-        result = find_element("Save button")
-        assert "Save" in result
-        assert "button" in result
-        mock_engine.find_element.assert_called_once_with("Save button")
-
-    def test_find_element_returns_display_coords(self, mock_engine):
-        """find_element should return coords in display space."""
-        import computer_use.mcp_server as mod
-        from computer_use.mcp_server import find_element
-
-        mod._scale_x = 2.0
-        mod._scale_y = 2.0
-        mod._offset_x = 0
-        mod._offset_y = 0
-        # Element center is (140, 215) in real coords
-        # Display coords should be (70, 107)
-        result = find_element("Save button")
-        assert "70" in result
-        assert "107" in result
-
-    def test_find_element_with_offset(self, mock_engine):
-        """find_element subtracts monitor offset before converting to display coords."""
-        import computer_use.mcp_server as mod
-        from computer_use.mcp_server import find_element
-
-        mod._scale_x = 1.0
-        mod._scale_y = 1.0
-        mod._offset_x = 100
-        mod._offset_y = 50
-        # Element center is (140, 215) in real coords
-        # Subtract offset: (40, 165), then /scale = (40, 165)
-        result = find_element("Save button")
-        assert "40" in result
-        assert "165" in result
-
-    def test_find_element_not_found(self, mock_engine):
-        from computer_use.mcp_server import find_element
-
-        mock_engine.find_element.return_value = None
-        result = find_element("nonexistent")
-        assert "not found" in result.lower()
 
 
 class TestScreenshotRegionScalePreservation:
