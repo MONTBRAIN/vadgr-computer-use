@@ -2,7 +2,7 @@
 
 Local MCP server for desktop automation — 13 tools for capture, mouse, keyboard, and platform introspection.
 
-The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Pure screenshot-and-click: no accessibility tree walking, no server-side element lookup, no vision-grounding fallback — the model picks coordinates directly from the image.
+The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. The model picks coordinates directly from the pixels.
 
 ## Install
 
