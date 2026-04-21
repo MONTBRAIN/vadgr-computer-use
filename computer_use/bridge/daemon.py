@@ -187,15 +187,6 @@ def _log_dpi_diagnostics():
             pass
 
 
-# Adaptation functions for muscle memory (used when hit_count > 0).
-# These live alongside daemon.py on Windows, or in core/ on WSL/Linux.
-try:
-    from spatial_cache import adapted_fitts_duration, muscle_memory_windmouse_params
-    _HAS_ADAPT = True
-except ImportError:
-    _HAS_ADAPT = False
-
-
 class ScreenCapturer:
     """Fast screenshot capture using mss. Thread-safe via per-thread instances."""
 
@@ -475,27 +466,16 @@ class InputSender:
         user32.GetCursorPos(ctypes.byref(point))
         return point.x, point.y
 
-    def smooth_move(self, end_x, end_y, target_width=40, hit_count=0):
-        """Move mouse to (end_x, end_y) with human-like WindMouse motion.
-
-        When hit_count > 1, adapts path and timing via muscle memory:
-        straighter paths, faster movement.
-        """
+    def smooth_move(self, end_x, end_y, target_width=40):
+        """Move mouse to (end_x, end_y) with human-like WindMouse motion."""
         start_x, start_y = self._get_cursor_pos()
         distance = math.hypot(end_x - start_x, end_y - start_y)
 
         if distance < 2:
             return
 
-        # Adapt WindMouse params based on muscle memory
-        path_kwargs = {}
-        if _HAS_ADAPT and hit_count > 1:
-            path_kwargs = muscle_memory_windmouse_params(hit_count)
-        path = _windmouse_path(start_x, start_y, end_x, end_y, **path_kwargs)
-
+        path = _windmouse_path(start_x, start_y, end_x, end_y)
         duration = _fitts_duration(distance, target_width)
-        if _HAS_ADAPT and hit_count > 1:
-            duration = adapted_fitts_duration(duration, hit_count)
         delays = _generate_delays(len(path), duration)
 
         for i, (px, py) in enumerate(path):
@@ -511,18 +491,18 @@ class InputSender:
         inp = self._make_move_input(abs_x, abs_y)
         user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
-    def move_mouse(self, x, y, natural=True, hit_count=0):
+    def move_mouse(self, x, y, natural=True):
         if natural:
-            self.smooth_move(x, y, hit_count=hit_count)
+            self.smooth_move(x, y)
         else:
             self._instant_move(x, y)
 
-    def click(self, x, y, button="left", natural=True, hit_count=0):
+    def click(self, x, y, button="left", natural=True):
         down_flag, up_flag = self._button_flags(button)
 
         if natural:
             # Approach target with smooth movement
-            self.smooth_move(x, y, hit_count=hit_count)
+            self.smooth_move(x, y)
             time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
             # Slight click offset (humans don't hit pixel-perfect center)
             offset_x = x + int(random.gauss(0, 2))
@@ -540,9 +520,9 @@ class InputSender:
         if sent != 3:
             logger.warning("SendInput click returned %d (expected 3)", sent)
 
-    def double_click(self, x, y, natural=True, hit_count=0):
+    def double_click(self, x, y, natural=True):
         if natural:
-            self.smooth_move(x, y, hit_count=hit_count)
+            self.smooth_move(x, y)
             time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
             offset_x = x + int(random.gauss(0, 2))
             offset_y = y + int(random.gauss(0, 2))
@@ -831,21 +811,18 @@ class BridgeDaemon:
 
     def _handle_move_mouse(self, params):
         self._input.move_mouse(params["x"], params["y"],
-                               natural=params.get("natural", True),
-                               hit_count=params.get("hit_count", 0))
+                               natural=params.get("natural", True))
         return {}
 
     def _handle_click(self, params):
         self._input.click(params["x"], params["y"],
                           button=params.get("button", "left"),
-                          natural=params.get("natural", True),
-                          hit_count=params.get("hit_count", 0))
+                          natural=params.get("natural", True))
         return {}
 
     def _handle_double_click(self, params):
         self._input.double_click(params["x"], params["y"],
-                                 natural=params.get("natural", True),
-                                 hit_count=params.get("hit_count", 0))
+                                 natural=params.get("natural", True))
         return {}
 
     def _handle_type_text(self, params):

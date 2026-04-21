@@ -156,29 +156,6 @@ class TestSmoothMove:
         # Distance < 2, should not move
         assert len(moves) == 0
 
-    def test_hit_count_affects_duration(self):
-        """Higher hit_count should result in faster movement (fewer/shorter sleeps)."""
-        sleep_times_no_hit = []
-        sleep_times_high_hit = []
-
-        def mock_move(x, y):
-            pass
-
-        with patch("computer_use.core.smooth_move.time.sleep",
-                    side_effect=lambda t: sleep_times_no_hit.append(t)):
-            smooth_move(500, 500, CursorTracker(0, 0).get_pos, mock_move, hit_count=0)
-
-        with patch("computer_use.core.smooth_move.time.sleep",
-                    side_effect=lambda t: sleep_times_high_hit.append(t)):
-            smooth_move(500, 500, CursorTracker(0, 0).get_pos, mock_move, hit_count=20)
-
-        # High hit_count should have shorter total sleep (adapted via Power Law)
-        total_no_hit = sum(sleep_times_no_hit)
-        total_high_hit = sum(sleep_times_high_hit)
-        # Not always true due to randomness, but on average. Use a lenient check.
-        # At least the adapted path should have fewer points (straighter)
-        assert len(sleep_times_high_hit) <= len(sleep_times_no_hit) + 5
-
     def test_accepts_callable_primitives(self):
         """Verify that any callable works as get_cursor_pos and move_primitive."""
         cursor_pos = (50, 50)

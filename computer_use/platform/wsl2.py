@@ -557,7 +557,7 @@ SMOOTH_MOVE_DELAY_MS = 10
 
 class WSL2ActionExecutor(ActionExecutor):
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
+    def move_mouse(self, x: int, y: int) -> None:
         script = SMOOTH_MOVE_SCRIPT.format(
             x=x, y=y, steps=SMOOTH_MOVE_STEPS, delay=SMOOTH_MOVE_DELAY_MS
         )
@@ -566,7 +566,7 @@ class WSL2ActionExecutor(ActionExecutor):
         except Exception as e:
             raise ActionError(f"Mouse move failed: {e}") from e
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
+    def click(self, x: int, y: int, button: str = "left") -> None:
         if button == "left":
             actions = (
                 "[MouseInput]::mouse_event([MouseInput]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)\n"
@@ -594,7 +594,7 @@ class WSL2ActionExecutor(ActionExecutor):
         except Exception as e:
             raise ActionError(f"Click failed at ({x}, {y}): {e}") from e
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
+    def double_click(self, x: int, y: int) -> None:
         actions = (
             "[MouseInput]::mouse_event([MouseInput]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)\n"
             "[MouseInput]::mouse_event([MouseInput]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [IntPtr]::Zero)\n"
@@ -753,7 +753,7 @@ Start-Sleep -Milliseconds 50
 
 # Daemon auto-launch settings.
 _DAEMON_DEPLOY_DIR_NAME = "AgentForge"  # under Windows user profile
-_DAEMON_FILES = ("daemon.py", "spatial_cache.py")
+_DAEMON_FILES = ("daemon.py",)
 _DAEMON_LAUNCH_WAIT = 3.0  # seconds to wait after launching before re-probe
 _DAEMON_LAUNCH_RETRIES = 2  # probe attempts after launch
 
@@ -853,7 +853,7 @@ class WSL2Backend(PlatformBackend):
 
     @staticmethod
     def _deploy_daemon_files(deploy_dir: str) -> bool:
-        """Copy daemon.py and spatial_cache.py to the Windows deploy dir.
+        """Copy daemon.py to the Windows deploy dir.
 
         Only copies if the source is newer or different. Returns True if
         all files are in place.
@@ -862,13 +862,8 @@ class WSL2Backend(PlatformBackend):
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "bridge",
         )
-        core_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core",
-        )
         sources = {
             "daemon.py": os.path.join(bridge_dir, "daemon.py"),
-            "spatial_cache.py": os.path.join(core_dir, "spatial_cache.py"),
         }
         all_ok = True
         for filename, src in sources.items():

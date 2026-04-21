@@ -387,17 +387,17 @@ class LinuxActionExecutor(ActionExecutor):
         _run_xdotool("mousemove", str(x), str(y))
         self._tracker.update(x, y)
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
-        smooth_move(x, y, self._tracker.get_pos, self._raw_move, hit_count=hit_count)
+    def move_mouse(self, x: int, y: int) -> None:
+        smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
+    def click(self, x: int, y: int, button: str = "left") -> None:
         button_num = {"left": "1", "middle": "2", "right": "3"}.get(button, "1")
-        self.move_mouse(x, y, hit_count=hit_count)
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         _run_xdotool("click", button_num)
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
-        self.move_mouse(x, y, hit_count=hit_count)
+    def double_click(self, x: int, y: int) -> None:
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         _run_xdotool("click", "--repeat", "2", "--delay", "50", "1")
 
@@ -424,9 +424,8 @@ class LinuxActionExecutor(ActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
-        hit_count: int = 0,
     ) -> None:
-        self.move_mouse(start_x, start_y, hit_count=hit_count)
+        self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         _run_xdotool("mousedown", "1")
         path = windmouse_path(start_x, start_y, end_x, end_y,
@@ -855,11 +854,11 @@ class EvdevActionExecutor(_WaylandActionExecutor):
             self._move_rel(x, y)
         self._tracker.update(x, y)
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
-        smooth_move(x, y, self._tracker.get_pos, self._raw_move, hit_count=hit_count)
+    def move_mouse(self, x: int, y: int) -> None:
+        smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
-        self.move_mouse(x, y, hit_count=hit_count)
+    def click(self, x: int, y: int, button: str = "left") -> None:
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         btn = self._btn_code(button)
         self._mouse.write(ecodes.EV_KEY, btn, 1)
@@ -868,8 +867,8 @@ class EvdevActionExecutor(_WaylandActionExecutor):
         self._mouse.write(ecodes.EV_KEY, btn, 0)
         self._mouse.write(ecodes.EV_SYN, ecodes.SYN_REPORT, 0)
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
-        self.move_mouse(x, y, hit_count=hit_count)
+    def double_click(self, x: int, y: int) -> None:
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         btn = self._btn_code("left")
         for _ in range(2):
@@ -986,20 +985,20 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
             self._stream_path, dbus_import.Double(float(x)), dbus_import.Double(float(y)))
         self._tracker.update(x, y)
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
-        smooth_move(x, y, self._tracker.get_pos, self._raw_move, hit_count=hit_count)
+    def move_mouse(self, x: int, y: int) -> None:
+        smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
+    def click(self, x: int, y: int, button: str = "left") -> None:
         btn = self._btn_code(button)
-        self.move_mouse(x, y, hit_count=hit_count)
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))
         time.sleep(0.04)
         self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(False))
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
+    def double_click(self, x: int, y: int) -> None:
         btn = self._btn_code("left")
-        self.move_mouse(x, y, hit_count=hit_count)
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         for _ in range(2):
             self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))

@@ -27,23 +27,14 @@ class BridgeActionExecutor(ActionExecutor):
         except BridgeError as e:
             raise ActionError(f"Bridge {method} failed: {e}") from e
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
-        params = {"x": x, "y": y}
-        if hit_count > 0:
-            params["hit_count"] = hit_count
-        self._act("move_mouse", params)
+    def move_mouse(self, x: int, y: int) -> None:
+        self._act("move_mouse", {"x": x, "y": y})
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
-        params = {"x": x, "y": y, "button": button}
-        if hit_count > 0:
-            params["hit_count"] = hit_count
-        self._act("click", params)
+    def click(self, x: int, y: int, button: str = "left") -> None:
+        self._act("click", {"x": x, "y": y, "button": button})
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
-        params = {"x": x, "y": y}
-        if hit_count > 0:
-            params["hit_count"] = hit_count
-        self._act("double_click", params)
+    def double_click(self, x: int, y: int) -> None:
+        self._act("double_click", {"x": x, "y": y})
 
     def type_text(self, text: str) -> None:
         try:
@@ -75,15 +66,11 @@ class BridgeActionExecutor(ActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
-        hit_count: int = 0,
     ) -> None:
-        params = {
+        self._act("drag", {
             "start_x": start_x,
             "start_y": start_y,
             "end_x": end_x,
             "end_y": end_y,
             "duration": duration,
-        }
-        if hit_count > 0:
-            params["hit_count"] = hit_count
-        self._act("drag", params)
+        })

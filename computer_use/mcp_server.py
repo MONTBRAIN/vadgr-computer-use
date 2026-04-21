@@ -51,15 +51,7 @@ mcp = FastMCP(
         "4. When clicking on a list item, aim for the CENTER of the item's text, "
         "not near its edge, to avoid hitting adjacent items.\n"
         "5. If a click lands on the wrong target, take a screenshot, reassess "
-        "coordinates, and retry.\n"
-        "6. For REPEATED navigation (opening apps, clicking known menus you've "
-        "used 3+ times), use navigate_to or navigate_chain instead of "
-        "screenshot+click cycles. These skip LLM roundtrips for cached targets.\n"
-        "7. Navigation tools only work for well-cached targets (3+ hits). "
-        "For new/unfamiliar targets, use screenshot+click as usual.\n"
-        "8. For REPEATED multi-step workflows (save file, new tab, copy-paste), "
-        "use create_template to define them once, then execute_template to replay. "
-        "Templates support click, type_text, key_press, and wait actions."
+        "coordinates, and retry."
     ),
 )
 
@@ -94,8 +86,7 @@ def _get_engine():
     global _engine, _MAX_WIDTH
     if _engine is None:
         from computer_use.core.engine import ComputerUseEngine
-        cache_enabled = os.environ.get("AGENT_FORGE_CACHE_ENABLED", "1") != "0"
-        _engine = ComputerUseEngine(cache_enabled=cache_enabled)
+        _engine = ComputerUseEngine()
         logger.info("Engine initialized (platform=%s)", _engine.get_platform().value)
         if _MAX_WIDTH == 0:
             w, _ = _engine.get_screen_size()
@@ -174,63 +165,39 @@ def screenshot_region(x: int, y: int, width: int, height: int) -> Image:
 
 
 @mcp.tool()
-def click(x: int, y: int, element_hint: str = "") -> str:
+def click(x: int, y: int) -> str:
     """Left-click at screen coordinates (pixels).
 
-    IMPORTANT: Always take a screenshot() first to confirm the target element's
-    position. After clicking, take another screenshot() to verify the click
-    landed correctly. Aim for the center of the target element.
-
-    element_hint: optional label for the target (e.g. "File menu", "Save button").
-    When provided, enables muscle memory -- repeated clicks become faster.
+    Always take a screenshot() first to confirm the target element's position.
+    After clicking, take another screenshot() to verify the click landed
+    correctly. Aim for the center of the target element.
     """
     engine = _get_engine()
-    kwargs = {}
-    if element_hint:
-        kwargs["element_hint"] = element_hint
-    engine.click(*_to_real(x, y), **kwargs)
+    engine.click(*_to_real(x, y))
     return f"Clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def double_click(x: int, y: int, element_hint: str = "") -> str:
-    """Double-click at screen coordinates.
-
-    element_hint: optional label for muscle memory learning.
-    """
+def double_click(x: int, y: int) -> str:
+    """Double-click at screen coordinates."""
     engine = _get_engine()
-    kwargs = {}
-    if element_hint:
-        kwargs["element_hint"] = element_hint
-    engine.double_click(*_to_real(x, y), **kwargs)
+    engine.double_click(*_to_real(x, y))
     return f"Double-clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def right_click(x: int, y: int, element_hint: str = "") -> str:
-    """Right-click at screen coordinates.
-
-    element_hint: optional label for muscle memory learning.
-    """
+def right_click(x: int, y: int) -> str:
+    """Right-click at screen coordinates."""
     engine = _get_engine()
-    kwargs = {}
-    if element_hint:
-        kwargs["element_hint"] = element_hint
-    engine.right_click(*_to_real(x, y), **kwargs)
+    engine.right_click(*_to_real(x, y))
     return f"Right-clicked at ({x}, {y})"
 
 
 @mcp.tool()
-def move_mouse(x: int, y: int, element_hint: str = "") -> str:
-    """Move the mouse without clicking.
-
-    element_hint: optional label for muscle memory learning.
-    """
+def move_mouse(x: int, y: int) -> str:
+    """Move the mouse without clicking."""
     engine = _get_engine()
-    kwargs = {}
-    if element_hint:
-        kwargs["element_hint"] = element_hint
-    engine.move_mouse(*_to_real(x, y), **kwargs)
+    engine.move_mouse(*_to_real(x, y))
     return f"Mouse moved to ({x}, {y})"
 
 
@@ -310,155 +277,6 @@ def find_element(description: str) -> str:
         f"Found '{element.name}' (role={element.role}) at ({dx}, {dy}), "
         f"confidence={element.confidence:.2f}"
     )
-
-
-@mcp.tool()
-def navigate_to(target_hint: str, target_app: str = "", current_hint: str = "") -> str:
-    """Navigate to a cached UI target without screenshots.
-
-    Uses muscle memory cache to click through known navigation paths.
-    Only works for targets seen 3+ times. Falls back gracefully --
-    if any step fails, returns a message for LLM re-evaluation.
-
-    target_hint: where you want to go (e.g. "message input")
-    target_app: app name (e.g. "whatsapp.exe"). Auto-detected if empty.
-    current_hint: where you are now. Enables multi-step path finding.
-    """
-    engine = _get_engine()
-    result = engine.navigate_to(
-        target_hint=target_hint,
-        target_app=target_app,
-        current_hint=current_hint,
-    )
-    if result["stopped"]:
-        return (
-            f"Navigation stopped: {result['reason']}. "
-            f"Completed {result['completed']}/{result['total']} steps. "
-            f"Take a screenshot to re-evaluate."
-        )
-    if result["completed"] == 0:
-        return "No navigation steps executed. Take a screenshot and use click instead."
-    return (
-        f"Navigated {result['completed']}/{result['total']} steps. "
-        f"Now at: {result['last_hint']}"
-    )
-
-
-@mcp.tool()
-def navigate_chain(hints: list, app_name: str = "") -> str:
-    """Execute a sequence of cached clicks without screenshots.
-
-    Each hint in the list is clicked in order using cached positions.
-    Stops immediately if any hint is not in cache or if the foreground
-    window changes unexpectedly.
-
-    hints: ordered list of element hint strings to click through
-    app_name: app name. Auto-detected from foreground window if empty.
-    """
-    engine = _get_engine()
-    # Auto-detect app if not provided -- navigate_chain will also
-    # re-detect per step for cross-app flows, but we need an initial value.
-    if not app_name:
-        fg = engine._get_fg_window()
-        if fg and fg.app_name:
-            app_name = fg.app_name.lower()
-        else:
-            app_name = engine.get_platform().value
-
-    hint_strs = [str(h) for h in hints]
-    result = engine.navigate_chain(app_name, hint_strs)
-    if result["stopped"]:
-        return (
-            f"Chain stopped: {result['reason']}. "
-            f"Completed {result['completed']}/{result['total']} steps. "
-            f"Take a screenshot to re-evaluate."
-        )
-    if result["completed"] == 0:
-        return "No steps executed. Take a screenshot and use click instead."
-    return (
-        f"Chain complete: {result['completed']}/{result['total']} steps. "
-        f"Now at: {result['last_hint']}"
-    )
-
-
-@mcp.tool()
-def create_template(name: str, app_name: str, steps: list) -> str:
-    """Define a reusable action template for multi-step workflows.
-
-    name: unique template name (e.g. "save-as-txt", "new-document")
-    app_name: the application this template runs in (e.g. "notepad.exe")
-    steps: ordered list of step dicts, each with:
-        - action: "click", "type_text", "key_press", or "wait"
-        - hint: element_hint for click steps (e.g. "File menu")
-        - text: text for type_text, key combo for key_press (e.g. "ctrl+s")
-        - wait_ms: pause after step in ms (default 100)
-
-    Example step: {"action": "key_press", "text": "ctrl+s", "wait_ms": 200}
-    """
-    engine = _get_engine()
-    if engine._cache is None:
-        return "Error: cache is disabled, templates unavailable"
-    step_dicts = [dict(s) if not isinstance(s, dict) else s for s in steps]
-    try:
-        tid = engine._cache.create_template(name, app_name, step_dicts)
-    except ValueError as e:
-        return f"Error: {e}"
-    except Exception as e:
-        return f"Error creating template: {e}"
-    return f"Template '{name}' created (id={tid}, {len(step_dicts)} steps)"
-
-
-@mcp.tool()
-def execute_template(name: str) -> str:
-    """Execute a named action template (multi-step workflow without screenshots).
-
-    Replays all steps in the template: clicks use cached positions,
-    type_text types strings, key_press sends key combos.
-    Returns completion status.
-    """
-    engine = _get_engine()
-    result = engine.execute_template(name)
-    if result["stopped"]:
-        return (
-            f"Template stopped: {result['reason']}. "
-            f"Completed {result['completed']}/{result['total']} steps. "
-            f"Take a screenshot to re-evaluate."
-        )
-    return (
-        f"Template '{name}' complete: {result['completed']}/{result['total']} steps."
-    )
-
-
-@mcp.tool()
-def list_templates(app_name: str = "") -> str:
-    """List available action templates, optionally filtered by app.
-
-    Returns a summary of each template with name, app, use count, and step count.
-    """
-    engine = _get_engine()
-    if engine._cache is None:
-        return "No templates (cache is disabled)."
-    templates = engine._cache.list_templates(app_name=app_name or None)
-    if not templates:
-        return "No templates found."
-    lines = []
-    for t in templates:
-        lines.append(
-            f"  {t['name']} ({t['app_name']}) -- "
-            f"{t['steps_count']} steps, used {t['use_count']}x"
-        )
-    return f"Templates ({len(templates)}):\n" + "\n".join(lines)
-
-
-@mcp.tool()
-def delete_template(name: str) -> str:
-    """Delete an action template by name."""
-    engine = _get_engine()
-    if engine._cache is None:
-        return "Error: cache is disabled, templates unavailable"
-    if engine._cache.delete_template(name):
-        return f"Template '{name}' deleted."
-    return f"Template '{name}' not found."
 
 
 def main():

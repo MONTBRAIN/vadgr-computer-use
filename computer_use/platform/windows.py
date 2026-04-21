@@ -231,13 +231,13 @@ class WindowsActionExecutor(ActionExecutor):
         user32.SetCursorPos(x, y)
         self._tracker.update(x, y)
 
-    def move_mouse(self, x: int, y: int, hit_count: int = 0) -> None:
+    def move_mouse(self, x: int, y: int) -> None:
         if sys.platform != "win32":
             raise ActionError("WindowsActionExecutor requires Windows")
-        smooth_move(x, y, self._tracker.get_pos, self._raw_move, hit_count=hit_count)
+        smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
-    def click(self, x: int, y: int, button: str = "left", hit_count: int = 0) -> None:
-        self.move_mouse(x, y, hit_count=hit_count)
+    def click(self, x: int, y: int, button: str = "left") -> None:
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         if button == "left":
             self._send_mouse_input(MOUSEEVENTF_LEFTDOWN)
@@ -249,8 +249,8 @@ class WindowsActionExecutor(ActionExecutor):
             self._send_mouse_input(MOUSEEVENTF_MIDDLEDOWN)
             self._send_mouse_input(MOUSEEVENTF_MIDDLEUP)
 
-    def double_click(self, x: int, y: int, hit_count: int = 0) -> None:
-        self.move_mouse(x, y, hit_count=hit_count)
+    def double_click(self, x: int, y: int) -> None:
+        self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         self._send_mouse_input(MOUSEEVENTF_LEFTDOWN)
         self._send_mouse_input(MOUSEEVENTF_LEFTUP)
@@ -308,9 +308,8 @@ class WindowsActionExecutor(ActionExecutor):
         end_x: int,
         end_y: int,
         duration: float = 0.5,
-        hit_count: int = 0,
     ) -> None:
-        self.move_mouse(start_x, start_y, hit_count=hit_count)
+        self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._send_mouse_input(MOUSEEVENTF_LEFTDOWN)
         path = windmouse_path(

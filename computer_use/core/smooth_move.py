@@ -27,11 +27,6 @@ import random
 import time
 from collections.abc import Callable
 
-from computer_use.core.spatial_cache import (
-    adapted_fitts_duration,
-    muscle_memory_windmouse_params,
-)
-
 logger = logging.getLogger("computer_use.smooth_move")
 _DEBUG = os.environ.get("AGENT_FORGE_DEBUG", "") == "1"
 
@@ -198,13 +193,11 @@ def smooth_move(
     end_y: int,
     get_cursor_pos: Callable[[], tuple[int, int]],
     move_primitive: Callable[[int, int], None],
-    hit_count: int = 0,
     target_width: float = 40.0,
 ) -> None:
     """Move mouse to (end_x, end_y) with human-like WindMouse motion.
 
     Platform-agnostic: callers inject get_cursor_pos and move_primitive.
-    When hit_count > 1, adapts path and timing via muscle memory.
     """
     start_x, start_y = get_cursor_pos()
     distance = math.hypot(end_x - start_x, end_y - start_y)
@@ -212,21 +205,13 @@ def smooth_move(
     if distance < 2:
         return
 
-    # Adapt WindMouse params based on muscle memory
-    path_kwargs = {}
-    if hit_count > 1:
-        path_kwargs = muscle_memory_windmouse_params(hit_count)
-    path = windmouse_path(start_x, start_y, end_x, end_y, **path_kwargs)
-
-    base_duration = fitts_duration(distance, target_width)
-    duration = base_duration
-    if hit_count > 1:
-        duration = adapted_fitts_duration(duration, hit_count)
+    path = windmouse_path(start_x, start_y, end_x, end_y)
+    duration = fitts_duration(distance, target_width)
 
     if _DEBUG:
         logger.debug(
-            "hit_count=%d dist=%.0f base=%.3fs final=%.3fs points=%d kwargs=%s",
-            hit_count, distance, base_duration, duration, len(path), path_kwargs,
+            "dist=%.0f duration=%.3fs points=%d",
+            distance, duration, len(path),
         )
     delays = generate_delays(len(path), duration)
 
@@ -246,14 +231,13 @@ def smooth_drag(
     press_button: Callable[[], None],
     release_button: Callable[[], None],
     duration: float = 0.5,
-    hit_count: int = 0,
 ) -> None:
     """Drag from start to end with human-like movement.
 
     Callers inject primitives for move, button press, and button release.
     """
     # Move to start position with smooth movement
-    smooth_move(start_x, start_y, get_cursor_pos, move_primitive, hit_count=hit_count)
+    smooth_move(start_x, start_y, get_cursor_pos, move_primitive)
     time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
 
     # Press at start

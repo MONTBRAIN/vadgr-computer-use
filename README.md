@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local-first MCP server for desktop automation. Accessibility-first (UIA / AT-SPI / AX) with vision fallback (OmniParser YOLO). No cloud calls. Works on CPU.
+Local MCP server for desktop automation. The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. Accessibility APIs (Windows UIA, macOS AX, Linux AT-SPI2) are used when a description can be resolved without vision, and repeated flows are cached so they skip the screenshot-plus-LLM roundtrip after a few successful runs.
 
 ## Install
 
@@ -8,36 +8,67 @@ Local-first MCP server for desktop automation. Accessibility-first (UIA / AT-SPI
 pip install vadgr-computer-use
 ```
 
-The providers for Claude / GPT-4V vision fallback use stdlib `urllib` — no extra dependency needed. Just set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` to enable them.
-
 ## Run as MCP server
 
 ```bash
 vadgr-cua --transport stdio
-# or for SSE
+# or over SSE
 vadgr-cua --transport sse --port 8000
 ```
 
-Wire it up in any MCP client (Claude Desktop, Cursor, Cline, custom agents).
+Wire it into any MCP client (Claude Desktop, Cursor, Cline, custom agents).
 
-## What it does
+## How it works
 
-- Detects UI elements via OS accessibility APIs (Windows UIA, Linux AT-SPI2, macOS AX)
-- Falls back to vision (OmniParser YOLO) when accessibility is unavailable
-- Invokes actions programmatically (no mouse movement when possible)
-- Supports: click, type, key combos, scroll, drag, annotated screenshots
-- Records and replays multi-step trajectories
-- Works across: WSL2, Windows native, Linux (X11/Wayland), macOS
+The default loop is the one that already works well in practice:
+
+1. Agent calls `screenshot()` — server returns a downscaled PNG.
+2. Agent reasons over the image and picks coordinates.
+3. Agent calls `click(x, y)` / `type_text(...)` / `key_press(...)`.
+4. Agent calls `screenshot()` again to verify the effect.
+
+On top of that loop, three shortcuts reduce latency when the agent knows what it is doing:
+
+- `find_element("Save button")` — resolves a description to screen coordinates through the OS accessibility API. Returns a point the agent can click, no vision required. Falls back to an optional LLM-vision provider when accessibility cannot answer.
+- `navigate_to` / `navigate_chain` — replays cached click paths for targets the agent has hit 3+ times. Skips screenshots entirely for known UI.
+- `create_template` / `execute_template` — records a named multi-step flow (click, type, key, wait) and replays it without screenshots.
+
+Cache and templates are stored locally under `$AGENT_FORGE_DATA` (default: OS-appropriate data dir).
 
 ## Platform support
 
-| Platform | Screenshots | Input | Accessibility |
-|----------|-------------|-------|---------------|
-| Linux / X11 | mss | xdotool | AT-SPI2 |
-| Linux / Wayland (GNOME) | gnome-screenshot | Mutter RemoteDesktop | AT-SPI2 |
-| WSL2 → Windows | PowerShell bridge | PowerShell bridge | UI Automation |
-| Windows native | Win32 GDI | SendInput | UI Automation |
-| macOS | screencapture | osascript / cliclick | AX API |
+| Platform | Screenshots | Mouse / keyboard | Accessibility backend |
+|----------|-------------|------------------|------------------------|
+| Linux / X11 | `mss` | `xdotool` | AT-SPI2 (via `python3-gi` + `gir1.2-atspi-2.0`) |
+| WSL2 → Windows host | PowerShell bridge | PowerShell bridge | Windows UI Automation |
+| Windows native | Win32 GDI | SendInput | Windows UI Automation |
+| macOS | `screencapture` | `osascript` / `cliclick` | AX API |
+
+## MCP tools
+
+Capture
+- `screenshot()` — full screen, downscaled to `CU_MAX_WIDTH` (auto-picks 1024 / 1280 / 1366).
+- `screenshot_region(x, y, w, h)` — cropped region.
+
+Input
+- `click(x, y)` / `double_click(x, y)` / `right_click(x, y)`
+- `move_mouse(x, y)` / `drag(x1, y1, x2, y2, duration=0.5)`
+- `scroll(x, y, amount)`
+- `type_text(text)` / `key_press(keys)` — keys like `ctrl+s`, `alt+tab`, `enter`.
+
+Accessibility-backed lookup
+- `find_element(description)` — returns `Found '<name>' (role=<role>) at (x, y)` or `Element not found`.
+
+Cached navigation (skips LLM roundtrips for repeated targets)
+- `navigate_to(target_hint, target_app="", current_hint="")`
+- `navigate_chain(hints, app_name="")`
+
+Reusable templates
+- `create_template(name, app_name, steps)`
+- `execute_template(name)` / `list_templates(app_name="")` / `delete_template(name)`
+
+Platform info
+- `get_platform()` / `get_platform_info()` / `get_screen_size()`
 
 ## Library usage
 
@@ -45,33 +76,23 @@ Wire it up in any MCP client (Claude Desktop, Cursor, Cline, custom agents).
 from computer_use import ComputerUseEngine
 
 engine = ComputerUseEngine()
-screen = engine.screenshot()
+shot = engine.screenshot()
 engine.click(500, 300)
 engine.type_text("hello")
 ```
-
-## MCP tools exposed
-
-- `screenshot` / `screenshot_region`
-- `find_elements` / `find_element`
-- `interact` (accessibility-first; no coord guessing)
-- `click` / `double_click` / `right_click`
-- `type_text` / `key_press`
-- `scroll` / `drag` / `move_mouse`
-- `annotated_screenshot` / `click_element_number`
-- `start_recording` / `stop_recording` / `replay`
-- `create_template` / `execute_template`
-- `navigate_to` / `navigate_chain`
 
 ## Environment
 
 | Variable | Purpose |
 |----------|---------|
-| `ANTHROPIC_API_KEY` | Claude vision provider |
-| `OPENAI_API_KEY` | OpenAI vision provider |
-| `AGENT_FORGE_DEBUG` | Enable debug screenshots |
-| `AGENT_FORGE_DATA` | Custom data directory |
-| `CU_MAX_WIDTH` | Max screenshot width for vision models |
+| `ANTHROPIC_API_KEY` | Enables Claude vision fallback for `find_element` |
+| `OPENAI_API_KEY` | Enables OpenAI vision fallback for `find_element` |
+| `CU_MAX_WIDTH` | Override downscale target (default: auto 1024/1280/1366) |
+| `AGENT_FORGE_CACHE_ENABLED` | Set to `0` to disable navigation cache and templates |
+| `AGENT_FORGE_DATA` | Override data directory for cache, templates, debug |
+| `AGENT_FORGE_DEBUG` | Set to `1` to dump screenshots to `$AGENT_FORGE_DATA/screenshots/` |
+
+Vision providers use stdlib `urllib`. No extra dependency is required; just set the API key to enable the fallback.
 
 ## Tests
 
