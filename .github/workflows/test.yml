@@ -2,11 +2,27 @@ name: test
 
 on:
   push:
-    branches: [master]
+    branches-ignore:
+      - "gh-readonly-queue/**"
   pull_request:
-    branches: [master]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff check
+        run: ruff check computer_use
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -23,23 +39,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xdotool scrot python3-gi gir1.2-atspi-2.0
 
-      - name: Install Python package
+      - name: Install package
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Lint with ruff
-        run: |
-          ruff check computer_use || true
-
       - name: Run tests
-        run: |
-          pytest computer_use/tests -v \
-            --ignore=computer_use/tests/test_integration_e2e.py \
-            --ignore=computer_use/tests/test_mcp_e2e.py
+        run: pytest computer_use/tests -q

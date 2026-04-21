@@ -7,7 +7,7 @@ Verifies that WindowsActionExecutor:
 """
 
 import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import patch
 
 import pytest
 
@@ -157,7 +157,6 @@ class TestWindowsDpiAwareness:
         """After DPI awareness, GetSystemMetrics should return physical pixels."""
         if not _REAL_WIN32:
             pytest.skip("Windows-only")
-        import ctypes
         # If DPI-aware, screen size should match what shcore reports
         from computer_use.platform.windows import user32
         w = user32.GetSystemMetrics(0)

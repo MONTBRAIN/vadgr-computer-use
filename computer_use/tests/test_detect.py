@@ -1,7 +1,6 @@
 """Tests for platform detection."""
 
 import os
-import sys
 from unittest.mock import mock_open, patch
 
 import pytest

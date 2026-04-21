@@ -19,7 +19,6 @@ import json
 import logging
 import urllib.request
 import urllib.error
-from typing import Optional
 
 from computer_use.core.errors import ProviderError
 from computer_use.core.types import (

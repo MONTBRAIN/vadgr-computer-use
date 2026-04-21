@@ -22,7 +22,6 @@ import subprocess
 import threading
 import time
 import uuid
-from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
@@ -124,8 +123,6 @@ class PersistentPowerShell:
                 self._proc.stdin.flush()
 
             lines: list[str] = []
-            import time
-
             deadline = time.monotonic() + timeout
             while True:
                 if time.monotonic() > deadline:

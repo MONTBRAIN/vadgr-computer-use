@@ -18,7 +18,6 @@ Those live in `supervisor.py` and `client.py`.
 from __future__ import annotations
 
 import filecmp
-import glob
 import hashlib
 import logging
 import os

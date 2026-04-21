@@ -52,3 +52,10 @@ asyncio_mode = "strict"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# E402: daemon.py sets DPI awareness before Win32 imports on purpose.
+extend-ignore = ["E402", "E741", "F841"]
+
+[tool.ruff.lint.per-file-ignores]
+"computer_use/tests/*" = ["F401"]

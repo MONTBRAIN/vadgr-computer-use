@@ -14,7 +14,6 @@ installation, and the orchestrator `ensure()` method.
 """
 
 import hashlib
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

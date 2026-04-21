@@ -1,12 +1,12 @@
 """Tests for the MCP server tool wrappers."""
 
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
 
-from computer_use.core.types import Platform, Region, ScreenState
+from computer_use.core.types import Platform, ScreenState
 
 
 def _make_png(width: int, height: int) -> bytes:

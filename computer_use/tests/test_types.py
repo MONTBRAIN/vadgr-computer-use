@@ -7,7 +7,6 @@ from computer_use.core.types import (
     Platform,
     Region,
     ScreenState,
-    StepResult,
 )
 
 

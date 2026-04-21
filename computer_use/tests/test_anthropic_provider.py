@@ -9,7 +9,6 @@ import pytest
 
 from computer_use.core.errors import ProviderError
 from computer_use.core.types import (
-    Action,
     ActionType,
     ScreenState,
 )

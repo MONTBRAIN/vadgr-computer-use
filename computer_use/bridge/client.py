@@ -8,7 +8,6 @@ import socket
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any
 
 from computer_use.bridge.protocol import (
     HEADER_SIZE,

@@ -13,7 +13,6 @@ Covers: `ensure_running` decision tree (healthy, missing, launch-fail),
 bridge client are injected -- no real subprocess calls here.
 """
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

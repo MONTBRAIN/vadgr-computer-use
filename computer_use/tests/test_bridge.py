@@ -6,7 +6,7 @@ import json
 import socket
 import struct
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
