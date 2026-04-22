@@ -1,16 +1,13 @@
-"""Computer Use Engine -- gives LLM agents eyes and hands.
+"""Computer Use Engine: gives MCP clients (and Python callers) eyes and hands.
 
-Library mode (agent calls engine):
+Usage:
     from computer_use import ComputerUseEngine
     engine = ComputerUseEngine()
     screen = engine.screenshot()
     engine.click(500, 300)
     engine.type_text("hello")
 
-Autonomous mode (engine calls LLM):
-    from computer_use import ComputerUseEngine
-    engine = ComputerUseEngine(provider="anthropic")
-    results = engine.run_task("Open Notepad and type hello")
+The package is also an MCP server (see `vadgr-cua` console script).
 """
 
 from computer_use.core.engine import ComputerUseEngine
@@ -18,33 +15,23 @@ from computer_use.core.errors import (
     ActionError,
     ActionTimeoutError,
     ComputerUseError,
-    ConfigError,
     PlatformNotSupportedError,
-    ProviderError,
     ScreenCaptureError,
 )
 from computer_use.core.types import (
-    Action,
-    ActionType,
     Platform,
     Region,
     ScreenState,
-    StepResult,
 )
 
 __all__ = [
     "ComputerUseEngine",
-    "Action",
-    "ActionType",
     "Platform",
     "Region",
     "ScreenState",
-    "StepResult",
     "ComputerUseError",
     "ScreenCaptureError",
     "ActionError",
     "ActionTimeoutError",
-    "ProviderError",
-    "ConfigError",
     "PlatformNotSupportedError",
 ]

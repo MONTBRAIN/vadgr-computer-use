@@ -23,7 +23,7 @@
 - **Symptom**: Selecting text in applications (e.g., click-drag to highlight) is imprecise. The start/end coordinates don't always land at the right character positions.
 - **Status**: Not yet investigated deeply
 
-### 6. Vision struggles with small/dense UI elements
+### 4. Vision struggles with small/dense UI elements
 - **Found**: 2026-03-01
-- **Symptom**: LLM cannot reliably identify individual stickers, small icons, or dense grid items from screenshots. Zooming in via `screenshot_region` helps but adds roundtrips and the region coordinates themselves can be imprecise.
-- **Status**: Inherent vision model limitation. Could potentially be improved with better region capture or element-level accessibility data for sticker grids.
+- **Symptom**: The model driving the MCP cannot reliably identify individual stickers, small icons, or dense grid items from a full screenshot. Zooming in via `screenshot_region` helps but adds roundtrips and the region coordinates themselves can be imprecise.
+- **Status**: Inherent vision model limitation of the calling agent, not a server-side defect. Could be improved by smarter region cropping.

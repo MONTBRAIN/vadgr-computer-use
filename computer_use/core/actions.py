@@ -14,10 +14,7 @@
 
 """Abstract action execution interface."""
 
-import time
 from abc import ABC, abstractmethod
-
-from computer_use.core.types import Action, ActionType
 
 
 class ActionExecutor(ABC):
@@ -64,31 +61,3 @@ class ActionExecutor(ABC):
     ) -> None:
         """Drag from start to end position."""
         ...
-
-    def execute_action(self, action: Action) -> None:
-        """Route an Action dataclass to the correct method."""
-        match action.action_type:
-            case ActionType.CLICK:
-                self.click(action.x, action.y)
-            case ActionType.DOUBLE_CLICK:
-                self.double_click(action.x, action.y)
-            case ActionType.RIGHT_CLICK:
-                self.click(action.x, action.y, button="right")
-            case ActionType.TYPE_TEXT:
-                self.type_text(action.text)
-            case ActionType.KEY_PRESS:
-                self.key_press(action.keys)
-            case ActionType.SCROLL:
-                self.scroll(action.x, action.y, action.scroll_amount)
-            case ActionType.MOVE:
-                self.move_mouse(action.x, action.y)
-            case ActionType.DRAG:
-                self.drag(
-                    action.x,
-                    action.y,
-                    action.target_x,
-                    action.target_y,
-                    action.duration,
-                )
-            case ActionType.WAIT:
-                time.sleep(action.duration)

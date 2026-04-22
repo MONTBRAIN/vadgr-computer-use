@@ -1,9 +1,11 @@
-"""Tests for action execution routing."""
+"""Tests for the ActionExecutor ABC contract.
 
-from unittest.mock import patch
+The ABC only declares the primitive methods that platform backends must
+implement. There is no router / Action dataclass anymore; MCP tool calls
+go directly to primitives like click() / type_text().
+"""
 
 from computer_use.core.actions import ActionExecutor
-from computer_use.core.types import Action, ActionType
 
 
 class MockExecutor(ActionExecutor):
@@ -34,62 +36,16 @@ class MockExecutor(ActionExecutor):
         self.calls.append(("drag", start_x, start_y, end_x, end_y, duration))
 
 
-class TestActionRouter:
-    def test_click(self):
+class TestActionExecutorContract:
+    def test_can_instantiate_concrete_subclass(self):
         ex = MockExecutor()
-        action = Action(action_type=ActionType.CLICK, x=100, y=200)
-        ex.execute_action(action)
-        assert ex.calls == [("click", 100, 200, "left")]
+        assert isinstance(ex, ActionExecutor)
 
-    def test_double_click(self):
+    def test_primitive_methods_are_callable(self):
         ex = MockExecutor()
-        action = Action(action_type=ActionType.DOUBLE_CLICK, x=50, y=60)
-        ex.execute_action(action)
-        assert ex.calls == [("double_click", 50, 60)]
-
-    def test_right_click(self):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.RIGHT_CLICK, x=10, y=20)
-        ex.execute_action(action)
-        assert ex.calls == [("click", 10, 20, "right")]
-
-    def test_type_text(self):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.TYPE_TEXT, text="hello world")
-        ex.execute_action(action)
-        assert ex.calls == [("type_text", "hello world")]
-
-    def test_key_press(self):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.KEY_PRESS, keys=["ctrl", "s"])
-        ex.execute_action(action)
-        assert ex.calls == [("key_press", ["ctrl", "s"])]
-
-    def test_scroll(self):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.SCROLL, x=100, y=200, scroll_amount=-3)
-        ex.execute_action(action)
-        assert ex.calls == [("scroll", 100, 200, -3)]
-
-    def test_move(self):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.MOVE, x=500, y=300)
-        ex.execute_action(action)
-        assert ex.calls == [("move_mouse", 500, 300)]
-
-    def test_drag(self):
-        ex = MockExecutor()
-        action = Action(
-            action_type=ActionType.DRAG,
-            x=10, y=20, target_x=300, target_y=400, duration=1.0,
-        )
-        ex.execute_action(action)
-        assert ex.calls == [("drag", 10, 20, 300, 400, 1.0)]
-
-    @patch("time.sleep")
-    def test_wait(self, mock_sleep):
-        ex = MockExecutor()
-        action = Action(action_type=ActionType.WAIT, duration=0.5)
-        ex.execute_action(action)
-        mock_sleep.assert_called_once_with(0.5)
-        assert ex.calls == []  # wait doesn't call any executor method
+        ex.click(10, 20)
+        ex.type_text("hi")
+        ex.key_press(["ctrl", "c"])
+        ex.scroll(50, 60, -3)
+        ex.drag(1, 2, 3, 4, 0.5)
+        assert len(ex.calls) == 5

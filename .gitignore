@@ -54,3 +54,15 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local dev / scratch files (not shipped)
+.mcp.json
+.vadgr-mcp-handoff.md
+docs/
+.env
+.env.*
+
+# Agent-client local configs (personal / machine-specific)
+.claude/
+.gemini/
+.codex/

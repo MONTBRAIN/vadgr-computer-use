@@ -1,8 +1,12 @@
 # vadgr-computer-use
 
-Local MCP server for desktop automation — 13 tools for capture, mouse, keyboard, and platform introspection.
+Local MCP server for desktop automation. 13 tools for capture, mouse, keyboard, and platform introspection. The calling agent takes a screenshot, reasons over the pixels, and drives mouse/keyboard through the server.
 
-The LLM takes screenshots, reasons over them, and drives mouse and keyboard through the server. The model picks coordinates directly from the pixels.
+Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
+
+> **Platforms:** works on **Linux/X11**, **Windows native**, and **WSL2** (in that order). **macOS support is a work in progress** and not usable yet. See [Platform support](#platform-support) for detail.
+
+---
 
 ## Install
 
@@ -10,72 +14,203 @@ The LLM takes screenshots, reasons over them, and drives mouse and keyboard thro
 pip install vadgr-computer-use
 ```
 
-## Run as MCP server
+That ships a console script called `vadgr-cua`. Verify:
 
 ```bash
-vadgr-cua                             # stdio (default) -- what MCP clients use
-vadgr-cua --transport sse --port 8000 # SSE variant
+vadgr-cua doctor
+# {"daemon_running": false, "windows_python": null, "port": 19542, ...}
 ```
 
-Wire it into any MCP client (Claude Desktop, Cursor, Cline, custom agents).
+On WSL2, the bridge daemon auto-launches the first time a tool is called. On other platforms it's a no-op; direct backends handle everything.
+
+---
+
+## Wire it into your agent
+
+Pick your client. The server command is `vadgr-cua --transport stdio` in every case. Each agent launches that stdio process itself, so it needs the full path to the binary unless `vadgr-cua` is already on the agent's `PATH`.
+
+First, find the path:
+
+```bash
+which vadgr-cua
+# global install: /home/you/.local/bin/vadgr-cua
+# venv install:  /path/to/.venv/bin/vadgr-cua
+```
+
+Substitute that path in each config below.
+
+### Claude Code
+
+Project-level (`.mcp.json` at the repo root you want to automate from):
+
+```json
+{
+  "mcpServers": {
+    "vadgr-computer-use": {
+      "type": "stdio",
+      "command": "/path/to/vadgr-cua",
+      "args": ["--transport", "stdio"]
+    }
+  }
+}
+```
+
+User-level (add to `~/.claude.json` under `mcpServers` with the same shape).
+
+Verify: `claude mcp list` should print `vadgr-computer-use: ... ✓ Connected`.
+
+### Codex CLI
+
+Add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.vadgr-computer-use]
+command = "/path/to/vadgr-cua"
+args = ["--transport", "stdio"]
+```
+
+Verify: `codex mcp list` should list `vadgr-computer-use` with status `enabled`.
+
+### Gemini CLI
+
+```bash
+gemini mcp add --scope user --trust \
+  vadgr-computer-use /path/to/vadgr-cua \
+  -- --transport stdio
+```
+
+That writes `~/.gemini/settings.json`. Verify by running an interactive session: Gemini shows MCP tool calls inline.
+
+---
+
+## Try it
+
+Once the wire-up is done, any of these commands launch the client, which starts `vadgr-cua --transport stdio` in the background via MCP, and drives your desktop. Same prompt, same tools: pick the client you already use.
+
+**Sanity check (focus + Ctrl+A):**
+
+```
+Take a screenshot, tell me in one sentence what application is in focus,
+then press Ctrl+A and take another screenshot to confirm the action.
+```
+
+### Claude Code
+
+Interactive (most common):
+
+```bash
+claude --dangerously-skip-permissions
+# then paste the prompt at the > cursor
+```
+
+Headless one-shot:
+
+```bash
+claude --dangerously-skip-permissions -p \
+  "Take a screenshot, tell me what app is in focus, then press Ctrl+A and screenshot again."
+```
+
+### Codex CLI
+
+Headless one-shot (the usual way to drive Codex):
+
+```bash
+codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
+  "Take a screenshot, tell me what app is in focus, then press Ctrl+A and screenshot again."
+```
+
+Expected output (abbreviated):
+
+```
+mcp: vadgr-computer-use/screenshot (completed)
+mcp: vadgr-computer-use/key_press (completed)
+mcp: vadgr-computer-use/screenshot (completed)
+The focused app is <...>; Ctrl+A selected its content.
+```
+
+### Gemini CLI
+
+Works end-to-end, but pixel grounding on full-screen shots is weaker than Claude/Codex: first-attempt clicks on small targets can miss by 20-60 px (the model usually recovers via `screenshot_region` crops). **Pass the model explicitly**, since the default may silently fall back to an older Gemini on some accounts:
+
+```bash
+gemini -m gemini-3.1-pro-preview -p \
+  "Use only vadgr-computer-use tools. Take a screenshot, tell me what app is in focus, then press Ctrl+A and screenshot again." \
+  -y --allowed-mcp-server-names vadgr-computer-use
+```
+
+---
+
+## Fuller example: play a song on YouTube Music (Codex)
+
+A Chrome window is already open with a "YouTube Music" tab. One call:
+
+```bash
+codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
+  "Use only vadgr-computer-use MCP tools. In the already-open Chrome,
+   switch to the YouTube Music tab, search 'Space Oddity David Bowie',
+   and play the first result."
+```
+
+Real transcript (trimmed):
+
+```
+mcp: vadgr-computer-use/screenshot (completed)
+mcp: vadgr-computer-use/click (completed)        # YouTube Music tab
+mcp: vadgr-computer-use/click (completed)        # search box
+mcp: vadgr-computer-use/type_text (completed)
+mcp: vadgr-computer-use/key_press (completed)    # enter
+mcp: vadgr-computer-use/click (completed)        # first result
+mcp: vadgr-computer-use/click (completed)        # dismiss ad overlay
+mcp: vadgr-computer-use/screenshot (completed)   # verify now-playing bar
+Yes, "Space Oddity" by David Bowie is now playing.
+```
+
+---
 
 ## How it works
 
-The loop is intentionally simple:
-
-1. Agent calls `screenshot()` — server returns a downscaled PNG.
-2. Agent reasons over the image and picks coordinates.
-3. Agent calls `click(x, y)` / `type_text(...)` / `key_press(...)`.
-4. Agent calls `screenshot()` again to verify the effect.
-
-That's it. The LLM owns the "where to click" decision; the server owns "how to click it precisely". No other abstraction in between.
+The LLM owns the "where to click" decision; the server owns "how to click it precisely". No other abstraction in between.
 
 ## Platform support
 
 | Platform | Screenshots | Mouse / keyboard | Status |
 |----------|-------------|------------------|--------|
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | primary, well-tested |
-| Linux / X11 | `mss` | `xdotool` | works |
-| Windows native | Win32 GDI | SendInput | should work; not part of the v0.1.0 test matrix |
+| Linux / X11 | `mss` | `xdotool` | primary target |
+| Windows native | Win32 GDI | SendInput | should work; not in the v0.1.0 CI matrix |
+| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | well-tested |
 | macOS | `screencapture` | `osascript` / `cliclick` | WIP, not functional yet |
 
-macOS is a work-in-progress: the backend imports but actions and screenshots do not round-trip correctly yet. Fixes welcome.
-
-On WSL2 the bridge daemon is launched automatically on first use and persists across MCP sessions; if it can't be started (e.g. no Windows Python available), the server silently falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
+If the WSL2 daemon can't start (e.g. no Windows Python available), the server falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
 ## MCP tools (13)
 
 Capture (2)
-- `screenshot()` — full screen, downscaled to `CU_MAX_WIDTH` (auto-picks 1024 / 1280 / 1366).
-- `screenshot_region(x, y, w, h)` — cropped region.
+- `screenshot()`: full screen, downscaled to `CU_MAX_WIDTH` (auto-picks 1024 / 1280 / 1366).
+- `screenshot_region(x, y, w, h)`: cropped region.
 
 Input (8)
 - `click(x, y)` / `double_click(x, y)` / `right_click(x, y)`
 - `move_mouse(x, y)` / `drag(start_x, start_y, end_x, end_y, duration=0.5)`
-- `scroll(x, y, amount)` — positive = up, negative = down
-- `type_text(text)` / `key_press(keys)` — keys like `ctrl+s`, `alt+tab`, `enter`
+- `scroll(x, y, amount)`: positive = up, negative = down
+- `type_text(text)` / `key_press(keys)`: keys like `ctrl+s`, `alt+tab`, `enter`
 
 Platform info (3)
 - `get_platform()` / `get_platform_info()` / `get_screen_size()`
 
 ## Daemon management (WSL2)
 
-On WSL2 the server reaches Windows through a small background daemon that
-launches on first use and survives across MCP sessions — most users never
-need to touch it. For when you do:
+Most users never touch this. For when you do:
 
 ```bash
 vadgr-cua doctor           # JSON: platform, Windows Python, daemon state, port, hash
-vadgr-cua install-daemon   # Eager deploy + launch (useful in provisioning scripts)
+vadgr-cua install-daemon   # Eager deploy + launch
 vadgr-cua stop-daemon      # Kill the running daemon
 vadgr-cua restart-daemon   # Stop then start
 ```
 
-The daemon file is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on TCP `127.0.0.1:19542`. After `pip install -U vadgr-computer-use`, the next MCP session detects the version-hash drift via a `ping` handshake and redeploys the daemon automatically — no manual restart required.
+The daemon file is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on TCP `127.0.0.1:19542`. After `pip install -U vadgr-computer-use`, the next MCP session detects the version-hash drift via a `ping` handshake and redeploys the daemon automatically.
 
 ## Library usage
-
-Direct (agent picks what to do):
 
 ```python
 from computer_use import ComputerUseEngine
@@ -86,12 +221,7 @@ engine.click(500, 300)
 engine.type_text("hello")
 ```
 
-Autonomous (engine drives itself via an LLM provider — optional):
-
-```python
-engine = ComputerUseEngine(provider="anthropic")  # reads ANTHROPIC_API_KEY
-results = engine.run_task("Open Notepad and type hello", max_steps=50)
-```
+The library is just the input/capture primitives, no LLM or agent loop inside. To drive it with a model, point an MCP client (Claude Code, Codex, Gemini, or your own) at the `vadgr-cua` server as shown above.
 
 ## Environment
 
@@ -99,16 +229,13 @@ results = engine.run_task("Open Notepad and type hello", max_steps=50)
 |----------|---------|
 | `CU_MAX_WIDTH` | Override screenshot downscale target (default: auto 1024/1280/1366) |
 | `CUE_BRIDGE_PORT` | Override WSL2 bridge daemon TCP port (default: 19542) |
-| `VADGR_DATA` | Override data directory for debug screenshots |
-| `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
-| `ANTHROPIC_API_KEY` | Only for autonomous mode (`provider="anthropic"`) |
-| `OPENAI_API_KEY` | Only for autonomous mode (`provider="openai"`) |
+| `VADGR_DEBUG` | Set to `1` to dump screenshots to `<package>/.debug/` |
 
 ## Tests
 
 ```bash
 pip install -e ".[dev]"
-pytest computer_use/tests
+pytest computer_use/tests -q
 ```
 
 ## License
@@ -117,6 +244,6 @@ Apache 2.0. See `LICENSE`.
 
 ## Part of Vadgr
 
-- [vadgr](https://github.com/MONTBRAIN/vadgr) — workflow engine (brain)
-- **[vadgr-computer-use](https://github.com/MONTBRAIN/vadgr-computer-use)** — desktop automation MCP (eyes)
-- [vadgr-agent-os](https://github.com/MONTBRAIN/vadgr-agent-os) — containerized agent runtime
+- [vadgr](https://github.com/MONTBRAIN/vadgr): workflow engine (brain)
+- **[vadgr-computer-use](https://github.com/MONTBRAIN/vadgr-computer-use)**: desktop automation MCP (eyes)
+- [vadgr-agent-os](https://github.com/MONTBRAIN/vadgr-agent-os): containerized agent runtime

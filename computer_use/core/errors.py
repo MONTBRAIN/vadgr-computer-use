@@ -17,13 +17,5 @@ class ActionTimeoutError(ActionError):
     """Action did not complete within the timeout."""
 
 
-class ProviderError(ComputerUseError):
-    """LLM provider call failed."""
-
-
-class ConfigError(ComputerUseError):
-    """Configuration is invalid or missing."""
-
-
 class PlatformNotSupportedError(ComputerUseError):
     """Current platform is not supported or not implemented."""
