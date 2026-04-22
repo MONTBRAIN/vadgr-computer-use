@@ -59,6 +59,8 @@ Thumbs.db
 .mcp.json
 .vadgr-mcp-handoff.md
 docs/
+.env
+.env.*
 
 # Agent-client local configs (personal / machine-specific)
 .claude/
