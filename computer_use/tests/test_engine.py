@@ -1,22 +1,16 @@
 """Behavior tests for ComputerUseEngine with mocked backends.
 
 Covers the v0.1.0 surface: screenshots, mouse/keyboard, coordinate translation,
-accessibility lookup pass-through, and config loading.
+platform info. No autonomous mode, no config loading, no Action dataclass.
 """
 
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from computer_use.core.engine import ComputerUseEngine
-from computer_use.core.errors import ConfigError, PlatformNotSupportedError
-from computer_use.core.types import (
-    Action,
-    ActionType,
-    Platform,
-    Region,
-    ScreenState,
-)
+from computer_use.core.errors import PlatformNotSupportedError
+from computer_use.core.types import Platform, Region, ScreenState
 
 
 @pytest.fixture
@@ -139,14 +133,6 @@ class TestKeyboard:
         executor.key_press.assert_called_once_with(["ctrl", "c"])
 
 
-class TestActionDataclass:
-    def test_execute_action_routes_to_executor(self, engine, mock_backend):
-        _, _, executor = mock_backend
-        action = Action(action_type=ActionType.CLICK, x=7, y=8)
-        engine.execute_action(action)
-        executor.execute_action.assert_called_once_with(action)
-
-
 class TestPlatformInfo:
     def test_get_screen_size(self, engine):
         assert engine.get_screen_size() == (1920, 1080)
@@ -158,31 +144,30 @@ class TestPlatformInfo:
         assert "accessibility" not in info
 
 
-class TestConfig:
-    def test_missing_config_returns_empty(self, mock_backend):
+class TestAutonomousSurfaceGone:
+    """These symbols were removed when autonomous mode was dropped. If any
+    come back unintentionally, fail loudly."""
+
+    def test_engine_has_no_run_task(self, engine):
+        assert not hasattr(engine, "run_task")
+
+    def test_engine_has_no_execute_action(self, engine):
+        assert not hasattr(engine, "execute_action")
+
+    def test_engine_has_no_provider_attrs(self, engine):
+        for attr in ("_get_provider", "_provider", "_provider_name", "_history", "_config"):
+            assert not hasattr(engine, attr), f"{attr} leaked back onto engine"
+
+    def test_constructor_rejects_provider_kwarg(self, mock_backend):
         backend, _, _ = mock_backend
         with patch("computer_use.core.engine.detect_platform", return_value=Platform.LINUX):
             with patch("computer_use.core.engine.get_backend", return_value=backend):
-                with patch("os.path.exists", return_value=False):
-                    engine = ComputerUseEngine()
-                    assert engine._config == {}
+                with pytest.raises(TypeError):
+                    ComputerUseEngine(provider="anthropic")
 
-    def test_invalid_config_raises(self, mock_backend):
+    def test_constructor_rejects_config_path_kwarg(self, mock_backend):
         backend, _, _ = mock_backend
         with patch("computer_use.core.engine.detect_platform", return_value=Platform.LINUX):
             with patch("computer_use.core.engine.get_backend", return_value=backend):
-                with patch("builtins.open", mock_open(read_data="bad: [unclosed")):
-                    with pytest.raises(ConfigError):
-                        ComputerUseEngine(config_path="fake.yaml")
-
-    def test_provider_from_kwarg_overrides_config(self, mock_backend):
-        backend, _, _ = mock_backend
-        with patch("computer_use.core.engine.detect_platform", return_value=Platform.LINUX):
-            with patch("computer_use.core.engine.get_backend", return_value=backend):
-                with patch("os.path.exists", return_value=False):
-                    engine = ComputerUseEngine(provider="anthropic")
-                    assert engine._provider_name == "anthropic"
-
-    def test_run_task_without_provider_raises(self, engine):
-        with pytest.raises(ConfigError):
-            engine.run_task("do something")
+                with pytest.raises(TypeError):
+                    ComputerUseEngine(config_path="x.yaml")

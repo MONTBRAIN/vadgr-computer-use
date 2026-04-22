@@ -54,3 +54,8 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local dev / scratch files (not shipped)
+.mcp.json
+.vadgr-mcp-handoff.md
+docs/

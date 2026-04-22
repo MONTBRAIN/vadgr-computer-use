@@ -75,8 +75,6 @@ The daemon file is deployed to `%USERPROFILE%\vadgr\daemon.py` and listens on TC
 
 ## Library usage
 
-Direct (agent picks what to do):
-
 ```python
 from computer_use import ComputerUseEngine
 
@@ -86,12 +84,9 @@ engine.click(500, 300)
 engine.type_text("hello")
 ```
 
-Autonomous (engine drives itself via an LLM provider — optional):
-
-```python
-engine = ComputerUseEngine(provider="anthropic")  # reads ANTHROPIC_API_KEY
-results = engine.run_task("Open Notepad and type hello", max_steps=50)
-```
+The library has no LLM inside. The caller decides what to do. If you want an
+agent loop, use an MCP client (Claude Code CLI, Cursor, Cline, or your own)
+and let it drive the server.
 
 ## Environment
 
@@ -101,8 +96,6 @@ results = engine.run_task("Open Notepad and type hello", max_steps=50)
 | `CUE_BRIDGE_PORT` | Override WSL2 bridge daemon TCP port (default: 19542) |
 | `VADGR_DATA` | Override data directory for debug screenshots |
 | `VADGR_DEBUG` | Set to `1` to dump screenshots to `$VADGR_DATA/screenshots/` |
-| `ANTHROPIC_API_KEY` | Only for autonomous mode (`provider="anthropic"`) |
-| `OPENAI_API_KEY` | Only for autonomous mode (`provider="openai"`) |
 
 ## Tests
 

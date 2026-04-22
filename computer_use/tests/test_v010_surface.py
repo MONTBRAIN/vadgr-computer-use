@@ -60,6 +60,26 @@ REMOVED_ENGINE_ATTRS = frozenset({
     "click_element",
     "_get_locator",
     "_locator",
+    # Autonomous mode, dropped in v0.1.0 cleanup:
+    "run_task",
+    "execute_action",
+    "_get_provider",
+    "_provider",
+    "_provider_name",
+    "_history",
+    "_config",
+    "_load_config",
+})
+
+
+REMOVED_MODULES = frozenset({
+    "computer_use.core.spatial_cache",
+    "computer_use.core.loop",
+    "computer_use.providers",
+    "computer_use.providers.base",
+    "computer_use.providers.anthropic",
+    "computer_use.providers.openai",
+    "computer_use.providers.registry",
 })
 
 
@@ -89,7 +109,8 @@ class TestEngineSurface:
         assert not leaked, f"Cache-era attrs still on engine: {sorted(leaked)}"
 
 
-class TestSpatialCacheModuleRemoved:
-    def test_module_cannot_be_imported(self):
+class TestRemovedModules:
+    @pytest.mark.parametrize("mod", sorted(REMOVED_MODULES))
+    def test_module_cannot_be_imported(self, mod):
         with pytest.raises(ModuleNotFoundError):
-            importlib.import_module("computer_use.core.spatial_cache")
+            importlib.import_module(mod)

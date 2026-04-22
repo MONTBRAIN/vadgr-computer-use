@@ -1,8 +1,6 @@
 """Tests for core data types."""
 
 from computer_use.core.types import (
-    Action,
-    ActionType,
     ForegroundWindow,
     Platform,
     Region,
@@ -60,48 +58,6 @@ class TestRegion:
             pass
 
 
-class TestAction:
-    def test_click(self):
-        a = Action(action_type=ActionType.CLICK, x=500, y=300)
-        assert a.action_type == ActionType.CLICK
-        assert a.x == 500
-        assert a.y == 300
-
-    def test_type_text(self):
-        a = Action(action_type=ActionType.TYPE_TEXT, text="hello world")
-        assert a.text == "hello world"
-
-    def test_key_press(self):
-        a = Action(action_type=ActionType.KEY_PRESS, keys=["ctrl", "c"])
-        assert a.keys == ["ctrl", "c"]
-
-    def test_scroll(self):
-        a = Action(action_type=ActionType.SCROLL, x=100, y=200, scroll_amount=-3)
-        assert a.scroll_amount == -3
-
-    def test_drag(self):
-        a = Action(
-            action_type=ActionType.DRAG,
-            x=10, y=20,
-            target_x=300, target_y=400,
-            duration=0.5,
-        )
-        assert a.target_x == 300
-        assert a.duration == 0.5
-
-    def test_wait(self):
-        a = Action(action_type=ActionType.WAIT, duration=2.0)
-        assert a.duration == 2.0
-
-    def test_defaults(self):
-        a = Action(action_type=ActionType.CLICK)
-        assert a.x is None
-        assert a.text is None
-        assert a.keys is None
-        assert a.scroll_amount == 0
-        assert a.duration == 0.0
-
-
 class TestScreenState:
     def test_creation(self):
         s = ScreenState(
@@ -121,13 +77,3 @@ class TestPlatform:
         assert Platform.MACOS.value == "macos"
         assert Platform.LINUX.value == "linux"
         assert Platform.WSL2.value == "wsl2"
-
-
-class TestActionType:
-    def test_all_types(self):
-        expected = {
-            "click", "double_click", "right_click", "type_text",
-            "key_press", "scroll", "move", "drag", "wait",
-        }
-        actual = {at.value for at in ActionType}
-        assert actual == expected

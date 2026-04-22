@@ -1,118 +1,37 @@
-# Computer Use - Desktop Automation Engine
+# computer_use (package internals)
 
-Captures screenshots and executes mouse/keyboard actions for autonomous desktop interaction.
+This is the Python package shipped as `vadgr-computer-use` on PyPI.
 
-This module is **standalone** and works independently without `forge/`.
+For user-facing docs (install, CLI, MCP wiring), see the top-level
+[README.md](../README.md).
 
-## What It Does
-
-Provides programmatic control of the desktop through:
-
-- **Screenshots** - full screen or region capture
-- **Actions** - click, type, scroll, drag, key press
-- **Autonomous loop** - screenshot, decide (LLM), act, verify cycle
-
-## Usage
-
-### As a library
-
-```python
-from computer_use import ComputerUseEngine
-
-engine = ComputerUseEngine()
-screen = engine.screenshot()
-engine.click(500, 300)
-engine.type_text("hello")
-```
-
-### Autonomous mode
-
-```python
-engine = ComputerUseEngine(provider="anthropic")
-results = engine.run_task("Open Notepad and type hello", max_steps=50)
-```
-
-### As an MCP server
-
-Exposes 13 tools via Model Context Protocol for any MCP-compatible agent:
-
-```bash
-python -m computer_use.mcp_server
-```
-
-See `.mcp.json.example` in the repo root for configuration.
-
-### CLI
-
-```bash
-python -m computer_use "Open the browser and search for Vadgr"
-python -m computer_use --screenshot    # Save a screenshot
-python -m computer_use --info          # Show platform info
-```
-
-## Setup
-
-### Linux
-
-```bash
-bash setup-linux.sh
-```
-
-### Manual setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Set your LLM provider API key:
-
-```bash
-export ANTHROPIC_API_KEY="sk-..."
-# or
-export OPENAI_API_KEY="sk-..."
-```
-
-## Architecture
+## Layout
 
 ```
 computer_use/
-├── core/               # Engine facade, types, actions, loop
-├── platform/           # OS backends (Linux, Windows, macOS, WSL2)
-├── providers/          # LLM adapters (Anthropic, OpenAI) -- autonomous mode only
-├── bridge/             # WSL2 <-> Windows TCP bridge + supervisor
-├── tests/              # Unit tests (pytest)
-├── mcp_server.py       # MCP server entry point
-├── config.yaml         # Default configuration
-└── requirements.txt    # Python dependencies
+├── core/               # Engine facade, types, screenshot/action abstractions
+├── platform/           # OS backends (linux.py, wsl2.py, windows.py, macos.py) + detect.py
+├── bridge/             # WSL2 -> Windows TCP daemon: client, deployer, supervisor
+├── tests/              # pytest suite
+└── mcp_server.py       # FastMCP server entry point (`vadgr-cua` console script)
 ```
 
-## Platform Support
+## Architecture contract
 
-| Platform | Screenshots | Actions |
-|----------|-------------|---------|
-| Linux/X11 | mss | xdotool |
-| Linux/Wayland (GNOME) | gnome-screenshot | Mutter RemoteDesktop |
-| Linux/Wayland (wlroots) | grim | evdev |
-| WSL2 | TCP bridge daemon (Win32 + mss) | TCP bridge daemon (Win32 SendInput) |
-| Windows | Win32 GDI | SendInput |
-| macOS | screencapture | osascript/cliclick |
+- `mcp_server.py` exposes 13 MCP tools. Each tool calls straight into
+  `ComputerUseEngine`.
+- `core/engine.py` is the public Python API. It does not call any LLM.
+- `platform/*.py` each implement `PlatformBackend` with `get_screen_capture()`
+  and `get_action_executor()` for their OS.
+- `bridge/supervisor.py` (WSL2 only) probes, launches, and self-heals the
+  Windows-side daemon. The backend delegates to it; callers do not touch
+  the daemon directly.
 
-## Configuration
-
-Edit `config.yaml` or use environment variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (autonomous mode only) |
-| `OPENAI_API_KEY` | OpenAI API key (autonomous mode only) |
-| `VADGR_DEBUG` | Enable debug screenshots |
-| `VADGR_DATA` | Custom data directory for debug screenshots |
-| `CU_MAX_WIDTH` | Max screenshot width sent to the LLM |
-
-## Tests
+## Running the tests
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest computer_use/tests/ -v
+pip install -e ".[dev]"
+pytest computer_use/tests -q
 ```
+
+Baseline: Linux CI runs 3.10 / 3.11 / 3.12 (`.github/workflows/test.yml`).
