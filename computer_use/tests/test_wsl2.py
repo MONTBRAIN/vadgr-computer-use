@@ -1,8 +1,14 @@
 """Tests for the WSL2 platform backend."""
 
+import sys
 from unittest.mock import MagicMock, patch, mock_open
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="WSL2 backend exercises Linux-only paths and the fcntl-using supervisor.",
+)
 
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.types import Region

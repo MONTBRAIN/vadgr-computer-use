@@ -384,3 +384,47 @@ class TestEngineSingleton:
 
         mod._engine = None
         assert mod._engine is None
+
+
+class TestNativeWindowsImport:
+    """Importing the MCP server must not pull in POSIX-only modules.
+
+    On native Windows there is no `fcntl`, so an eager import of the bridge
+    supervisor crashes the stdio server before it can serve a single tool
+    call. The supervisor only matters for daemon subcommands (doctor,
+    install-daemon, stop-daemon, restart-daemon), which run on WSL2/Linux.
+    """
+
+    def test_supervisor_not_imported_at_module_load(self):
+        import importlib
+        import sys
+
+        for name in list(sys.modules):
+            if name == "computer_use.mcp_server" or name.startswith(
+                "computer_use.bridge"
+            ):
+                del sys.modules[name]
+
+        importlib.import_module("computer_use.mcp_server")
+        assert "computer_use.bridge.supervisor" not in sys.modules
+
+    def test_module_imports_when_fcntl_unavailable(self, monkeypatch):
+        import builtins
+        import importlib
+        import sys
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "fcntl":
+                raise ModuleNotFoundError("No module named 'fcntl'")
+            return real_import(name, *args, **kwargs)
+
+        for mod_name in list(sys.modules):
+            if mod_name == "fcntl" or mod_name.startswith(
+                "computer_use.bridge"
+            ) or mod_name == "computer_use.mcp_server":
+                sys.modules.pop(mod_name, None)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        importlib.import_module("computer_use.mcp_server")

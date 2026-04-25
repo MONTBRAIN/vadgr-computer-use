@@ -13,9 +13,15 @@ Covers: `ensure_running` decision tree (healthy, missing, launch-fail),
 bridge client are injected -- no real subprocess calls here.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Supervisor uses fcntl; daemon path runs on WSL2/Linux only.",
+)
 
 
 # --- Fixtures ---

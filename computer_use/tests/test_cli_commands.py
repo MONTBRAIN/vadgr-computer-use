@@ -77,8 +77,8 @@ class TestDoctor:
             "port": 19542,
             "daemon_hash": "abc",
         }
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_doctor(MagicMock())
         out = capsys.readouterr().out
@@ -97,8 +97,8 @@ class TestInstallDaemon:
 
         supervisor = MagicMock()
         supervisor.ensure_running.return_value = MagicMock()  # live client
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_install_daemon(MagicMock())
         assert rc == 0
@@ -109,8 +109,8 @@ class TestInstallDaemon:
 
         supervisor = MagicMock()
         supervisor.ensure_running.return_value = None
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_install_daemon(MagicMock())
         assert rc != 0
@@ -124,8 +124,8 @@ class TestStopDaemon:
         from computer_use import mcp_server
 
         supervisor = MagicMock()
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_stop_daemon(MagicMock())
         assert rc == 0
@@ -141,8 +141,8 @@ class TestRestartDaemon:
 
         supervisor = MagicMock()
         supervisor.restart.return_value = MagicMock()  # live client
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_restart_daemon(MagicMock())
         assert rc == 0
@@ -153,8 +153,8 @@ class TestRestartDaemon:
 
         supervisor = MagicMock()
         supervisor.restart.return_value = None
-        with patch(
-            "computer_use.mcp_server.DaemonSupervisor", return_value=supervisor
+        with patch.object(
+            mcp_server, "_get_supervisor", return_value=supervisor
         ):
             rc = mcp_server._cmd_restart_daemon(MagicMock())
         assert rc != 0
