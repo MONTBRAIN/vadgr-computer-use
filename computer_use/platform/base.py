@@ -15,11 +15,26 @@
 """Abstract platform backend combining screenshot and action capabilities."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.types import ForegroundWindow
+
+
+@dataclass(frozen=True)
+class AvailabilityReport:
+    """Structured result of a backend availability check.
+
+    `available` is True iff the backend can run. When False, `missing` lists
+    short identifiers for the components that failed (e.g. "jeepney", "grim",
+    "xdotool"), and `remediation` is one actionable sentence the engine
+    surfaces in its error message.
+    """
+    available: bool
+    missing: tuple[str, ...] = ()
+    remediation: str = ""
 
 
 class PlatformBackend(ABC):
@@ -40,6 +55,16 @@ class PlatformBackend(ABC):
     def is_available(self) -> bool:
         """Return True if this backend can run on the current system."""
         ...
+
+    def availability_report(self) -> AvailabilityReport:
+        """Structured availability check. Default derives from is_available()."""
+        if self.is_available():
+            return AvailabilityReport(available=True)
+        return AvailabilityReport(
+            available=False,
+            missing=("backend",),
+            remediation="Backend reported unavailable; see platform-specific docs.",
+        )
 
     @abstractmethod
     def get_foreground_window(self) -> Optional[ForegroundWindow]:

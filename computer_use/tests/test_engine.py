@@ -11,12 +11,14 @@ import pytest
 from computer_use.core.engine import ComputerUseEngine
 from computer_use.core.errors import PlatformNotSupportedError
 from computer_use.core.types import Platform, Region, ScreenState
+from computer_use.platform.base import AvailabilityReport
 
 
 @pytest.fixture
 def mock_backend():
     backend = MagicMock()
     backend.is_available.return_value = True
+    backend.availability_report.return_value = AvailabilityReport(available=True)
 
     capture = MagicMock()
     capture.capture_full.return_value = ScreenState(
@@ -56,10 +58,18 @@ class TestInit:
     def test_raises_when_backend_unavailable(self, mock_backend):
         backend, _, _ = mock_backend
         backend.is_available.return_value = False
+        backend.availability_report.return_value = AvailabilityReport(
+            available=False,
+            missing=("xdotool",),
+            remediation="Install xdotool: apt install xdotool.",
+        )
         with patch("computer_use.core.engine.detect_platform", return_value=Platform.LINUX):
             with patch("computer_use.core.engine.get_backend", return_value=backend):
-                with pytest.raises(PlatformNotSupportedError):
+                with pytest.raises(PlatformNotSupportedError) as exc:
                     ComputerUseEngine()
+        # Engine surfaces the actionable remediation, not a generic message.
+        assert "xdotool" in str(exc.value)
+        assert "apt install xdotool" in str(exc.value)
 
 
 class TestScreenshot:

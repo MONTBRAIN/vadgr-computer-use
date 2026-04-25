@@ -41,8 +41,9 @@ from computer_use.core.smooth_move import (
     smooth_move,
     windmouse_path,
 )
+from computer_use.core.errors import PlatformNotSupportedError
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
-from computer_use.platform.base import PlatformBackend
+from computer_use.platform.base import AvailabilityReport, PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.linux")
 
@@ -60,9 +61,11 @@ except ImportError:
     ecodes = None  # type: ignore[assignment]
 
 try:
-    import dbus as dbus_import
+    import jeepney as jeepney_import
+    from jeepney.io.blocking import open_dbus_connection as _open_dbus_connection
 except ImportError:
-    dbus_import = None  # type: ignore[assignment]
+    jeepney_import = None  # type: ignore[assignment]
+    _open_dbus_connection = None  # type: ignore[assignment]
 
 # libxkbcommon for layout-aware character-to-keycode mapping.
 # Available on every GNOME/Wayland desktop, loaded via ctypes (no pip package needed).
@@ -923,97 +926,178 @@ class EvdevActionExecutor(_WaylandActionExecutor):
 # ---------------------------------------------------------------------------
 
 
+_MUTTER_RD_BUS = 'org.gnome.Mutter.RemoteDesktop'
+_MUTTER_RD_PATH = '/org/gnome/Mutter/RemoteDesktop'
+_MUTTER_RD_IFACE = 'org.gnome.Mutter.RemoteDesktop'
+_MUTTER_RD_SESSION_IFACE = 'org.gnome.Mutter.RemoteDesktop.Session'
+_MUTTER_SC_BUS = 'org.gnome.Mutter.ScreenCast'
+_MUTTER_SC_PATH = '/org/gnome/Mutter/ScreenCast'
+_MUTTER_SC_IFACE = 'org.gnome.Mutter.ScreenCast'
+_MUTTER_SC_SESSION_IFACE = 'org.gnome.Mutter.ScreenCast.Session'
+_DBUS_PROPERTIES_IFACE = 'org.freedesktop.DBus.Properties'
+
+
 def _is_mutter_available() -> bool:
-    """Check if Mutter RemoteDesktop DBus interface is available."""
-    if dbus_import is None:
+    """Check if Mutter RemoteDesktop DBus interface is reachable."""
+    if jeepney_import is None or _open_dbus_connection is None:
         return False
+    conn = None
     try:
-        bus = dbus_import.SessionBus()
-        bus.get_object('org.gnome.Mutter.RemoteDesktop', '/org/gnome/Mutter/RemoteDesktop')
-        return True
+        addr = jeepney_import.DBusAddress(
+            object_path=_MUTTER_RD_PATH, bus_name=_MUTTER_RD_BUS,
+            interface=_DBUS_PROPERTIES_IFACE,
+        )
+        conn = _open_dbus_connection(bus='SESSION')
+        msg = jeepney_import.new_method_call(addr, 'GetAll', 's', (_MUTTER_RD_IFACE,))
+        reply = conn.send_and_get_reply(msg, timeout=2.0)
+        return reply.header.message_type == jeepney_import.MessageType.method_return
     except Exception:
         return False
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _mutter_rd_addr() -> "jeepney_import.DBusAddress":
+    return jeepney_import.DBusAddress(
+        object_path=_MUTTER_RD_PATH, bus_name=_MUTTER_RD_BUS,
+        interface=_MUTTER_RD_IFACE,
+    )
+
+
+def _mutter_rd_session_addr(session_path: str) -> "jeepney_import.DBusAddress":
+    return jeepney_import.DBusAddress(
+        object_path=session_path, bus_name=_MUTTER_RD_BUS,
+        interface=_MUTTER_RD_SESSION_IFACE,
+    )
+
+
+def _mutter_rd_session_props_addr(session_path: str) -> "jeepney_import.DBusAddress":
+    return jeepney_import.DBusAddress(
+        object_path=session_path, bus_name=_MUTTER_RD_BUS,
+        interface=_DBUS_PROPERTIES_IFACE,
+    )
+
+
+def _mutter_sc_addr() -> "jeepney_import.DBusAddress":
+    return jeepney_import.DBusAddress(
+        object_path=_MUTTER_SC_PATH, bus_name=_MUTTER_SC_BUS,
+        interface=_MUTTER_SC_IFACE,
+    )
+
+
+def _mutter_sc_session_addr(session_path: str) -> "jeepney_import.DBusAddress":
+    return jeepney_import.DBusAddress(
+        object_path=session_path, bus_name=_MUTTER_SC_BUS,
+        interface=_MUTTER_SC_SESSION_IFACE,
+    )
+
+
+def _unwrap_variant(variant) -> object:
+    # jeepney Get returns ('signature', value)
+    if isinstance(variant, tuple) and len(variant) == 2:
+        return variant[1]
+    return variant
 
 
 class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
-    """GNOME Wayland input via Mutter RemoteDesktop + ScreenCast DBus interfaces."""
+    """GNOME Wayland input via Mutter RemoteDesktop + ScreenCast DBus over jeepney."""
 
     def __init__(self):
         super().__init__()
-        self._bus = dbus_import.SessionBus()
-        self._session = None
-        self._stream_path = None
+        self._conn = None
+        self._session_path: Optional[str] = None
+        self._stream_path: Optional[str] = None
         self._setup_session()
 
+    def _call(self, addr, method: str, signature: str = "", body: tuple = ()):
+        msg = jeepney_import.new_method_call(addr, method, signature or None, body)
+        reply = self._conn.send_and_get_reply(msg)
+        if reply.header.message_type == jeepney_import.MessageType.error:
+            err = reply.header.fields.get(jeepney_import.HeaderFields.error_name, "unknown")
+            raise ActionError(f"Mutter DBus error {err}: {reply.body}")
+        return reply.body
+
     def _setup_session(self) -> None:
-        """Create RemoteDesktop + ScreenCast sessions for full input control."""
-        # RemoteDesktop session
-        rd_obj = self._bus.get_object(
-            'org.gnome.Mutter.RemoteDesktop', '/org/gnome/Mutter/RemoteDesktop')
-        rd_iface = dbus_import.Interface(rd_obj, 'org.gnome.Mutter.RemoteDesktop')
-        session_path = rd_iface.CreateSession()
+        if jeepney_import is None or _open_dbus_connection is None:
+            raise PlatformNotSupportedError(
+                "jeepney is required for GNOME Wayland input. "
+                "Install with: pip install vadgr-computer-use"
+            )
 
-        session_obj = self._bus.get_object('org.gnome.Mutter.RemoteDesktop', session_path)
-        self._session = dbus_import.Interface(
-            session_obj, 'org.gnome.Mutter.RemoteDesktop.Session')
-        session_props = dbus_import.Interface(session_obj, 'org.freedesktop.DBus.Properties')
-        session_id = session_props.Get('org.gnome.Mutter.RemoteDesktop.Session', 'SessionId')
+        self._conn = _open_dbus_connection(bus='SESSION')
 
-        # ScreenCast session (linked to RemoteDesktop for absolute positioning)
-        sc_obj = self._bus.get_object(
-            'org.gnome.Mutter.ScreenCast', '/org/gnome/Mutter/ScreenCast')
-        sc_iface = dbus_import.Interface(sc_obj, 'org.gnome.Mutter.ScreenCast')
-        sc_session_path = sc_iface.CreateSession(
-            {'remote-desktop-session-id': dbus_import.String(session_id)})
-        sc_session_obj = self._bus.get_object('org.gnome.Mutter.ScreenCast', sc_session_path)
-        sc_session = dbus_import.Interface(
-            sc_session_obj, 'org.gnome.Mutter.ScreenCast.Session')
-        self._stream_path = sc_session.RecordMonitor('', {})
+        body = self._call(_mutter_rd_addr(), 'CreateSession')
+        self._session_path = body[0]
 
-        self._session.Start()
-        logger.info("Mutter RemoteDesktop session started")
+        sid_body = self._call(
+            _mutter_rd_session_props_addr(self._session_path),
+            'Get', 'ss', (_MUTTER_RD_SESSION_IFACE, 'SessionId'),
+        )
+        session_id = _unwrap_variant(sid_body[0])
+
+        sc_body = self._call(
+            _mutter_sc_addr(), 'CreateSession', 'a{sv}',
+            ([('remote-desktop-session-id', ('s', session_id))],),
+        )
+        sc_session_path = sc_body[0]
+
+        stream_body = self._call(
+            _mutter_sc_session_addr(sc_session_path),
+            'RecordMonitor', 'sa{sv}', ('', []),
+        )
+        self._stream_path = stream_body[0]
+
+        self._call(_mutter_rd_session_addr(self._session_path), 'Start')
+        logger.info("Mutter RemoteDesktop session started (jeepney)")
 
     def _ensure_session(self) -> None:
-        """Recreate session if it died."""
-        if self._session is None:
+        if self._session_path is None:
             self._setup_session()
 
-    def _raw_move(self, x: int, y: int) -> None:
+    def _session_call(self, method: str, signature: str = "", body: tuple = ()) -> None:
         self._ensure_session()
-        self._session.NotifyPointerMotionAbsolute(
-            self._stream_path, dbus_import.Double(float(x)), dbus_import.Double(float(y)))
+        self._call(_mutter_rd_session_addr(self._session_path), method, signature, body)
+
+    def _raw_move(self, x: int, y: int) -> None:
+        self._session_call(
+            'NotifyPointerMotionAbsolute', 'sdd',
+            (self._stream_path, float(x), float(y)),
+        )
         self._tracker.update(x, y)
 
     def move_mouse(self, x: int, y: int) -> None:
         smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
+    def _button(self, btn: int, pressed: bool) -> None:
+        self._session_call('NotifyPointerButton', 'ib', (int(btn), bool(pressed)))
+
     def click(self, x: int, y: int, button: str = "left") -> None:
         btn = self._btn_code(button)
         self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
-        self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))
+        self._button(btn, True)
         time.sleep(0.04)
-        self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(False))
+        self._button(btn, False)
 
     def double_click(self, x: int, y: int) -> None:
         btn = self._btn_code("left")
         self.move_mouse(x, y)
         time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
         for _ in range(2):
-            self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))
+            self._button(btn, True)
             time.sleep(0.04)
-            self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(False))
+            self._button(btn, False)
             time.sleep(0.08)
 
     def _key_event(self, keycode: int, down: bool) -> None:
-        self._ensure_session()
-        self._session.NotifyKeyboardKeycode(
-            dbus_import.UInt32(keycode), dbus_import.Boolean(down))
+        self._session_call('NotifyKeyboardKeycode', 'ub', (int(keycode), bool(down)))
 
     def _keysym_event(self, keysym: int, down: bool) -> None:
-        self._ensure_session()
-        self._session.NotifyKeyboardKeysym(
-            dbus_import.UInt32(keysym), dbus_import.Boolean(down))
+        self._session_call('NotifyKeyboardKeysym', 'ub', (int(keysym), bool(down)))
 
     def type_text(self, text: str) -> None:
         # Use keycodes from xkb char map (layout-aware). Characters not in the
@@ -1103,22 +1187,17 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         self._raw_move(x, y)
         time.sleep(0.05)
         # Mutter RemoteDesktop axis convention (empirically verified):
-        #   positive dy = scroll down, negative dy = scroll up.
-        # Our API: positive amount = up, negative = down.
-        # Discrete follows the same convention as continuous.
+        # positive dy = scroll down, negative dy = scroll up.
+        # API contract: positive amount = up, negative = down.
         step_discrete = -1 if amount > 0 else 1
         step_pixels = -15.0 if amount > 0 else 15.0
         for _ in range(abs(amount)):
-            self._session.NotifyPointerAxisDiscrete(
-                dbus_import.UInt32(0), dbus_import.Int32(step_discrete))
-            self._session.NotifyPointerAxis(
-                dbus_import.Double(0.0), dbus_import.Double(step_pixels),
-                dbus_import.UInt32(0))
+            self._session_call('NotifyPointerAxisDiscrete', 'ui', (0, int(step_discrete)))
+            self._session_call(
+                'NotifyPointerAxis', 'ddu', (0.0, float(step_pixels), 0),
+            )
             time.sleep(0.03)
-        # Send finish flag (1) to flush the scroll sequence
-        self._session.NotifyPointerAxis(
-            dbus_import.Double(0.0), dbus_import.Double(0.0),
-            dbus_import.UInt32(1))
+        self._session_call('NotifyPointerAxis', 'ddu', (0.0, 0.0, 1))
 
     def drag(
         self,
@@ -1131,7 +1210,7 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         btn = self._btn_code("left")
         self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
-        self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(True))
+        self._button(btn, True)
 
         path = windmouse_path(start_x, start_y, end_x, end_y,
                               gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
@@ -1141,16 +1220,22 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
             if i < len(delays):
                 time.sleep(delays[i])
 
-        self._session.NotifyPointerButton(dbus_import.Int32(btn), dbus_import.Boolean(False))
+        self._button(btn, False)
 
     def close(self) -> None:
-        if self._session is not None:
+        if self._session_path is not None and self._conn is not None:
             try:
-                self._session.Stop()
+                self._call(_mutter_rd_session_addr(self._session_path), 'Stop')
             except Exception:
                 pass
-            self._session = None
-            self._stream_path = None
+        self._session_path = None
+        self._stream_path = None
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
 
 
 # ---------------------------------------------------------------------------
@@ -1166,7 +1251,6 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
     if not _is_wayland():
         return LinuxActionExecutor()
 
-    # GNOME Wayland: use Mutter RemoteDesktop DBus interface
     if _is_mutter_available():
         try:
             executor = MutterRemoteDesktopExecutor()
@@ -1175,7 +1259,6 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
         except Exception as e:
             logger.warning("Mutter RemoteDesktop failed: %s, trying evdev", e)
 
-    # Other Wayland compositors: try evdev
     if evdev_import is not None:
         mouse = _find_evdev_mouse()
         kbd = _find_evdev_keyboard()
@@ -1187,8 +1270,12 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
         if kbd:
             kbd.close()
 
-    logger.warning("Wayland: no working input method, falling back to xdotool")
-    return LinuxActionExecutor()
+    raise PlatformNotSupportedError(
+        "No working Wayland input method. On GNOME, ensure Mutter is running "
+        "(jeepney must reach org.gnome.Mutter.RemoteDesktop). On Sway/Hyprland, "
+        "install evdev wheels (already a runtime dep) and add your user to the "
+        "input group: sudo usermod -aG input $USER, then log out and back in."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1213,7 +1300,11 @@ def _get_foreground_window_linux() -> Optional[ForegroundWindow]:
 
 
 def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
-    """Get the focused window on Wayland via AT-SPI2 accessibility."""
+    """Get the focused window on Wayland via AT-SPI2 accessibility.
+
+    AT-SPI requires the [linux-atspi] extra (PyGObject). When the import or
+    runtime call fails, this returns None so the engine keeps running.
+    """
     try:
         import gi
         gi.require_version("Atspi", "2.0")
@@ -1221,8 +1312,12 @@ def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
     except (ImportError, ValueError):
         return None
 
-    Atspi.init()
-    desktop = Atspi.get_desktop(0)
+    try:
+        Atspi.init()
+        desktop = Atspi.get_desktop(0)
+    except Exception:
+        return None
+
     best: Optional[ForegroundWindow] = None
 
     for i in range(desktop.get_child_count()):
@@ -1250,8 +1345,8 @@ def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
                 if not app_name:
                     app_name = app.get_name()
 
-                # Keep updating — last ACTIVE window in the tree is typically
-                # the most recently focused one on GNOME.
+                # Last ACTIVE window in the tree is typically the most
+                # recently focused one on GNOME.
                 best = ForegroundWindow(
                     app_name=app_name,
                     title=window.get_name() or "",
@@ -1326,6 +1421,10 @@ def _query_foreground_window() -> Optional[ForegroundWindow]:
 # ---------------------------------------------------------------------------
 
 
+def _wayland_screenshot_tool_available() -> bool:
+    return any(shutil.which(tool) for tool, _cls in _WAYLAND_TOOLS)
+
+
 class LinuxBackend(PlatformBackend):
 
     def __init__(self):
@@ -1343,9 +1442,61 @@ class LinuxBackend(PlatformBackend):
         return self._executor
 
     def is_available(self) -> bool:
+        return self.availability_report().available
+
+    def availability_report(self) -> AvailabilityReport:
         if _is_wayland():
-            return _is_mutter_available() or evdev_import is not None
-        return shutil.which("xdotool") is not None
+            return self._wayland_report()
+        return self._x11_report()
+
+    def _wayland_report(self) -> AvailabilityReport:
+        missing: list[str] = []
+        remediations: list[str] = []
+
+        has_mutter = _is_mutter_available()
+        has_evdev = evdev_import is not None
+
+        if not has_mutter and not has_evdev:
+            if jeepney_import is None:
+                missing.append("jeepney")
+                remediations.append(
+                    "pip install vadgr-computer-use (jeepney is a declared runtime "
+                    "dep; if absent, your install is incomplete)"
+                )
+            else:
+                missing.append("input-injection")
+                remediations.append(
+                    "On GNOME, start a Wayland session (org.gnome.Mutter.RemoteDesktop "
+                    "must be on the session bus). On Sway/Hyprland, install evdev and "
+                    "add your user to the 'input' group."
+                )
+
+        if not _wayland_screenshot_tool_available():
+            missing.append("screenshot-tool")
+            remediations.append(
+                "Install a Wayland screenshot tool: apt install gnome-screenshot "
+                "(GNOME) or apt install grim (wlroots: Sway, Hyprland)."
+            )
+
+        if not missing:
+            return AvailabilityReport(available=True)
+        return AvailabilityReport(
+            available=False,
+            missing=tuple(missing),
+            remediation=" ".join(remediations),
+        )
+
+    def _x11_report(self) -> AvailabilityReport:
+        if shutil.which("xdotool"):
+            return AvailabilityReport(available=True)
+        return AvailabilityReport(
+            available=False,
+            missing=("xdotool",),
+            remediation=(
+                "Install xdotool: apt install xdotool (Debian/Ubuntu), "
+                "dnf install xdotool (Fedora), pacman -S xdotool (Arch)."
+            ),
+        )
 
     def get_foreground_window(self) -> Optional[ForegroundWindow]:
         return _get_foreground_window_linux()
