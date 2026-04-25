@@ -15,7 +15,7 @@
 """Abstract platform backend combining screenshot and action capabilities."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
