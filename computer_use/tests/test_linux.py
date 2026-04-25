@@ -7,9 +7,9 @@ import pytest
 
 from computer_use.core.errors import ScreenCaptureError
 
-from computer_use.platform.linux import dbus_import, evdev_import, ecodes
+from computer_use.platform.linux import jeepney_import, evdev_import, ecodes
 
-_has_dbus = dbus_import is not None
+_has_jeepney = jeepney_import is not None
 _has_evdev = evdev_import is not None
 
 
@@ -204,7 +204,8 @@ class TestLinuxBackend:
 
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=True)
-    def test_is_available_with_mutter_on_wayland(self, _mutter, _wayland):
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=True)
+    def test_is_available_with_mutter_on_wayland(self, _tool, _mutter, _wayland):
         from computer_use.platform.linux import LinuxBackend
         assert LinuxBackend().is_available() is True
 
@@ -252,35 +253,51 @@ class TestScaleFactor:
 # -- Mutter RemoteDesktop executor --
 
 
-def _mock_mutter_session():
-    """Create mock DBus session for MutterRemoteDesktopExecutor testing."""
-    mock_bus = MagicMock()
+class _SessionCallRecorder:
+    """Records calls made via MutterRemoteDesktopExecutor._call.
 
-    # Chain of object/interface mocks
-    mock_session = MagicMock()
-    mock_session_props = MagicMock()
-    mock_session_props.Get.return_value = "test-session-id"
+    Each entry is (method_name, signature, body). Returns canned reply bodies
+    keyed by method name; falls back to () for methods without a meaningful reply.
+    """
 
-    mock_sc_session = MagicMock()
-    mock_sc_session.RecordMonitor.return_value = "/org/gnome/Mutter/ScreenCast/Stream/u1"
+    def __init__(self):
+        self.calls: list[tuple[str, str, tuple]] = []
+        self._replies = {
+            "CreateSession": ("/org/gnome/Mutter/RemoteDesktop/Session/u1",),
+            "Get": (("s", "test-session-id"),),
+            # ScreenCast.CreateSession (matched by addr -> CreateSession; same key as RD)
+            # We disambiguate inside the test by inspecting calls.
+            "RecordMonitor": ("/org/gnome/Mutter/ScreenCast/Stream/u1",),
+        }
+        self._create_session_count = 0
 
-    def get_object(service, path):
-        obj = MagicMock()
-        if "RemoteDesktop/Session" in path:
-            obj_iface = MagicMock()
-            def iface_selector(name):
-                if "Properties" in name:
-                    return mock_session_props
-                return mock_session
-            obj_iface.side_effect = iface_selector
-            # dbus.Interface(obj, name) should return the right mock
-        elif "ScreenCast/Session" in path:
-            pass
-        return obj
+    def __call__(self, addr, method, signature="", body=()):
+        self.calls.append((method, signature, body))
+        if method == "CreateSession":
+            self._create_session_count += 1
+            if self._create_session_count == 1:
+                return ("/org/gnome/Mutter/RemoteDesktop/Session/u1",)
+            return ("/org/gnome/Mutter/ScreenCast/Session/u1",)
+        return self._replies.get(method, ())
 
-    mock_bus.get_object = MagicMock(side_effect=get_object)
 
-    return mock_bus, mock_session
+def _make_mutter_executor():
+    """Build a MutterRemoteDesktopExecutor without touching any real DBus
+    connection or input device. The recorder captures every _call() invocation
+    both during construction and afterwards."""
+    from computer_use.platform.linux import MutterRemoteDesktopExecutor
+
+    recorder = _SessionCallRecorder()
+    fake_conn = MagicMock()
+    with patch("computer_use.platform.linux._build_xkb_char_map", return_value=None), \
+         patch("computer_use.platform.linux._open_dbus_connection", return_value=fake_conn), \
+         patch.object(MutterRemoteDesktopExecutor, "_call", new=recorder):
+        ex = MutterRemoteDesktopExecutor()
+
+    def _call_proxy(addr, method, signature="", body=()):
+        return recorder(addr, method, signature, body)
+    ex._call = _call_proxy
+    return ex, recorder
 
 
 class TestGetSystemKeyboardLayout:
@@ -361,148 +378,166 @@ class TestBuildXkbCharMap:
             linux._xkb = original
 
 
-@pytest.mark.skipif(not _has_dbus, reason="dbus-python not installed")
+@pytest.mark.skipif(not _has_jeepney, reason="jeepney not installed")
 class TestMutterRemoteDesktopExecutor:
-    def _make_executor(self):
-        from computer_use.platform.linux import MutterRemoteDesktopExecutor
 
-        with patch("computer_use.platform.linux._build_xkb_char_map", return_value=None), \
-             patch("computer_use.platform.linux.dbus_import") as mock_dbus, \
-             patch("computer_use.platform.linux.MutterRemoteDesktopExecutor._setup_session"):
-            ex = MutterRemoteDesktopExecutor()
-            # Wire up a mock session manually
-            ex._session = MagicMock()
-            ex._stream_path = "/org/gnome/Mutter/ScreenCast/Stream/u1"
-            return ex
+    @staticmethod
+    def _calls_for(recorder, method):
+        return [c for c in recorder.calls if c[0] == method]
 
-    def test_move_mouse_absolute(self):
-        ex = self._make_executor()
-        # Test raw move directly (smooth_move generates multiple intermediate calls)
+    def test_setup_creates_two_sessions_and_records_monitor(self):
+        ex, rec = _make_mutter_executor()
+        names = [c[0] for c in rec.calls]
+        assert names.count("CreateSession") == 2  # RemoteDesktop + ScreenCast
+        assert "RecordMonitor" in names
+        assert "Start" in names
+        assert ex._session_path == "/org/gnome/Mutter/RemoteDesktop/Session/u1"
+        assert ex._stream_path == "/org/gnome/Mutter/ScreenCast/Stream/u1"
+
+    def test_raw_move_uses_sdd_signature(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex._raw_move(500, 400)
-        ex._session.NotifyPointerMotionAbsolute.assert_called_once()
-        args = ex._session.NotifyPointerMotionAbsolute.call_args[0]
-        assert args[0] == ex._stream_path
-
-    def test_move_mouse_updates_tracker(self):
-        ex = self._make_executor()
-        ex._raw_move(500, 400)
+        moves = self._calls_for(rec, "NotifyPointerMotionAbsolute")
+        assert len(moves) == 1
+        _, sig, body = moves[0]
+        assert sig == "sdd"
+        assert body == (ex._stream_path, 500.0, 400.0)
         assert ex._tracker.get_pos() == (500, 400)
 
-    def test_click(self):
-        ex = self._make_executor()
+    def test_click_emits_press_and_release(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.click(300, 200)
-        # Should move + button press + release
-        ex._session.NotifyPointerMotionAbsolute.assert_called()
-        btn_calls = ex._session.NotifyPointerButton.call_args_list
-        assert len(btn_calls) == 2  # press and release
+        btns = self._calls_for(rec, "NotifyPointerButton")
+        assert len(btns) == 2
+        for _, sig, body in btns:
+            assert sig == "ib"
+        assert btns[0][2][1] is True
+        assert btns[1][2][1] is False
 
-    def test_right_click(self):
-        ex = self._make_executor()
+    def test_right_click_uses_btn_right_code(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.click(300, 200, button="right")
-        btn_calls = ex._session.NotifyPointerButton.call_args_list
-        # Button 273 = BTN_RIGHT
-        assert any("273" in str(c) for c in btn_calls)
+        codes = {body[0] for _, _, body in self._calls_for(rec, "NotifyPointerButton")}
+        # BTN_RIGHT = 273 in evdev
+        assert 273 in codes
 
-    def test_double_click(self):
-        ex = self._make_executor()
+    def test_double_click_emits_four_button_events(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.double_click(300, 200)
-        btn_calls = ex._session.NotifyPointerButton.call_args_list
-        # 4 calls: press, release, press, release
-        assert len(btn_calls) == 4
+        assert len(self._calls_for(rec, "NotifyPointerButton")) == 4
 
-    def test_key_press_uses_keycodes(self):
-        ex = self._make_executor()
+    def test_key_press_emits_paired_keycode_events(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.key_press(["ctrl", "c"])
-        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # ctrl down, c down, c up, ctrl up = 4 events
-        assert len(kc_calls) == 4
-        pressed_codes = [c[0][0] for c in kc_calls if c[0][1]]
-        assert len(pressed_codes) == 2
+        kc = self._calls_for(rec, "NotifyKeyboardKeycode")
+        assert len(kc) == 4
+        for _, sig, body in kc:
+            assert sig == "ub"
+        pressed = sum(1 for _, _, body in kc if body[1] is True)
+        released = sum(1 for _, _, body in kc if body[1] is False)
+        assert pressed == 2 and released == 2
 
-    def test_type_text_uses_keycodes(self):
-        ex = self._make_executor()
+    def test_type_text_two_chars(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.type_text("ab")
-        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # a down/up + b down/up = 4 events
-        assert len(kc_calls) == 4
+        assert len(self._calls_for(rec, "NotifyKeyboardKeycode")) == 4
 
-    def test_type_text_newline(self):
-        ex = self._make_executor()
+    def test_type_text_newline_sends_enter(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.type_text("a\nb")
-        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # a(down,up) + enter(down,up) + b(down,up) = 6 events
-        assert len(kc_calls) == 6
+        assert len(self._calls_for(rec, "NotifyKeyboardKeycode")) == 6
 
     def test_type_text_uppercase_uses_shift(self):
-        ex = self._make_executor()
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.type_text("Hi")
-        kc_calls = ex._session.NotifyKeyboardKeycode.call_args_list
-        # shift down, H down, H up, shift up, i down, i up = 6
-        assert len(kc_calls) == 6
+        assert len(self._calls_for(rec, "NotifyKeyboardKeycode")) == 6
 
-    def test_type_text_clipboard_fallback(self):
-        # Characters not in the layout go through clipboard paste
-        ex = self._make_executor()
+    def test_type_text_clipboard_fallback_for_unmappable(self):
+        ex, rec = _make_mutter_executor()
         with patch("computer_use.platform.linux._clipboard_paste") as mock_paste:
-            ex.type_text("\u4e16")  # Chinese character, not in any Western layout
+            ex.type_text("\u4e16")
             mock_paste.assert_called_once()
             assert "\u4e16" in mock_paste.call_args[0][0]
 
-    def test_scroll(self):
-        ex = self._make_executor()
+    def test_scroll_down_three_steps(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.scroll(400, 300, -3)
-        # Must send both discrete (wheel clicks) and continuous (pixel delta)
-        discrete_calls = ex._session.NotifyPointerAxisDiscrete.call_args_list
-        assert len(discrete_calls) == 3
-        axis_calls = ex._session.NotifyPointerAxis.call_args_list
-        # 3 scroll steps + 1 finish event
-        assert len(axis_calls) == 4
+        assert len(self._calls_for(rec, "NotifyPointerAxisDiscrete")) == 3
+        axis = self._calls_for(rec, "NotifyPointerAxis")
+        assert len(axis) == 4  # 3 step + 1 finish
 
-    def test_scroll_up(self):
-        ex = self._make_executor()
+    def test_scroll_up_uses_negative_pixel_delta(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.scroll(400, 300, 2)
-        discrete_calls = ex._session.NotifyPointerAxisDiscrete.call_args_list
-        assert len(discrete_calls) == 2
-        # Discrete steps: negative = scroll up (same convention as continuous)
-        for call in discrete_calls:
-            assert int(call[0][1]) == -1
-        # Mutter: negative dy = scroll up, positive dy = scroll down
-        axis_calls = ex._session.NotifyPointerAxis.call_args_list
-        for call in axis_calls[:-1]:  # skip finish
-            assert float(call[0][1]) < 0  # negative dy = scroll up
+        discrete = self._calls_for(rec, "NotifyPointerAxisDiscrete")
+        assert len(discrete) == 2
+        for _, _, body in discrete:
+            assert body[1] == -1
+        axis = self._calls_for(rec, "NotifyPointerAxis")
+        for _, _, body in axis[:-1]:
+            assert body[1] < 0
 
-    def test_drag(self):
-        ex = self._make_executor()
+    def test_drag_emits_press_and_release(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.drag(100, 100, 500, 500, duration=0.1)
-        # Should have button press + multiple moves + button release
-        ex._session.NotifyPointerMotionAbsolute.assert_called()
-        btn_calls = ex._session.NotifyPointerButton.call_args_list
-        assert len(btn_calls) == 2  # press and release
+        btns = self._calls_for(rec, "NotifyPointerButton")
+        assert len(btns) == 2
+        assert btns[0][2][1] is True
+        assert btns[1][2][1] is False
 
-    def test_close_stops_session(self):
-        ex = self._make_executor()
-        session = ex._session
+    def test_close_stops_and_clears_session(self):
+        ex, rec = _make_mutter_executor()
+        rec.calls.clear()
         ex.close()
-        session.Stop.assert_called_once()
-        assert ex._session is None
+        assert any(c[0] == "Stop" for c in rec.calls)
+        assert ex._session_path is None
+        assert ex._stream_path is None
 
 
 class TestIsMutterAvailable:
-    @patch("computer_use.platform.linux.dbus_import")
-    def test_available_when_dbus_works(self, mock_dbus):
+    @patch("computer_use.platform.linux.jeepney_import", None)
+    def test_not_available_without_jeepney(self):
         from computer_use.platform.linux import _is_mutter_available
+        assert _is_mutter_available() is False
+
+    @patch("computer_use.platform.linux._open_dbus_connection")
+    def test_not_available_when_bus_open_fails(self, mock_open):
+        from computer_use.platform.linux import _is_mutter_available
+        mock_open.side_effect = Exception("cannot open bus")
+        assert _is_mutter_available() is False
+
+    @patch("computer_use.platform.linux._open_dbus_connection")
+    def test_not_available_when_mutter_returns_error(self, mock_open):
+        from computer_use.platform.linux import _is_mutter_available
+        import jeepney
+        conn = MagicMock()
+        reply = MagicMock()
+        reply.header.message_type = jeepney.MessageType.error
+        conn.send_and_get_reply.return_value = reply
+        mock_open.return_value = conn
+        assert _is_mutter_available() is False
+
+    @patch("computer_use.platform.linux._open_dbus_connection")
+    def test_available_when_mutter_returns_method_return(self, mock_open):
+        from computer_use.platform.linux import _is_mutter_available
+        import jeepney
+        conn = MagicMock()
+        reply = MagicMock()
+        reply.header.message_type = jeepney.MessageType.method_return
+        conn.send_and_get_reply.return_value = reply
+        mock_open.return_value = conn
         assert _is_mutter_available() is True
-
-    @patch("computer_use.platform.linux.dbus_import", None)
-    def test_not_available_without_dbus(self):
-        from computer_use.platform.linux import _is_mutter_available
-        assert _is_mutter_available() is False
-
-    @patch("computer_use.platform.linux.dbus_import")
-    def test_not_available_on_error(self, mock_dbus):
-        from computer_use.platform.linux import _is_mutter_available
-        mock_dbus.SessionBus.side_effect = Exception("no bus")
-        assert _is_mutter_available() is False
 
 
 # -- Evdev action executor --
@@ -675,11 +710,10 @@ class TestCreateActionExecutor:
         ex = _create_action_executor()
         assert isinstance(ex, LinuxActionExecutor)
 
-    @pytest.mark.skipif(not _has_dbus, reason="dbus-python not installed")
+    @pytest.mark.skipif(not _has_jeepney, reason="jeepney not installed")
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=True)
-    @patch("computer_use.platform.linux.dbus_import")
-    def test_wayland_gnome_returns_mutter(self, _dbus, _mutter, _wayland):
+    def test_wayland_gnome_returns_mutter(self, _mutter, _wayland):
         from computer_use.platform.linux import _create_action_executor, MutterRemoteDesktopExecutor
         with patch("computer_use.platform.linux.MutterRemoteDesktopExecutor._setup_session"):
             ex = _create_action_executor()
@@ -704,10 +738,11 @@ class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
     @patch("computer_use.platform.linux._find_evdev_mouse", return_value=None)
     @patch("computer_use.platform.linux._find_evdev_keyboard", return_value=None)
-    def test_wayland_no_mutter_no_evdev_falls_back(self, _kbd, _mouse, _mutter, _wayland):
-        from computer_use.platform.linux import _create_action_executor, LinuxActionExecutor
-        ex = _create_action_executor()
-        assert isinstance(ex, LinuxActionExecutor)
+    def test_wayland_no_mutter_no_evdev_raises(self, _kbd, _mouse, _mutter, _wayland):
+        from computer_use.core.errors import PlatformNotSupportedError
+        from computer_use.platform.linux import _create_action_executor
+        with pytest.raises(PlatformNotSupportedError, match="Wayland input"):
+            _create_action_executor()
 
 
 # -- Backend is_available --
@@ -716,24 +751,64 @@ class TestCreateActionExecutor:
 class TestLinuxBackendAvailability:
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=True)
-    def test_available_on_wayland_with_mutter(self, _mutter, _wayland):
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=True)
+    def test_available_on_wayland_with_mutter_and_tool(self, _tool, _mutter, _wayland):
         from computer_use.platform.linux import LinuxBackend
-        assert LinuxBackend().is_available() is True
+        report = LinuxBackend().availability_report()
+        assert report.available is True
+        assert report.missing == ()
 
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
-    @patch("computer_use.platform.linux.evdev_import", new_callable=lambda: MagicMock)
-    def test_available_on_wayland_with_evdev(self, _evdev, _mutter, _wayland):
-        from computer_use.platform.linux import LinuxBackend
-        assert LinuxBackend().is_available() is True
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=True)
+    def test_available_on_wayland_with_evdev_only(self, _tool, _mutter, _wayland):
+        from computer_use.platform import linux
+        with patch.object(linux, "evdev_import", MagicMock()):
+            report = linux.LinuxBackend().availability_report()
+        assert report.available is True
 
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
-    @patch("computer_use.platform.linux.evdev_import", None)
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=True)
+    def test_unavailable_when_no_input_method(self, _tool, _mutter, _wayland):
+        from computer_use.platform import linux
+        with patch.object(linux, "evdev_import", None), \
+             patch.object(linux, "jeepney_import", MagicMock()):
+            report = linux.LinuxBackend().availability_report()
+        assert report.available is False
+        assert "input-injection" in report.missing
+        assert "Mutter" in report.remediation or "evdev" in report.remediation
+
+    @patch("computer_use.platform.linux._is_wayland", return_value=True)
+    @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=True)
+    def test_unavailable_when_jeepney_missing(self, _tool, _mutter, _wayland):
+        from computer_use.platform import linux
+        with patch.object(linux, "evdev_import", None), \
+             patch.object(linux, "jeepney_import", None):
+            report = linux.LinuxBackend().availability_report()
+        assert report.available is False
+        assert "jeepney" in report.missing
+        assert "pip install vadgr-computer-use" in report.remediation
+
+    @patch("computer_use.platform.linux._is_wayland", return_value=True)
+    @patch("computer_use.platform.linux._is_mutter_available", return_value=True)
+    @patch("computer_use.platform.linux._wayland_screenshot_tool_available", return_value=False)
+    def test_unavailable_when_screenshot_tool_missing(self, _tool, _mutter, _wayland):
+        from computer_use.platform.linux import LinuxBackend
+        report = LinuxBackend().availability_report()
+        assert report.available is False
+        assert "screenshot-tool" in report.missing
+        assert "gnome-screenshot" in report.remediation or "grim" in report.remediation
+
+    @patch("computer_use.platform.linux._is_wayland", return_value=False)
     @patch("shutil.which", return_value=None)
-    def test_not_available_wayland_nothing(self, _which, _mutter, _wayland):
+    def test_unavailable_x11_without_xdotool_lists_apt_command(self, _which, _wayland):
         from computer_use.platform.linux import LinuxBackend
-        assert LinuxBackend().is_available() is False
+        report = LinuxBackend().availability_report()
+        assert report.available is False
+        assert "xdotool" in report.missing
+        assert "apt install xdotool" in report.remediation
 
 
 # -- Foreground window detection --

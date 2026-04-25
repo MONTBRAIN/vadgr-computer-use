@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vadgr-computer-use"
-version = "0.1.1"
+version = "0.1.2"
 description = "Local-first MCP server for desktop automation: screenshots, mouse, keyboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -26,9 +26,12 @@ dependencies = [
     "mcp>=1.0",
     "pillow>=10",
     "mss>=9",
+    "jeepney>=0.8; sys_platform == 'linux'",
+    "evdev>=1.6; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]
+linux-atspi = ["PyGObject>=3.50"]
 dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1"]
 
 [project.scripts]

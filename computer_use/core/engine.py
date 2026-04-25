@@ -45,10 +45,12 @@ class ComputerUseEngine:
         logger.info("Detected platform: %s", self._platform.value)
 
         self._backend: PlatformBackend = get_backend(self._platform)
-        if not self._backend.is_available():
+        report = self._backend.availability_report()
+        if not report.available:
+            missing = ", ".join(report.missing) if report.missing else "unknown"
             raise PlatformNotSupportedError(
-                f"Platform {self._platform.value} backend is not available. "
-                "Check that required system tools are installed."
+                f"Platform {self._platform.value} backend is not available "
+                f"(missing: {missing}). {report.remediation}"
             )
 
         self._capture: ScreenCapture = self._backend.get_screen_capture()

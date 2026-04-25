@@ -4,7 +4,7 @@ Local MCP server for desktop automation. 13 tools for capture, mouse, keyboard, 
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
-> **Platforms:** works on **Linux/X11**, **Windows native**, and **WSL2** (in that order). **macOS support is a work in progress** and not usable yet. See [Platform support](#platform-support) for detail.
+> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME)**, **Windows native**, and **WSL2**. **macOS support is a work in progress** and not usable yet. See [Platform support](#platform-support) for detail.
 
 ---
 
@@ -173,12 +173,16 @@ The LLM owns the "where to click" decision; the server owns "how to click it pre
 
 ## Platform support
 
-| Platform | Screenshots | Mouse / keyboard | Status |
-|----------|-------------|------------------|--------|
-| Linux / X11 | `mss` | `xdotool` | primary target |
-| Windows native | Win32 GDI | SendInput | should work; not in the v0.1.0 CI matrix |
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | well-tested |
+| Platform | Screenshots | Mouse / keyboard | Install notes |
+|----------|-------------|------------------|----------------|
+| Linux / X11 | `mss` | `xdotool` | `apt install xdotool` (or distro equivalent) |
+| Linux / Wayland (GNOME) | `gnome-screenshot` | Mutter RemoteDesktop via `jeepney` | nothing extra; pre-installed on stock GNOME, deps pulled by pip |
+| Linux / Wayland (Sway, Hyprland, wlroots) | `grim` | `evdev` | `apt install grim`; `sudo usermod -aG input $USER` then re-login |
+| Windows native | Win32 GDI | SendInput | nothing extra |
+| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
 | macOS | `screencapture` | `osascript` / `cliclick` | WIP, not functional yet |
+
+`pip install vadgr-computer-use` pulls `jeepney` and `evdev` automatically on Linux (both are pure-Python or shipped as wheels, no `libdbus-1-dev` or compilation needed). Foreground-window detection on Wayland uses AT-SPI2 if available; install with `pip install vadgr-computer-use[linux-atspi]` to enable it.
 
 If the WSL2 daemon can't start (e.g. no Windows Python available), the server falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
