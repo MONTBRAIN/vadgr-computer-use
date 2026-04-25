@@ -268,7 +268,15 @@ def get_platform_info() -> dict:
 # Keeping every subcommand as a small function makes them unit-testable
 # without spinning up argparse or touching sys.argv.
 
-from computer_use.bridge.supervisor import DaemonSupervisor  # noqa: E402
+def _get_supervisor():
+    """Build a DaemonSupervisor on demand.
+
+    Importing the supervisor pulls in `fcntl`, which doesn't exist on native
+    Windows. The stdio MCP server (the hot path) doesn't need it; only the
+    daemon subcommands do, and those run on WSL2/Linux.
+    """
+    from computer_use.bridge.supervisor import DaemonSupervisor
+    return DaemonSupervisor()
 
 
 def _cmd_doctor(args) -> int:
@@ -278,14 +286,14 @@ def _cmd_doctor(args) -> int:
     """
     import json as _json
 
-    status = DaemonSupervisor().status()
+    status = _get_supervisor().status()
     print(_json.dumps(status, indent=2))
     return 0
 
 
 def _cmd_install_daemon(args) -> int:
     """Eager deploy + launch. Returns non-zero if the daemon can't come up."""
-    client = DaemonSupervisor().ensure_running()
+    client = _get_supervisor().ensure_running()
     if client is None:
         print(
             "Daemon install failed. Run `vadgr-cua doctor` for diagnostics.",
@@ -298,14 +306,14 @@ def _cmd_install_daemon(args) -> int:
 
 def _cmd_stop_daemon(args) -> int:
     """Best-effort stop. Always returns 0 -- stop is idempotent."""
-    DaemonSupervisor().stop()
+    _get_supervisor().stop()
     print("Daemon stopped.")
     return 0
 
 
 def _cmd_restart_daemon(args) -> int:
     """Stop then start. Returns non-zero if the restart didn't come up."""
-    client = DaemonSupervisor().restart()
+    client = _get_supervisor().restart()
     if client is None:
         print("Daemon restart failed.", file=sys.stderr)
         return 1

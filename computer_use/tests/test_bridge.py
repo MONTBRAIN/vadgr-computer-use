@@ -407,7 +407,7 @@ class TestWSL2BackendBridgeFallbackWiring:
     def test_bridge_executor_gets_ps_fallback(self):
         from computer_use.platform.wsl2 import WSL2Backend, WSL2ActionExecutor
 
-        backend = WSL2Backend()
+        backend = WSL2Backend(supervisor=MagicMock())
         # Simulate bridge available
         backend._use_bridge = True
         backend._bridge = MagicMock()
@@ -419,7 +419,7 @@ class TestWSL2BackendBridgeFallbackWiring:
     def test_no_bridge_returns_ps_executor(self):
         from computer_use.platform.wsl2 import WSL2Backend, WSL2ActionExecutor
 
-        backend = WSL2Backend()
+        backend = WSL2Backend(supervisor=MagicMock())
         backend._use_bridge = False
 
         executor = backend.get_action_executor()

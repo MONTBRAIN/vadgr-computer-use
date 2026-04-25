@@ -519,8 +519,8 @@ class TestIsMutterAvailable:
 
     @patch("computer_use.platform.linux._open_dbus_connection")
     def test_not_available_when_mutter_returns_error(self, mock_open):
+        jeepney = pytest.importorskip("jeepney")
         from computer_use.platform.linux import _is_mutter_available
-        import jeepney
         conn = MagicMock()
         reply = MagicMock()
         reply.header.message_type = jeepney.MessageType.error
@@ -530,8 +530,8 @@ class TestIsMutterAvailable:
 
     @patch("computer_use.platform.linux._open_dbus_connection")
     def test_available_when_mutter_returns_method_return(self, mock_open):
+        jeepney = pytest.importorskip("jeepney")
         from computer_use.platform.linux import _is_mutter_available
-        import jeepney
         conn = MagicMock()
         reply = MagicMock()
         reply.header.message_type = jeepney.MessageType.method_return
