@@ -378,6 +378,170 @@ class TestScreenshotRegionScalePreservation:
         assert mod._scale_x == original_scale_x
 
 
+class TestImageEncoding:
+    """Format selection, dimension ceiling, and bytes-on-the-wire shape."""
+
+    def _decode_format(self, image_bytes: bytes) -> str:
+        """Inspect the magic bytes of a tool result and report jpeg/png/unknown."""
+        if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "png"
+        if image_bytes[:2] == b"\xff\xd8":
+            return "jpeg"
+        return "unknown"
+
+    def test_screenshot_default_is_jpeg(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        result = screenshot()
+        assert self._decode_format(result.data) == "jpeg"
+        # FastMCP uses _format to derive the MIME type sent over MCP.
+        assert result._mime_type == "image/jpeg"
+
+    def test_screenshot_png_mode_keeps_png(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        result = screenshot(format="png")
+        assert self._decode_format(result.data) == "png"
+        assert result._mime_type == "image/png"
+
+    def test_screenshot_thumbnail_uses_jpeg_at_thumbnail_width(self, mock_engine):
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot
+
+        result = screenshot(format="thumbnail")
+        assert self._decode_format(result.data) == "jpeg"
+        # Thumbnail caps at _THUMBNAIL_WIDTH (640px) regardless of _MAX_WIDTH.
+        assert mod._display_w == mod._THUMBNAIL_WIDTH
+
+    def test_screenshot_thumbnail_is_smaller_than_jpeg(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        jpeg = screenshot(format="jpeg")
+        thumb = screenshot(format="thumbnail")
+        # Thumbnail must be strictly smaller in bytes for any non-trivial image.
+        assert len(thumb.data) < len(jpeg.data)
+
+    def test_jpeg_smaller_than_png_for_screenshot_like_image(self, mock_engine):
+        """Same source image, JPEG output must be smaller than PNG output.
+
+        Uses a screenshot-shaped pattern (large solid regions + a noisy strip)
+        rather than per-pixel pseudo-random noise (which is JPEG's worst case
+        and not representative of a real desktop capture).
+        """
+        from PIL import ImageDraw
+
+        from computer_use.core.types import ScreenState
+        from computer_use.mcp_server import screenshot
+
+        img = PILImage.new("RGB", (1366, 800), color=(245, 245, 250))  # window bg
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([0, 0, 1366, 60], fill=(30, 30, 35))             # title bar
+        draw.rectangle([0, 60, 240, 800], fill=(220, 220, 230))          # sidebar
+        draw.rectangle([260, 80, 1340, 120], fill=(255, 255, 255))      # search bar
+        for i in range(20):                                              # list rows
+            draw.rectangle([260, 140 + i * 30, 1340, 160 + i * 30],
+                           fill=(250, 250, 255))
+            draw.text((280, 145 + i * 30), f"Item {i}", fill=(40, 40, 50))
+        # A small noise band so PNG can't trivially win on flat fills.
+        pixels = img.load()
+        for y in range(750, 800):
+            for x in range(0, 1366):
+                pixels[x, y] = ((x * 7) % 256, (y * 11) % 256, ((x + y) * 5) % 256)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        mock_engine.screenshot.return_value = ScreenState(
+            image_bytes=buf.getvalue(), width=1366, height=800
+        )
+
+        png = screenshot(format="png")
+        jpeg = screenshot(format="jpeg")
+        assert len(jpeg.data) < len(png.data), (
+            f"JPEG ({len(jpeg.data)}B) should be smaller than PNG "
+            f"({len(png.data)}B) for a screenshot-like image"
+        )
+
+    def test_format_jpg_alias_works(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        result = screenshot(format="jpg")
+        assert self._decode_format(result.data) == "jpeg"
+
+    def test_format_case_insensitive(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        assert self._decode_format(screenshot(format="JPEG").data) == "jpeg"
+        assert self._decode_format(screenshot(format="PNG").data) == "png"
+
+    def test_invalid_format_raises(self, mock_engine):
+        from computer_use.mcp_server import screenshot
+
+        with pytest.raises(ValueError, match="Unsupported format"):
+            screenshot(format="webp")
+
+    def test_screenshot_region_default_is_jpeg(self, mock_engine):
+        from computer_use.mcp_server import screenshot_region
+
+        result = screenshot_region(0, 0, 200, 100)
+        assert self._decode_format(result.data) == "jpeg"
+
+    def test_screenshot_region_png_mode_keeps_png(self, mock_engine):
+        from computer_use.mcp_server import screenshot_region
+
+        result = screenshot_region(0, 0, 200, 100, format="png")
+        assert self._decode_format(result.data) == "png"
+
+
+class TestDimensionCeiling:
+    """The hard cap at 1600px keeps screenshots under Anthropic's 2000px limit."""
+
+    def test_caller_set_max_width_above_ceiling_clamps(self, mock_engine):
+        """If a user sets CU_MAX_WIDTH=2000, output is still clamped to 1600."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot
+
+        mod._MAX_WIDTH = 2000  # past the safety ceiling
+        screenshot()
+        assert mod._display_w == mod._MAX_DIMENSION_CEILING
+        assert mod._display_w <= 1600
+
+    def test_caller_set_max_width_below_ceiling_respected(self, mock_engine):
+        """A user-chosen value under the ceiling still wins (smaller is fine)."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot
+
+        mod._MAX_WIDTH = 1280
+        screenshot()
+        assert mod._display_w == 1280
+
+    def test_screen_smaller_than_ceiling_no_resize(self, mock_engine):
+        """If the real screen is already small, no resize at all."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import screenshot
+        from computer_use.core.types import ScreenState
+
+        mock_engine.screenshot.return_value = ScreenState(
+            image_bytes=_make_png(1024, 768), width=1024, height=768
+        )
+        mod._MAX_WIDTH = 0  # auto
+        screenshot()
+        assert mod._display_w == 1024
+        assert mod._scale_x == 1.0
+
+    def test_get_screen_size_applies_ceiling_before_screenshot(self, mock_engine):
+        """get_screen_size() pre-screenshot must report the same dim cap as actual screenshots."""
+        import computer_use.mcp_server as mod
+        from computer_use.mcp_server import get_screen_size
+
+        mod._display_w = 0
+        mod._display_h = 0
+        mod._MAX_WIDTH = 2500  # absurdly high
+        mock_engine.get_screen_size.return_value = (3840, 2160)
+        result = get_screen_size()
+        # Must clamp to the ceiling, not 2500 or 3840.
+        assert result.startswith(f"{mod._MAX_DIMENSION_CEILING}x")
+
+
 class TestEngineSingleton:
     def test_lazy_init(self):
         import computer_use.mcp_server as mod
