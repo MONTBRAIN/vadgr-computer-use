@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.1.5] - 2026-04-26
+
+### Changed
+- Default screenshot encoding switched from PNG to JPEG quality 70. On a real desktop this drops a single full-screen capture from ~564 KB to ~100 KB (5-6x). Aspect ratio and coordinate space are preserved across formats so existing click flows work unchanged.
+- `screenshot()` and `screenshot_region()` accept a new `format` argument: `"jpeg"` (default), `"png"` (lossless, opt-in), or `"thumbnail"` (~640 px wide JPEG q40, ~15 KB for sanity-check shots in long flows).
+- Tool description gains a sixth rule reminding agents that screenshots are point-in-time and older ones should not be referenced.
+
+### Fixed
+- Hard dimension ceiling at 1600 px applied inside `_downscale` so a single screenshot can no longer trip the Anthropic 2000 px many-image limit (anthropics/claude-code#37461, #46656). User-set `CU_MAX_WIDTH` below the ceiling still wins; values above it are clamped.
+- `get_screen_size()` applies the same ceiling pre-screenshot so its answer matches what the first screenshot will actually return.
+
+### Notes
+- Combined with the smaller per-image bytes, the 32 MB request-size cap now fits ~320 default JPEG screenshots (vs ~58 with PNG) and ~2,200 thumbnails. The 2000 px dimension error is structurally eliminated for any vadgr-cua screenshot.
+
 ## [0.1.4] - 2026-04-26
 
 ### Added
