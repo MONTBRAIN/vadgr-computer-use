@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vadgr-computer-use"
-version = "0.1.3"
+version = "0.1.4"
 description = "Local-first MCP server for desktop automation: screenshots, mouse, keyboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
