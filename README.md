@@ -4,7 +4,7 @@ Local MCP server for desktop automation. 13 tools for capture, mouse, keyboard, 
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
-> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME)**, **Windows native**, and **WSL2**. **macOS support is a work in progress** and not usable yet. See [Platform support](#platform-support) for detail.
+> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME)**, **Windows native**, **WSL2**, and **macOS**. macOS asks for Accessibility and Screen Recording permission on first run; see [First run on macOS](#first-run-on-macos). See [Platform support](#platform-support) for detail.
 
 ---
 
@@ -180,9 +180,38 @@ The LLM owns the "where to click" decision; the server owns "how to click it pre
 | Linux / Wayland (Sway, Hyprland, wlroots) | `grim` | `evdev` | `apt install grim`; `sudo usermod -aG input $USER` then re-login |
 | Windows native | Win32 GDI | SendInput | nothing extra |
 | WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
-| macOS | `screencapture` | `osascript` / `cliclick` | WIP, not functional yet |
+| macOS | `mss` | Quartz `CGEvent` (via `pyobjc`) | nothing extra; deps pulled by pip. Grant Accessibility + Screen Recording on first run |
 
 `pip install vadgr-computer-use` pulls `jeepney` and `evdev` automatically on Linux (both are pure-Python or shipped as wheels, no `libdbus-1-dev` or compilation needed). Foreground-window detection on Wayland uses AT-SPI2 if available; install with `pip install vadgr-computer-use[linux-atspi]` to enable it.
+
+On macOS, `pip install vadgr-computer-use` pulls `pyobjc-framework-Quartz` and `pyobjc-framework-ApplicationServices` (wheel install, no compilation). No Homebrew packages required.
+
+## First run on macOS
+
+You can pre-grant permissions before connecting an agent:
+
+```bash
+vadgr-cua setup
+```
+
+That fires the Accessibility and Screen Recording prompts and prints the current grant state as JSON. Toggle the entries on in System Settings when prompted. If you skip this, the same prompts fire on the first MCP tool call from your agent.
+
+The first time the MCP server captures the screen or injects an input event, macOS opens System Settings to two panes and asks you to grant the running Python interpreter:
+
+- **Privacy & Security -> Screen Recording** (required for `screenshot()` / `screenshot_region()`).
+- **Privacy & Security -> Accessibility** (required for clicks, typing, scroll, drag).
+
+Toggle both for the python binary that runs `vadgr-cua` (e.g. `/path/to/.venv/bin/python` or `/opt/homebrew/bin/python3.12`). The grant is per-interpreter and persists; you will not be asked again. Verify status:
+
+```bash
+vadgr-cua doctor
+# {... "macos_accessibility_granted": true, "macos_screen_recording_granted": true,
+#      "python_executable": "/opt/homebrew/bin/python3.12" }
+```
+
+Apple enforces these prompts at the OS level for every screen-capture / input-injection API; they cannot be skipped.
+
+If you later revoke either permission in System Settings, the next MCP tool call detects it via `CGPreflightScreenCaptureAccess()` / `AXIsProcessTrusted()`, opens System Settings to the right pane, and returns a structured error to the agent. Toggle the entry back on and the next call works. No silent black screenshots, no hunting through System Settings.
 
 If the WSL2 daemon can't start (e.g. no Windows Python available), the server falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 

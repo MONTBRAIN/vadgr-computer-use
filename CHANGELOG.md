@@ -2,13 +2,28 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [0.1.3] - 2026-04-25
+## [0.1.3] - 2026-04-26
+
+### Added
+- macOS backend is now functional out of the box. `pip install vadgr-computer-use` pulls `pyobjc-framework-Quartz` and `pyobjc-framework-ApplicationServices` on macOS (wheel install, no compilation, no Homebrew packages).
+- `vadgr-cua doctor` now reports `macos_accessibility_granted`, `macos_screen_recording_granted`, and `python_executable` on macOS, so users can verify permission state without launching the agent.
+- Backend construction proactively triggers the Accessibility and Screen Recording prompts on first run; macOS opens System Settings to the right pane instead of the user having to find it.
+- Every macOS capture and input call now preflights its permission. If denied, System Settings is deep-linked to the matching Privacy pane via the `x-apple.systempreferences:` URL scheme and the call returns a structured error to the agent. This eliminates the silent wallpaper-only screenshot when Screen Recording is revoked, and the silent input no-op when Accessibility is revoked.
+- `vadgr-cua setup` subcommand: fires the Accessibility and Screen Recording prompts on demand and prints permission state as JSON. Useful as a one-time post-install step so the user can grant permissions before wiring up an agent.
+
+### Changed
+- macOS screen capture switched from the `screencapture` subprocess to `mss` (already a runtime dep). `mss` returns logical-point images that share CGEvent's coordinate space, eliminating the Retina coordinate mismatch that was causing 2x click offsets.
+- macOS input switched from optional `cliclick` plus AppleScript fallbacks to `Quartz.CGEvent*` APIs (mouse, keyboard, scroll, drag). `cliclick` is no longer used.
+- macOS `type_text` uses `CGEventKeyboardSetUnicodeString`, so any Unicode character types correctly without per-layout keymap maintenance.
+- macOS executor now plugs into `core.smooth_move` (WindMouse + Fitts) like the Linux and Windows executors.
+- Test suite is green on native Windows: WSL2/Linux/daemon-only test files (`test_supervisor.py`, `test_wsl2.py`) skip cleanly on `win32`, and the two D-Bus tests in `test_linux.py` use `pytest.importorskip("jeepney")`.
 
 ### Fixed
 - `import computer_use.mcp_server` no longer fails on native Windows. The bridge supervisor (which imports `fcntl`) is now loaded lazily inside the daemon CLI subcommands, so the stdio MCP server starts cleanly on Windows where `fcntl` does not exist.
-
-### Changed
-- Test suite is green on native Windows: WSL2/Linux/daemon-only test files (`test_supervisor.py`, `test_wsl2.py`) skip cleanly on `win32`, and the two D-Bus tests in `test_linux.py` use `pytest.importorskip("jeepney")`.
+- macOS `key_press` correctly handles chords with multiple non-modifier keys (e.g. `ctrl+shift+t`) instead of silently dropping the second non-modifier.
+- macOS `scroll` now uses `CGEventCreateScrollWheelEvent` with line units instead of an AppleScript form that did not actually scroll.
+- macOS `drag` no longer collapses to a single click in the absence of `cliclick`; it emits the full down/dragged/up event sequence.
+- macOS `get_screen_size` and `get_scale_factor` no longer shell out to a system `python3` that lacks `AppKit`; they read directly from Quartz.
 
 ## [0.1.2] - 2026-04-24
 
