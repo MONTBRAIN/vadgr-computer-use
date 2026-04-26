@@ -287,6 +287,9 @@ def _cmd_doctor(args) -> int:
     import json as _json
 
     status = _get_supervisor().status()
+    if sys.platform == "darwin":
+        from computer_use.platform.macos import macos_permission_status
+        status.update(macos_permission_status())
     print(_json.dumps(status, indent=2))
     return 0
 
@@ -301,6 +304,28 @@ def _cmd_install_daemon(args) -> int:
         )
         return 1
     print("Daemon installed and running.")
+    return 0
+
+
+def _cmd_setup(args) -> int:
+    """One-time post-install permission prompt (macOS).
+
+    Fires the Accessibility and Screen Recording prompts so the user can
+    grant them before wiring up an agent. Prints permission state as
+    JSON. No-op on non-macOS platforms.
+    """
+    import json as _json
+
+    if sys.platform != "darwin":
+        print(_json.dumps({"platform": sys.platform, "applicable": False}))
+        return 0
+
+    from computer_use.platform.macos import (
+        macos_permission_status,
+        request_permissions,
+    )
+    request_permissions()
+    print(_json.dumps(macos_permission_status(), indent=2))
     return 0
 
 
@@ -325,6 +350,7 @@ def _cmd_restart_daemon(args) -> int:
 # dispatch time so tests that patch the module attribute see the fake.
 _SUBCOMMAND_NAMES: dict = {
     "doctor": "_cmd_doctor",
+    "setup": "_cmd_setup",
     "install-daemon": "_cmd_install_daemon",
     "stop-daemon": "_cmd_stop_daemon",
     "restart-daemon": "_cmd_restart_daemon",
@@ -356,6 +382,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=False)
     sub.add_parser("doctor", help="Print daemon status as JSON")
+    sub.add_parser(
+        "setup",
+        help="Fire macOS permission prompts and print state (no-op elsewhere)",
+    )
     sub.add_parser(
         "install-daemon",
         help="Deploy and launch the Windows bridge daemon (WSL2 only)",
