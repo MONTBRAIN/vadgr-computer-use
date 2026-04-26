@@ -52,11 +52,22 @@ mcp = FastMCP(
         "4. When clicking on a list item, aim for the CENTER of the item's text, "
         "not near its edge, to avoid hitting adjacent items.\n"
         "5. If a click lands on the wrong target, take a screenshot, reassess "
-        "coordinates, and retry."
+        "coordinates, and retry.\n"
+        "6. Screenshots are point-in-time. Don't rely on older screenshots from "
+        "earlier turns -- the UI may have changed. Take a fresh one when needed."
     ),
 )
 
 _MAX_WIDTH = int(os.environ.get("CU_MAX_WIDTH", "0"))  # 0 = auto-detect
+
+# Hard ceiling: stay under Anthropic's 2000px per-image dimension cap that
+# trips many-image requests (see anthropics/claude-code#37461, #46656).
+_MAX_DIMENSION_CEILING = 1600
+
+# Thumbnail mode: aggressive shrink for sanity-check screenshots in long flows.
+_THUMBNAIL_WIDTH = 640
+_JPEG_QUALITY = 70
+_THUMBNAIL_QUALITY = 40
 
 # Coordinate mapping state. Updated after each screenshot.
 # Display coords (what the agent sees) get mapped to real screen coords via _to_real().
@@ -96,8 +107,52 @@ def _get_engine():
     return _engine
 
 
-def _downscale(png_bytes: bytes, offset_x: int = 0, offset_y: int = 0) -> bytes:
-    """Resize screenshot to fit _MAX_WIDTH, update global scale/offset state."""
+def _resolve_format(fmt: str) -> str:
+    """Normalize the user-facing format string. Raises ValueError on unknown."""
+    f = (fmt or "jpeg").lower()
+    if f == "jpg":
+        f = "jpeg"
+    if f not in ("jpeg", "png", "thumbnail"):
+        raise ValueError(
+            f"Unsupported format: {fmt!r}. Use 'jpeg' (default), 'png', or 'thumbnail'."
+        )
+    return f
+
+
+def _encode_image(img: "PILImage.Image", fmt: str) -> tuple[bytes, str]:
+    """Encode a PIL image to bytes in the given format.
+
+    Returns (bytes, image_format) where image_format is what FastMCP's
+    Image() constructor expects ("jpeg" or "png").
+    """
+    buf = io.BytesIO()
+    if fmt == "png":
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), "png"
+    # jpeg or thumbnail
+    rgb = img if img.mode == "RGB" else img.convert("RGB")
+    quality = _THUMBNAIL_QUALITY if fmt == "thumbnail" else _JPEG_QUALITY
+    rgb.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue(), "jpeg"
+
+
+def _downscale(
+    png_bytes: bytes,
+    offset_x: int = 0,
+    offset_y: int = 0,
+    fmt: str = "jpeg",
+) -> tuple[bytes, str]:
+    """Resize screenshot, encode in requested format, update scale/offset state.
+
+    Width is determined by:
+    - thumbnail format: min(_THUMBNAIL_WIDTH, real_w)
+    - other formats:    min(_MAX_WIDTH-or-real_w, _MAX_DIMENSION_CEILING)
+
+    The dimension ceiling is a hard safety cap to stay below Anthropic's
+    2000px per-image limit even if a caller passes _MAX_WIDTH > 2000.
+
+    Returns (image_bytes, image_format) where image_format is "jpeg" or "png".
+    """
     global _scale_x, _scale_y, _display_w, _display_h, _offset_x, _offset_y
 
     _offset_x = offset_x
@@ -106,13 +161,24 @@ def _downscale(png_bytes: bytes, offset_x: int = 0, offset_y: int = 0) -> bytes:
     img = PILImage.open(io.BytesIO(png_bytes))
     real_w, real_h = img.size
 
-    if real_w <= _MAX_WIDTH:
+    if fmt == "thumbnail":
+        target_w = min(_THUMBNAIL_WIDTH, real_w)
+    else:
+        configured = _MAX_WIDTH if _MAX_WIDTH > 0 else real_w
+        target_w = min(configured, _MAX_DIMENSION_CEILING, real_w)
+
+    if target_w >= real_w:
         _scale_x, _scale_y = 1.0, 1.0
         _display_w, _display_h = real_w, real_h
-        return png_bytes
+        data, image_format = _encode_image(img, fmt)
+        logger.debug(
+            "No resize (%dx%d), encoded as %s, %d bytes",
+            real_w, real_h, fmt, len(data),
+        )
+        return data, image_format
 
-    ratio = _MAX_WIDTH / real_w
-    new_w = _MAX_WIDTH
+    ratio = target_w / real_w
+    new_w = target_w
     new_h = int(real_h * ratio)
 
     _scale_x = real_w / new_w
@@ -120,10 +186,12 @@ def _downscale(png_bytes: bytes, offset_x: int = 0, offset_y: int = 0) -> bytes:
     _display_w, _display_h = new_w, new_h
 
     img = img.resize((new_w, new_h), PILImage.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    logger.debug("Downscaled %dx%d -> %dx%d (scale %.2fx)", real_w, real_h, new_w, new_h, _scale_x)
-    return buf.getvalue()
+    data, image_format = _encode_image(img, fmt)
+    logger.debug(
+        "Resized %dx%d -> %dx%d (scale %.2fx) as %s, %d bytes",
+        real_w, real_h, new_w, new_h, _scale_x, fmt, len(data),
+    )
+    return data, image_format
 
 
 def _to_real(x: int, y: int) -> tuple[int, int]:
@@ -132,32 +200,57 @@ def _to_real(x: int, y: int) -> tuple[int, int]:
 
 
 @mcp.tool()
-def screenshot() -> Image:
-    """Capture the full virtual screen (all monitors). Returns PNG image.
+def screenshot(format: str = "jpeg") -> Image:
+    """Capture the full virtual screen (all monitors). Default is JPEG (~5x smaller than PNG).
 
-    IMPORTANT: The image pixel dimensions ARE the coordinate space for all
-    tools (click, screenshot_region, etc.). Use get_screen_size() to know
-    the dimensions. If the image is 1366x853, coordinates range from
-    (0,0) to (1366,853).
+    Format options:
+    - "jpeg" (default): JPEG quality 70. Best balance of size and fidelity for
+      UI grounding. ~80 KB for a 1366px-wide desktop.
+    - "png": Lossless. ~5x larger payload. Use when you need pixel-perfect
+      detail (icons, tiny text, color verification).
+    - "thumbnail": ~640px wide JPEG quality 40. Tiny (~15-20 KB). Use for
+      sanity-check screenshots in long sessions to keep context light.
+
+    IMPORTANT:
+    - The image pixel dimensions ARE the coordinate space for all tools
+      (click, screenshot_region, etc.). Use get_screen_size() to know
+      the dimensions. If the image is 1366x853, coordinates range from
+      (0,0) to (1366,853). The same coordinate space holds across formats.
+    - Output width is hard-capped at 1600 px to stay under the Anthropic
+      many-image dimension limit (2000 px), so a single screenshot can
+      never block a Claude Code session.
     """
     engine = _get_engine()
     state = engine.screenshot()
-    data = _downscale(state.image_bytes, state.offset_x, state.offset_y)
+    fmt = _resolve_format(format)
+    data, image_format = _downscale(
+        state.image_bytes, state.offset_x, state.offset_y, fmt=fmt
+    )
     _debug_save(data, "screenshot")
-    return Image(data=data, format="png")
+    return Image(data=data, format=image_format)
 
 
 @mcp.tool()
-def screenshot_region(x: int, y: int, width: int, height: int) -> Image:
-    """Capture a rectangular region of the screen. Coordinates are in display space."""
+def screenshot_region(
+    x: int, y: int, width: int, height: int, format: str = "jpeg"
+) -> Image:
+    """Capture a rectangular region of the screen. Coordinates are in display space.
+
+    Format options match screenshot(): "jpeg" (default), "png", "thumbnail".
+    A region is small to begin with, so the size win is modest, but JPEG
+    stays consistent with screenshot() and avoids a per-image PNG payload.
+    """
     engine = _get_engine()
     rx, ry = _to_real(x, y)
     rw, rh = int(width * _scale_x), int(height * _scale_y)
     state = engine.screenshot_region(rx, ry, rw, rh)
-    # Don't pass through _downscale — it would clobber the global scale factors
-    # that screenshot() established. Just return the raw region bytes.
-    _debug_save(state.image_bytes, "region")
-    return Image(data=state.image_bytes, format="png")
+    # Don't pass through _downscale -- that would clobber the global scale
+    # factors that screenshot() established. Just re-encode the raw bytes.
+    fmt = _resolve_format(format)
+    img = PILImage.open(io.BytesIO(state.image_bytes))
+    data, image_format = _encode_image(img, fmt)
+    _debug_save(data, "region")
+    return Image(data=data, format=image_format)
 
 
 @mcp.tool()
@@ -237,13 +330,17 @@ def get_screen_size() -> str:
     """Returns "WIDTHxHEIGHT" in display pixels (the coordinate space for all tools)."""
     if _display_w > 0 and _display_h > 0:
         return f"{_display_w}x{_display_h}"
-    # No screenshot taken yet — compute what the display size would be.
+    # No screenshot taken yet -- compute what the display size would be.
+    # Mirror the logic in _downscale so the answer is consistent with the
+    # first screenshot's actual dimensions.
     engine = _get_engine()
     w, h = engine.get_screen_size()
-    if w <= _MAX_WIDTH:
+    configured = _MAX_WIDTH if _MAX_WIDTH > 0 else w
+    target_w = min(configured, _MAX_DIMENSION_CEILING, w)
+    if target_w >= w:
         return f"{w}x{h}"
-    ratio = _MAX_WIDTH / w
-    return f"{_MAX_WIDTH}x{int(h * ratio)}"
+    ratio = target_w / w
+    return f"{target_w}x{int(h * ratio)}"
 
 
 @mcp.tool()
