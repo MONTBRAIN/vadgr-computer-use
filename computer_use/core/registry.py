@@ -8,9 +8,8 @@
 
 """ToolRegistry: import-time auto-registration + introspection.
 
-Per ARCHITECTURE.md §5.6 and §5.7 (Registry pattern). Single point of truth
-for "what tools exist". The MCP server reads from here; nothing else owns the
-tool list.
+Single point of truth for "what tools exist". The MCP server reads from
+here; nothing else owns the tool list.
 """
 
 from __future__ import annotations

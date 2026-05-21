@@ -6,7 +6,8 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Tool tiers per ARCHITECTURE.md §5.1.
+"""Tool tiers — capability classes used by the agent loop to pick the
+cheapest viable approach for a given action.
 
 | Tier | Examples | Cost |
 | ZERO | System: fs.read, shell.run, http.fetch, ... | tens of tokens |

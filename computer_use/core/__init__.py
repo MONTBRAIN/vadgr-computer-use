@@ -11,8 +11,8 @@
 This package contains:
 - Existing engine domain (engine, actions, screenshot, types, errors,
   smooth_move) — internal API consumed by mcp_server.
-- 0.2.0 framework (tool, tier, risk, registry, decorator, middleware) per
-  ARCHITECTURE.md §5.6 / §5.7.
+- The 0.2.0 framework: `tool`, `Tier`, `Risk`, `ToolRegistry`, decorator,
+  and a lightweight middleware chain for telemetry.
 
 Public framework surface:
 

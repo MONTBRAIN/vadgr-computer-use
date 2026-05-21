@@ -8,8 +8,8 @@
 
 """Middleware protocol + ToolCall record.
 
-Per ARCHITECTURE.md §5.6 / §5.7. Two-method protocol keeps the surface small
-(ISP). Middlewares are interchangeable behind it (LSP).
+Two-method protocol (`before` / `after`) keeps the surface small.
+Middlewares are interchangeable behind it.
 """
 
 from __future__ import annotations

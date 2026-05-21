@@ -8,7 +8,7 @@
 
 """`@tool(name, tier, risk)` decorator.
 
-Per ARCHITECTURE.md §5.6 the decorator:
+The decorator:
 - Validates inputs.
 - Registers the function with the ToolRegistry at import time.
 - Returns the function unchanged (so existing MCP `@mcp.tool()` wrappers

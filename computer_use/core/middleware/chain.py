@@ -8,8 +8,8 @@
 
 """Middleware chain orchestrator.
 
-Per ARCHITECTURE.md §5.6 / §5.7. Runs middleware `before` hooks in order,
-invokes the handler, then runs `after` hooks in reverse order.
+Runs middleware `before` hooks in order, invokes the handler, then runs
+`after` hooks in reverse order.
 """
 
 from __future__ import annotations

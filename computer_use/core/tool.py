@@ -8,8 +8,8 @@
 
 """Tool dataclass: a single registered tool with its metadata.
 
-Per ARCHITECTURE.md §5.6 the `@tool` decorator attaches metadata (name, tier,
-risk, schema) and registers the function with the global ToolRegistry.
+The `@tool` decorator attaches metadata (name, tier, risk, schema) and
+registers the function with the global ToolRegistry at import time.
 """
 
 from __future__ import annotations
