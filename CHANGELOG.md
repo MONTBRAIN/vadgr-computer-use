@@ -6,7 +6,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Added
 - `computer_use.core` framework: `@tool(name, tier, risk)` decorator, `ToolRegistry` (import-time auto-registration, introspection by name / tier / risk, count, tier breakdown), `Tier` enum (ZERO, HALF, ONE, TWO) and `Risk` enum (READ_ONLY, LOW, MEDIUM, HIGH).
-- `computer_use.core.middleware` chain (Chain of Responsibility): `AuthMiddleware`, `DenylistMiddleware`, `RedactionMiddleware`, `TelemetryMiddleware`. Composable, ordered, configurable.
+- `computer_use.core.middleware` chain: lightweight `MiddlewareChain` + `TelemetryMiddleware` for structured event emission around tool calls. No policy decisions; no filtering.
 - `vadgr-cua doctor` JSON output gains `registry_loaded`, `tool_count`, `tier_breakdown` so users can verify the new registry loads correctly.
 
 ### Changed
@@ -14,7 +14,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Notes
 - Pure refactor — no functional change to any MCP tool. The wire surface is identical to 0.1.5.
-- Foundation for the Tier 0 system tools landing in 0.3.0 per ARCHITECTURE.md §10.1.
+- Scope is strict: `vadgr-computer-use` drives the local machine, exposes `tier` + `risk` metadata, and emits telemetry. Authorization, denylist, log redaction, approval prompts, and auth-mode policy are not cua concerns and live in the host's agent loop.
 
 ## [0.1.5] - 2026-04-26
 
