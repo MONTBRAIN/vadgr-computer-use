@@ -37,6 +37,8 @@ def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
 from mcp.server.fastmcp import FastMCP, Image
 from PIL import Image as PILImage
 
+from computer_use.core import REGISTRY, Risk, Tier, tool
+
 mcp = FastMCP(
     name="computer-use",
     instructions=(
@@ -200,6 +202,7 @@ def _to_real(x: int, y: int) -> tuple[int, int]:
 
 
 @mcp.tool()
+@tool(name="screenshot", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def screenshot(format: str = "jpeg") -> Image:
     """Capture the full virtual screen (all monitors). Default is JPEG (~5x smaller than PNG).
 
@@ -231,6 +234,7 @@ def screenshot(format: str = "jpeg") -> Image:
 
 
 @mcp.tool()
+@tool(name="screenshot_region", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def screenshot_region(
     x: int, y: int, width: int, height: int, format: str = "jpeg"
 ) -> Image:
@@ -254,6 +258,7 @@ def screenshot_region(
 
 
 @mcp.tool()
+@tool(name="click", tier=Tier.TWO, risk=Risk.MEDIUM)
 def click(x: int, y: int) -> str:
     """Left-click at screen coordinates (pixels).
 
@@ -267,6 +272,7 @@ def click(x: int, y: int) -> str:
 
 
 @mcp.tool()
+@tool(name="double_click", tier=Tier.TWO, risk=Risk.MEDIUM)
 def double_click(x: int, y: int) -> str:
     """Double-click at screen coordinates."""
     engine = _get_engine()
@@ -275,6 +281,7 @@ def double_click(x: int, y: int) -> str:
 
 
 @mcp.tool()
+@tool(name="right_click", tier=Tier.TWO, risk=Risk.MEDIUM)
 def right_click(x: int, y: int) -> str:
     """Right-click at screen coordinates."""
     engine = _get_engine()
@@ -283,6 +290,7 @@ def right_click(x: int, y: int) -> str:
 
 
 @mcp.tool()
+@tool(name="move_mouse", tier=Tier.TWO, risk=Risk.MEDIUM)
 def move_mouse(x: int, y: int) -> str:
     """Move the mouse without clicking."""
     engine = _get_engine()
@@ -291,6 +299,7 @@ def move_mouse(x: int, y: int) -> str:
 
 
 @mcp.tool()
+@tool(name="scroll", tier=Tier.TWO, risk=Risk.MEDIUM)
 def scroll(x: int, y: int, amount: int) -> str:
     """Scroll at position. Positive = up, negative = down."""
     engine = _get_engine()
@@ -300,6 +309,7 @@ def scroll(x: int, y: int, amount: int) -> str:
 
 
 @mcp.tool()
+@tool(name="drag", tier=Tier.TWO, risk=Risk.MEDIUM)
 def drag(start_x: int, start_y: int, end_x: int, end_y: int, duration: float = 0.5) -> str:
     """Drag from one point to another."""
     engine = _get_engine()
@@ -308,6 +318,7 @@ def drag(start_x: int, start_y: int, end_x: int, end_y: int, duration: float = 0
 
 
 @mcp.tool()
+@tool(name="type_text", tier=Tier.TWO, risk=Risk.MEDIUM)
 def type_text(text: str) -> str:
     """Type text into the focused field."""
     engine = _get_engine()
@@ -317,6 +328,7 @@ def type_text(text: str) -> str:
 
 
 @mcp.tool()
+@tool(name="key_press", tier=Tier.TWO, risk=Risk.MEDIUM)
 def key_press(keys: str) -> str:
     """Press a key combo, e.g. "ctrl+c", "alt+tab", "enter"."""
     engine = _get_engine()
@@ -326,6 +338,7 @@ def key_press(keys: str) -> str:
 
 
 @mcp.tool()
+@tool(name="get_screen_size", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def get_screen_size() -> str:
     """Returns "WIDTHxHEIGHT" in display pixels (the coordinate space for all tools)."""
     if _display_w > 0 and _display_h > 0:
@@ -344,6 +357,7 @@ def get_screen_size() -> str:
 
 
 @mcp.tool()
+@tool(name="get_platform", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def get_platform() -> str:
     """Returns detected platform: wsl2, linux, windows, or macos."""
     engine = _get_engine()
@@ -351,6 +365,7 @@ def get_platform() -> str:
 
 
 @mcp.tool()
+@tool(name="get_platform_info", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def get_platform_info() -> dict:
     """Returns platform details."""
     engine = _get_engine()
@@ -376,8 +391,25 @@ def _get_supervisor():
     return DaemonSupervisor()
 
 
+def _registry_status() -> dict:
+    """Snapshot of the ToolRegistry for `doctor` output.
+
+    Returns three fields per ARCHITECTURE.md §10.1:
+    - `registry_loaded`: True once the registry import succeeded.
+    - `tool_count`: total number of registered tools.
+    - `tier_breakdown`: map of tier-string -> count (e.g. {"2": 13}).
+    """
+    return {
+        "registry_loaded": True,
+        "tool_count": REGISTRY.count(),
+        "tier_breakdown": {
+            str(tier): count for tier, count in REGISTRY.tier_breakdown().items()
+        },
+    }
+
+
 def _cmd_doctor(args) -> int:
-    """Print structured status of the bridge daemon.
+    """Print structured status of the bridge daemon and the tool registry.
 
     Exits 0 regardless of daemon state -- callers parse the JSON.
     """
@@ -387,6 +419,7 @@ def _cmd_doctor(args) -> int:
     if sys.platform == "darwin":
         from computer_use.platform.macos import macos_permission_status
         status.update(macos_permission_status())
+    status.update(_registry_status())
     print(_json.dumps(status, indent=2))
     return 0
 

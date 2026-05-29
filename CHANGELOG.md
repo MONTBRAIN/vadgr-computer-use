@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.0] - 2026-05-21
+
+### Added
+- `computer_use.core` framework: `@tool(name, tier, risk)` decorator, `ToolRegistry` (import-time auto-registration, introspection by name / tier / risk, count, tier breakdown), `Tier` enum (ZERO, HALF, ONE, TWO) and `Risk` enum (READ_ONLY, LOW, MEDIUM, HIGH).
+- `computer_use.core.middleware` chain: lightweight `MiddlewareChain` + `TelemetryMiddleware` for structured event emission around tool calls. No policy decisions; no filtering.
+- `vadgr-cua doctor` JSON output gains `registry_loaded`, `tool_count`, `tier_breakdown` so users can verify the new registry loads correctly.
+
+### Changed
+- All 13 existing pixel-layer MCP tools (`screenshot`, `screenshot_region`, `click`, `double_click`, `right_click`, `move_mouse`, `drag`, `scroll`, `type_text`, `key_press`, `get_screen_size`, `get_platform`, `get_platform_info`) are now registered through `@tool` in addition to `@mcp.tool()`. Tier 2 for all; read-only risk for query tools, medium risk for input-mutating tools.
+
+### Notes
+- Pure refactor — no functional change to any MCP tool. The wire surface is identical to 0.1.5.
+- Scope is strict: `vadgr-computer-use` drives the local machine, exposes `tier` + `risk` metadata, and emits telemetry. Authorization, denylist, log redaction, approval prompts, and auth-mode policy are not cua concerns and live in the host's agent loop.
+
 ## [0.1.5] - 2026-04-26
 
 ### Changed

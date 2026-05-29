@@ -57,6 +57,8 @@ Thumbs.db
 
 # Local dev / scratch files (not shipped)
 .mcp.json
+opencode.json
+opencode.jsonc
 .vadgr-mcp-handoff.md
 docs/
 .env
