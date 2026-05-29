@@ -372,6 +372,144 @@ def get_platform_info() -> dict:
     return engine.get_platform_info()
 
 
+# --- Tier 0 system tools (0.3.0) ---
+#
+# Each module under `computer_use.tools.system` exposes one dispatch
+# function. The wrappers below apply both `@mcp.tool()` (for the wire
+# surface) and `@tool(...)` (for the registry), matching the 0.2.0
+# pattern used by the pixel tools above.
+
+from computer_use.tools.system import clipboard as _clipboard_impl
+from computer_use.tools.system import data as _data_impl
+from computer_use.tools.system import env as _env_impl
+from computer_use.tools.system import fs as _fs_impl
+from computer_use.tools.system import http as _http_impl
+from computer_use.tools.system import shell as _shell_impl
+from computer_use.tools.system import tempfile as _tempfile_impl
+from computer_use.tools.system import time as _time_impl
+
+
+@mcp.tool()
+@tool(name="fs", tier=Tier.ZERO, risk=Risk.MEDIUM)
+def fs(op: str, path: str, content: str = "", recursive: bool = False):
+    """Filesystem ops: read, write, list, stat, delete.
+
+    Sub-ops:
+    - read(path) -> str
+    - write(path, content) -> {path, written}
+    - list(path) -> [str]
+    - stat(path) -> {path, size, kind, mtime}
+    - delete(path, recursive=False) -> {path, deleted}
+    """
+    return _fs_impl.fs(op=op, path=path, content=content, recursive=recursive)
+
+
+@mcp.tool()
+@tool(name="shell", tier=Tier.ZERO, risk=Risk.HIGH)
+def shell(
+    op: str,
+    command=None,
+    shell_mode: bool = False,
+    timeout: int = 30,
+    cwd: str = None,
+):
+    """Subprocess + PATH lookup.
+
+    Sub-ops:
+    - run(command, shell_mode=False, timeout=30, cwd=None)
+      -> {returncode, stdout, stderr}
+    - which(command) -> path or None
+
+    Classified HIGH risk: shell.run can mutate anything on the host.
+    """
+    return _shell_impl.shell(
+        op=op, command=command, shell_mode=shell_mode, timeout=timeout, cwd=cwd
+    )
+
+
+@mcp.tool()
+@tool(name="http", tier=Tier.ZERO, risk=Risk.MEDIUM)
+def http(
+    op: str,
+    url: str,
+    body: str = None,
+    headers: dict = None,
+    timeout: int = 30,
+):
+    """HTTP GET / POST via stdlib urllib.
+
+    Sub-ops:
+    - get(url, headers={}, timeout=30) -> {status, headers, body}
+    - post(url, body=..., headers={}, timeout=30) -> {status, headers, body}
+    """
+    return _http_impl.http(
+        op=op, url=url, body=body, headers=headers, timeout=timeout
+    )
+
+
+@mcp.tool()
+@tool(name="env", tier=Tier.ZERO, risk=Risk.LOW)
+def env(op: str, name: str, value: str = None):
+    """Process-scoped environment variables.
+
+    Sub-ops:
+    - get(name) -> str or None
+    - set(name, value) -> {name, value}  (does NOT persist)
+    """
+    return _env_impl.env(op=op, name=name, value=value)
+
+
+@mcp.tool()
+@tool(name="time", tier=Tier.ZERO, risk=Risk.READ_ONLY)
+def time(op: str, seconds: float = 0, tz: str = None):
+    """Clock + sleep.
+
+    Sub-ops:
+    - now(tz=None) -> ISO-8601 string (default UTC)
+    - sleep(seconds) -> {slept: float}  (capped at 60s)
+    """
+    return _time_impl.time(op=op, seconds=seconds, tz=tz)
+
+
+@mcp.tool()
+@tool(name="tempfile", tier=Tier.ZERO, risk=Risk.LOW)
+def tempfile(op: str = "temp_path", prefix: str = "vcu-", suffix: str = ""):
+    """Allocate a unique temporary-file path (the file is NOT created).
+
+    Sub-ops:
+    - temp_path(prefix='vcu-', suffix='') -> absolute path str
+    """
+    return _tempfile_impl.tempfile(op=op, prefix=prefix, suffix=suffix)
+
+
+@mcp.tool()
+@tool(name="data", tier=Tier.ZERO, risk=Risk.READ_ONLY)
+def data(op: str, source: str = None, value=None):
+    """JSON / CSV / YAML parse + serialize.
+
+    Sub-ops:
+    - parse_json(source) / serialize_json(value)
+    - parse_csv(source)  / serialize_csv(value)
+    - parse_yaml(source) / serialize_yaml(value)  (requires PyYAML)
+    """
+    return _data_impl.data(op=op, source=source, value=value)
+
+
+@mcp.tool()
+@tool(name="clipboard", tier=Tier.ZERO, risk=Risk.LOW)
+def clipboard(op: str, text: str = None):
+    """Read / write the system clipboard.
+
+    Sub-ops:
+    - copy(text) -> {backend, bytes}
+    - paste() -> str
+
+    Backend chain: clip.exe (Windows/WSL2), pbcopy (macOS), wl-copy
+    (Wayland), xclip (X11). Raises RuntimeError if none are on PATH.
+    """
+    return _clipboard_impl.clipboard(op=op, text=text)
+
+
 # --- CLI: management subcommands ---
 #
 # The package ships a single entry point (`vadgr-cua`). With no arguments
