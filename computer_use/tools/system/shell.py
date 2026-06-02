@@ -18,9 +18,13 @@ import shutil
 import subprocess
 from typing import Any, Optional, Union
 
+from computer_use.core.ops import OperationGroup
+
 # Cap to prevent a runaway subprocess from hanging the MCP session.
 _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 600
+
+_ops = OperationGroup("shell")
 
 
 def _run(
@@ -54,6 +58,25 @@ def _which(command: str) -> Optional[str]:
     return shutil.which(command)
 
 
+@_ops.operation("run")
+def _op_run(
+    command: Union[str, list[str], None] = None,
+    shell_mode: bool = False,
+    timeout: int = _DEFAULT_TIMEOUT,
+    cwd: Optional[str] = None,
+) -> dict[str, Any]:
+    if command is None:
+        raise ValueError("shell.run requires a command")
+    return _run(command, shell=shell_mode, timeout=timeout, cwd=cwd)
+
+
+@_ops.operation("which")
+def _op_which(command: Union[str, list[str], None] = None) -> Optional[str]:
+    if not isinstance(command, str):
+        raise ValueError("shell.which requires a string command name")
+    return _which(command)
+
+
 def shell(
     op: str,
     command: Union[str, list[str], None] = None,
@@ -71,12 +94,6 @@ def shell(
         timeout: Seconds before the subprocess is killed. Capped at 600.
         cwd: Working directory for the subprocess.
     """
-    if op == "run":
-        if command is None:
-            raise ValueError("shell.run requires a command")
-        return _run(command, shell=shell_mode, timeout=timeout, cwd=cwd)
-    if op == "which":
-        if not isinstance(command, str):
-            raise ValueError("shell.which requires a string command name")
-        return _which(command)
-    raise ValueError(f"unknown shell op {op!r}; expected run or which")
+    return _ops.run(
+        op, command=command, shell_mode=shell_mode, timeout=timeout, cwd=cwd
+    )
