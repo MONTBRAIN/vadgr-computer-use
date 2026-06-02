@@ -27,6 +27,10 @@ import subprocess
 import sys
 from typing import Optional
 
+from computer_use.core.ops import OperationGroup
+
+_ops = OperationGroup("clipboard")
+
 _BACKENDS = [
     # (name, copy_cmd, paste_cmd)
     ("clip.exe", ["clip.exe"], ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard"]),
@@ -84,6 +88,18 @@ def _paste() -> str:
     return proc.stdout
 
 
+@_ops.operation("copy")
+def _op_copy(text: Optional[str] = None) -> dict:
+    if text is None:
+        raise ValueError("clipboard.copy requires text")
+    return _copy(text)
+
+
+@_ops.operation("paste")
+def _op_paste() -> str:
+    return _paste()
+
+
 def clipboard(op: str, text: Optional[str] = None) -> object:
     """Dispatch a clipboard sub-operation.
 
@@ -95,10 +111,4 @@ def clipboard(op: str, text: Optional[str] = None) -> object:
         RuntimeError: When no clipboard backend is on PATH, or the chosen
             backend's subprocess exits non-zero.
     """
-    if op == "copy":
-        if text is None:
-            raise ValueError("clipboard.copy requires text")
-        return _copy(text)
-    if op == "paste":
-        return _paste()
-    raise ValueError(f"unknown clipboard op {op!r}; expected copy or paste")
+    return _ops.run(op, text=text)
