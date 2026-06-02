@@ -18,6 +18,23 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+from computer_use.core.ops import OperationGroup
+
+_ops = OperationGroup("env")
+
+
+@_ops.operation("get")
+def _get(name: str) -> Optional[str]:
+    return os.environ.get(name)
+
+
+@_ops.operation("set")
+def _set(name: str, value: Optional[str] = None) -> dict[str, str]:
+    if value is None:
+        raise ValueError("env.set requires value")
+    os.environ[name] = value
+    return {"name": name, "value": value}
+
 
 def env(op: str, name: str, value: Optional[str] = None) -> Any:
     """Dispatch an environment-variable sub-operation.
@@ -32,11 +49,4 @@ def env(op: str, name: str, value: Optional[str] = None) -> Any:
         The string value for ``get`` (or ``None`` if unset).
         ``{"name": ..., "value": ...}`` for ``set``.
     """
-    if op == "get":
-        return os.environ.get(name)
-    if op == "set":
-        if value is None:
-            raise ValueError("env.set requires value")
-        os.environ[name] = value
-        return {"name": name, "value": value}
-    raise ValueError(f"unknown env op {op!r}; expected get or set")
+    return _ops.run(op, name=name, value=value)
