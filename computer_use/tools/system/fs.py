@@ -19,22 +19,30 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from computer_use.core.ops import OperationGroup
 
+_ops = OperationGroup("fs")
+
+
+@_ops.operation("read")
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
-def _write(path: str, content: str) -> dict[str, Any]:
+@_ops.operation("write")
+def _write(path: str, content: str = "") -> dict[str, Any]:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return {"path": str(p), "written": len(content)}
 
 
+@_ops.operation("list")
 def _list(path: str) -> list[str]:
     return sorted(e.name for e in Path(path).iterdir())
 
 
+@_ops.operation("stat")
 def _stat(path: str) -> dict[str, Any]:
     p = Path(path)
     st = p.stat()
@@ -47,6 +55,7 @@ def _stat(path: str) -> dict[str, Any]:
     return {"path": str(p), "size": st.st_size, "kind": kind, "mtime": st.st_mtime}
 
 
+@_ops.operation("delete")
 def _delete(path: str, recursive: bool = False) -> dict[str, Any]:
     p = Path(path)
     if p.is_dir():
@@ -74,16 +83,4 @@ def fs(
         content: Required when ``op="write"``.
         recursive: Required when deleting a directory.
     """
-    if op == "read":
-        return _read(path)
-    if op == "write":
-        return _write(path, content)
-    if op == "list":
-        return _list(path)
-    if op == "stat":
-        return _stat(path)
-    if op == "delete":
-        return _delete(path, recursive=recursive)
-    raise ValueError(
-        f"unknown fs op {op!r}; expected one of read, write, list, stat, delete"
-    )
+    return _ops.run(op, path=path, content=content, recursive=recursive)
