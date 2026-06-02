@@ -20,6 +20,10 @@ import io
 import json
 from typing import Any, Optional
 
+from computer_use.core.ops import OperationGroup
+
+_ops = OperationGroup("data")
+
 
 def _parse_json(source: str) -> Any:
     return json.loads(source)
@@ -62,6 +66,42 @@ def _serialize_yaml(value: Any) -> str:
     return _load_yaml_module().safe_dump(value, sort_keys=True)
 
 
+@_ops.operation("parse_json")
+def _op_parse_json(source: Optional[str] = None) -> Any:
+    if source is None:
+        raise ValueError("data.parse_json requires source")
+    return _parse_json(source)
+
+
+@_ops.operation("serialize_json")
+def _op_serialize_json(value: Any = None) -> str:
+    return _serialize_json(value)
+
+
+@_ops.operation("parse_csv")
+def _op_parse_csv(source: Optional[str] = None) -> list[dict[str, str]]:
+    if source is None:
+        raise ValueError("data.parse_csv requires source")
+    return _parse_csv(source)
+
+
+@_ops.operation("serialize_csv")
+def _op_serialize_csv(value: Any = None) -> str:
+    return _serialize_csv(value or [])
+
+
+@_ops.operation("parse_yaml")
+def _op_parse_yaml(source: Optional[str] = None) -> Any:
+    if source is None:
+        raise ValueError("data.parse_yaml requires source")
+    return _parse_yaml(source)
+
+
+@_ops.operation("serialize_yaml")
+def _op_serialize_yaml(value: Any = None) -> str:
+    return _serialize_yaml(value)
+
+
 def data(
     op: str,
     source: Optional[str] = None,
@@ -75,25 +115,4 @@ def data(
         source: Raw text to parse (for parse_* ops).
         value: Python value to serialize (for serialize_* ops).
     """
-    if op == "parse_json":
-        if source is None:
-            raise ValueError("data.parse_json requires source")
-        return _parse_json(source)
-    if op == "serialize_json":
-        return _serialize_json(value)
-    if op == "parse_csv":
-        if source is None:
-            raise ValueError("data.parse_csv requires source")
-        return _parse_csv(source)
-    if op == "serialize_csv":
-        return _serialize_csv(value or [])
-    if op == "parse_yaml":
-        if source is None:
-            raise ValueError("data.parse_yaml requires source")
-        return _parse_yaml(source)
-    if op == "serialize_yaml":
-        return _serialize_yaml(value)
-    raise ValueError(
-        f"unknown data op {op!r}; expected parse_json, serialize_json, "
-        f"parse_csv, serialize_csv, parse_yaml, serialize_yaml"
-    )
+    return _ops.run(op, source=source, value=value)
