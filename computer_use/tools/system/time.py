@@ -18,10 +18,15 @@ import datetime as _dt
 import time as _time
 from typing import Any, Optional
 
+from computer_use.core.ops import OperationGroup
+
 _MAX_SLEEP_SECONDS = 60
 
+_ops = OperationGroup("time")
 
-def _now(tz: Optional[str]) -> str:
+
+@_ops.operation("now")
+def _now(tz: Optional[str] = None) -> str:
     if tz is None:
         return _dt.datetime.now(_dt.timezone.utc).isoformat()
     try:
@@ -31,7 +36,8 @@ def _now(tz: Optional[str]) -> str:
     return _dt.datetime.now(ZoneInfo(tz)).isoformat()
 
 
-def _sleep(seconds: float) -> dict[str, float]:
+@_ops.operation("sleep")
+def _sleep(seconds: float = 0.0) -> dict[str, float]:
     if seconds < 0:
         seconds = 0
     if seconds > _MAX_SLEEP_SECONDS:
@@ -48,8 +54,4 @@ def time(op: str, seconds: float = 0, tz: Optional[str] = None) -> Any:
         seconds: Sleep duration. Capped at 60 seconds.
         tz: IANA timezone for ``now`` (default UTC).
     """
-    if op == "now":
-        return _now(tz)
-    if op == "sleep":
-        return _sleep(seconds)
-    raise ValueError(f"unknown time op {op!r}; expected now or sleep")
+    return _ops.run(op, seconds=seconds, tz=tz)
