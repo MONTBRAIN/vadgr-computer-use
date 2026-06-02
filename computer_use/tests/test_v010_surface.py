@@ -93,8 +93,11 @@ def _mcp_tool_names() -> frozenset[str]:
 
 
 class TestMcpToolSurface:
-    def test_exposes_exactly_v010_tools(self):
-        assert _mcp_tool_names() == V010_TOOLS
+    def test_v010_tools_remain_exposed(self):
+        # 0.3.0 grew the catalog from 13 -> 21 by adding Tier 0 system tools.
+        # The original 13 v0.1.0 tools must still be exposed; new tools may
+        # appear alongside them, but removed tools must NOT come back.
+        assert V010_TOOLS <= _mcp_tool_names()
 
     def test_cache_tools_are_gone(self):
         assert _mcp_tool_names().isdisjoint(REMOVED_TOOLS)

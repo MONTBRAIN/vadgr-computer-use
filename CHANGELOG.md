@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.3.0] - 2026-05-29
+
+### Added
+- 8 first-party Tier 0 MCP tools: `fs` (read/write/list/stat/delete), `shell` (run/which), `http` (get/post), `env` (get/set), `time` (now/sleep), `tempfile` (temp_path), `data` (parse/serialize JSON/CSV/YAML), `clipboard` (copy/paste). Each tool dispatches sub-operations via an `op` argument; signatures and risk levels documented in each tool's docstring.
+- `computer_use.tools.system` package with one module per tool. Implementations live next to their tests; the MCP wire wrappers in `computer_use.mcp_server` apply `@mcp.tool()` + `@tool(...)` exactly like the existing pixel tools.
+- Optional `data-yaml` extra: `pip install vadgr-computer-use[data-yaml]` enables YAML parsing/serialization. Without it, `data` raises a clear RuntimeError on `parse_yaml` / `serialize_yaml` and still serves the JSON/CSV ops.
+
+### Changed
+- Tool catalog grows from 13 to 21. `vadgr-cua doctor` JSON now reports `tool_count: 21` and `tier_breakdown: {"0": 8, "0.5": 0, "1": 0, "2": 13}`.
+- `shell.run` defaults to `shell_mode=False` and treats a string `command` as a single argv element when the caller didn't ask for shell parsing. Set `shell_mode=True` explicitly to interpret a shell string.
+- `time.sleep` is capped at 60 seconds and `shell.run` timeout is capped at 600 seconds so a stuck call cannot stall the MCP session.
+
+### Notes
+- `env.set` is process-scoped: the value is applied to `os.environ` of the running MCP server and is NOT persisted to the user's shell init.
+- `clipboard` tries `clip.exe` + `powershell.exe Get-Clipboard` (Windows / WSL2), then `pbcopy` / `pbpaste` (macOS), then `wl-copy` / `wl-paste` (Wayland), then `xclip` (X11). When no backend is on PATH the tool raises a RuntimeError listing the supported backends instead of silently no-op'ing.
+- The 13 existing pixel-layer tools (Tier 2) are unchanged; this release only adds new tools.
+
 ## [0.2.0] - 2026-05-21
 
 ### Added

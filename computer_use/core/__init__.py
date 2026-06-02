@@ -23,6 +23,7 @@ Public framework surface:
 """
 
 from computer_use.core.decorator import make_tool_decorator
+from computer_use.core.ops import OperationGroup
 from computer_use.core.registry import ToolRegistry
 from computer_use.core.risk import Risk
 from computer_use.core.tier import Tier
@@ -42,6 +43,7 @@ __all__ = [
     "REGISTRY",
     "Tool",
     "ToolRegistry",
+    "OperationGroup",
     "Tier",
     "Risk",
 ]
