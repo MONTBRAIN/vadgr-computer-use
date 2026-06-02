@@ -18,8 +18,11 @@ import urllib.error
 import urllib.request as urllib_request
 from typing import Any, Optional
 
+from computer_use.core.ops import OperationGroup
 
 _DEFAULT_TIMEOUT = 30
+
+_ops = OperationGroup("http")
 
 
 def _request(method: str, url: str, body: Optional[str], headers: Optional[dict], timeout: int) -> dict[str, Any]:
@@ -44,6 +47,25 @@ def _request(method: str, url: str, body: Optional[str], headers: Optional[dict]
     }
 
 
+@_ops.operation("get")
+def _get(
+    url: str,
+    headers: Optional[dict] = None,
+    timeout: int = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    return _request("GET", url, None, headers, timeout)
+
+
+@_ops.operation("post")
+def _post(
+    url: str,
+    body: Optional[str] = None,
+    headers: Optional[dict] = None,
+    timeout: int = _DEFAULT_TIMEOUT,
+) -> dict[str, Any]:
+    return _request("POST", url, body, headers, timeout)
+
+
 def http(
     op: str,
     url: str,
@@ -63,8 +85,4 @@ def http(
     Returns:
         ``{"status": int, "headers": dict, "body": str}`` for both verbs.
     """
-    if op == "get":
-        return _request("GET", url, None, headers, timeout)
-    if op == "post":
-        return _request("POST", url, body, headers, timeout)
-    raise ValueError(f"unknown http op {op!r}; expected get or post")
+    return _ops.run(op, url=url, body=body, headers=headers, timeout=timeout)
