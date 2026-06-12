@@ -330,3 +330,88 @@ class TestClipboard:
         except RuntimeError:
             pytest.skip("clipboard paste backend unavailable on this host")
         assert isinstance(got, str)
+
+    def test_wayland_copy_launches_detached_with_timeout(self, monkeypatch):
+        """wl-copy must not block forever on its captured pipes (issue #11).
+
+        wl-copy forks a background daemon that serves the clipboard data and
+        inherits the parent's pipe fds. With ``subprocess.run(...,
+        capture_output=True)`` and no timeout, the daemon keeps the read end
+        open and the call blocks forever. The copy path must instead launch the
+        backend detached: stdin a pipe (to feed the text), stdout/stderr to
+        DEVNULL so no fd is held open, and a defensive timeout so a hang
+        surfaces as a catchable error rather than an infinite block. It must NOT
+        wait on the daemon.
+        """
+        from computer_use.tools.system import clipboard
+
+        # Force the wl-copy backend regardless of host (this is a WSL2 box).
+        monkeypatch.setattr(
+            clipboard,
+            "_pick_backend",
+            lambda: ("wl-copy", ["wl-copy"], ["wl-paste", "--no-newline"]),
+        )
+
+        recorded = {}
+
+        class FakeProc:
+            def __init__(self, *args, **kwargs):
+                recorded["args"] = args
+                recorded["kwargs"] = kwargs
+                self.stdin = self._Stdin(recorded)
+                recorded["communicate_timeout"] = None
+                recorded["waited"] = False
+
+            class _Stdin:
+                def __init__(self, rec):
+                    self._rec = rec
+                    self.closed = False
+
+                def write(self, data):
+                    self._rec.setdefault("stdin_writes", []).append(data)
+
+                def close(self):
+                    self.closed = True
+
+            def communicate(self, timeout=None):
+                recorded["communicate_timeout"] = timeout
+                return (None, None)
+
+            def wait(self, timeout=None):
+                # A blocking wait with no timeout is exactly the bug.
+                recorded["waited"] = True
+                recorded["wait_timeout"] = timeout
+                return 0
+
+            @property
+            def returncode(self):
+                return 0
+
+        monkeypatch.setattr(clipboard.subprocess, "Popen", FakeProc)
+
+        clipboard.clipboard(op="copy", text="hello")
+
+        # Launched wl-copy (not -o, which would clear after first paste).
+        argv = recorded["args"][0]
+        assert argv == ["wl-copy"]
+        assert "-o" not in argv
+
+        kwargs = recorded["kwargs"]
+        # stdout/stderr redirected to DEVNULL so the daemon holds no live fd.
+        assert kwargs.get("stdout") == clipboard.subprocess.DEVNULL
+        assert kwargs.get("stderr") == clipboard.subprocess.DEVNULL
+        # stdin is a pipe so we can feed the text.
+        assert kwargs.get("stdin") == clipboard.subprocess.PIPE
+        # capture_output must NOT be used (that is what causes the hang).
+        assert kwargs.get("capture_output") in (None, False)
+
+        # The text was written to stdin and stdin was closed (EOF for the daemon).
+        assert "hello" in "".join(recorded.get("stdin_writes", []))
+
+        # A defensive timeout is bounded somewhere (communicate or wait), and
+        # the call never does an unbounded blocking wait on the daemon.
+        bounded = (
+            recorded.get("communicate_timeout") is not None
+            or recorded.get("wait_timeout") is not None
+        )
+        assert bounded, "wl-copy copy must use a defensive timeout"
