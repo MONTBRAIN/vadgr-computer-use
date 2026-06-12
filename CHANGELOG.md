@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.3.1] - 2026-06-12
+
+### Fixed
+- `clipboard` copy op no longer hangs forever on Wayland. `wl-copy` forks a
+  background daemon that keeps serving the clipboard and inherits the parent's
+  captured stdout/stderr pipes, so the previous `subprocess.run(..., capture_output=True)`
+  blocked on the pipe read indefinitely. The `wl-copy` backend now launches
+  detached (stdout/stderr to `DEVNULL`, text written to stdin, bounded wait), so
+  the call returns immediately while the daemon keeps the clipboard available for
+  later pastes. (#11)
+- All clipboard copy backends now run with a defensive timeout, so a stuck copy
+  surfaces as an error instead of an indefinite hang.
+
 ## [0.3.0] - 2026-05-29
 
 ### Added
