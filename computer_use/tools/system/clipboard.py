@@ -52,6 +52,38 @@ def _pick_backend() -> Optional[tuple[str, list[str], list[str]]]:
     return None
 
 
+# wl-copy has no central clipboard store to write to and exit: the source
+# process must stay alive to serve the data, so wl-copy forks a background
+# daemon. That daemon inherits the parent's std fds, so capturing them keeps
+# the read end open and ``subprocess.run`` blocks forever. We special-case it
+# below; the defensive timeout also guards the (rare) sync-write window.
+_COPY_TIMEOUT = 5.0
+
+
+def _copy_detached(copy_cmd: list[str], text: str) -> None:
+    """Feed *text* to a copy backend that detaches a daemon (e.g. wl-copy).
+
+    The daemon must keep the *data* alive but must not hold our pipes open, so
+    stdout/stderr go to ``/dev/null``. We write the text to stdin, close it
+    (EOF lets the foreground process hand off to its daemon), then wait only on
+    the foreground process with a bounded timeout — never on the daemon.
+    """
+    proc = subprocess.Popen(  # noqa: S603
+        copy_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        proc.stdin.write(text)
+        proc.stdin.close()
+        proc.wait(timeout=_COPY_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise
+
+
 def _copy(text: str) -> dict:
     backend = _pick_backend()
     if backend is None:
@@ -60,8 +92,11 @@ def _copy(text: str) -> dict:
             "pbcopy (macOS), wl-clipboard (Wayland), or xclip (X11)"
         )
     name, copy_cmd, _ = backend
+    if name == "wl-copy":
+        _copy_detached(copy_cmd, text)
+        return {"backend": name, "bytes": len(text)}
     proc = subprocess.run(  # noqa: S603
-        copy_cmd, input=text, text=True, capture_output=True
+        copy_cmd, input=text, text=True, capture_output=True, timeout=_COPY_TIMEOUT
     )
     if proc.returncode != 0:
         raise RuntimeError(
