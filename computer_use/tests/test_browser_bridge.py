@@ -122,6 +122,31 @@ class TestNativeMessagingBridgeStatus:
         assert st.reason is None
 
 
+class TestSelfRegisterWiring:
+    def test_probe_self_registers_once(self, monkeypatch):
+        import computer_use.setup.extension_setup as S
+
+        calls: list[int] = []
+        monkeypatch.setattr(S, "ensure_registered", lambda: calls.append(1))
+        monkeypatch.setattr(B, "manifest_paths", lambda *a, **k: {})
+        monkeypatch.setattr(B, "probe_manifests", lambda paths: [])
+        b = B.NativeMessagingBridge()  # auto_register default True
+        b._probe_setup()
+        b._probe_setup()
+        assert calls == [1]  # self-registered exactly once
+
+    def test_auto_register_false_skips(self, monkeypatch):
+        import computer_use.setup.extension_setup as S
+
+        calls: list[int] = []
+        monkeypatch.setattr(S, "ensure_registered", lambda: calls.append(1))
+        monkeypatch.setattr(B, "manifest_paths", lambda *a, **k: {})
+        monkeypatch.setattr(B, "probe_manifests", lambda paths: [])
+        b = B.NativeMessagingBridge(auto_register=False)
+        b._probe_setup()
+        assert calls == []
+
+
 class TestNativeMessagingBridgeSend:
     def test_send_without_session_raises_not_connected(self, monkeypatch):
         b = B.NativeMessagingBridge()

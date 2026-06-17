@@ -177,12 +177,28 @@ class NativeMessagingBridge:
     logic on top of them is unit-tested via overrides.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, auto_register: bool = True) -> None:
         self._sessions: dict[str, BrowserSession] = {}
+        self._auto_register = auto_register
+        self._ensured = False
 
     # --- seams the spike fills (overridden in tests) ---
 
+    def _maybe_self_register(self) -> None:
+        """Write cua's own native-host wiring on first use, so there is no
+        manual registration step. Best-effort — never break an op over it."""
+        if not self._auto_register or self._ensured:
+            return
+        self._ensured = True
+        try:
+            from computer_use.setup.extension_setup import ensure_registered
+
+            ensure_registered()
+        except Exception:
+            pass
+
     def _probe_setup(self) -> list[str]:
+        self._maybe_self_register()
         return probe_manifests(manifest_paths())
 
     def _active_session(self) -> BrowserSession | None:
