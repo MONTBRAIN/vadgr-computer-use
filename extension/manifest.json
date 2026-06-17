@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "vadgr-computer-use browser tier",
+  "version": "0.4.0",
+  "description": "DOM-first browser automation bridged to vadgr-computer-use over native messaging.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsGcYE1lx9yzfWeBEqMRPN99ceI8G+0W9gxU5Twfp2dRBGDESbi/Oq9xq/sf2vt3xhjplCdglTrc/gFCfgsJ/ssStyyyEeyCsEKerJiK3NxUVAEdRl8VNZYkc7Up/Lsb+nAfeFv1VGm/paPnfkCDFtDwm7h/1nmS96UhFaljEjyD7AeMfjbouJ1p3/4Yyxv8aMLsl/fQqXpyX0zgNi1bAD02fzTOHv+ORUTWCPVpeEjcphpQZzl2UlaJMbpNd0soNs4I5EXykASN1XcPKKBNJ49mRfNvmhNl1jd3RYZ1T863fjyJyz9u7vJqVXdVuONMFk3aq8u9edzAd3J2fwCHbgwIDAQAB",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["tabs", "cookies", "nativeMessaging", "offscreen"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
