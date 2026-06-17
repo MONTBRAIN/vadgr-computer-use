@@ -388,6 +388,8 @@ from computer_use.tools.system import shell as _shell_impl
 from computer_use.tools.system import tempfile as _tempfile_impl
 from computer_use.tools.system import time as _time_impl
 
+from computer_use.browser import tool as _browser_impl
+
 
 @mcp.tool()
 @tool(name="fs", tier=Tier.ZERO, risk=Risk.MEDIUM)
@@ -508,6 +510,80 @@ def clipboard(op: str, text: str = None):
     (Wayland), xclip (X11). Raises RuntimeError if none are on PATH.
     """
     return _clipboard_impl.clipboard(op=op, text=text)
+
+
+# --- Tier 1: browser (MV3 extension + native messaging) ---
+#
+# One op-routed `browser` tool plus the separate HIGH-risk `browser_eval`.
+# Both are thin clients over a BrowserBridge; they are always registered (the
+# *action* fails with a guided error when no browser is connected, never the
+# registration).
+
+@mcp.tool()
+@tool(name="browser", tier=Tier.ONE, risk=Risk.MEDIUM)
+def browser(
+    op: str,
+    url: str = None,
+    selector: str = None,
+    name: str = None,
+    text: str = None,
+    value: str = None,
+    by: str = "css",
+    state: str = "visible",
+    wait: str = "load",
+    action: str = "get",
+    all: bool = False,
+    clear: bool = True,
+    submit: bool = False,
+    timeout: int = 5000,
+    scroll_by: dict = None,
+):
+    """Drive the browser by selector, through the MV3 extension (Tier 1).
+
+    Sub-ops:
+    - navigate(url, wait="load") / back / forward / reload -> {url, title}
+    - wait_for(selector, state="visible"|"hidden"|"attached", timeout) -> {matched}
+    - query(selector, by="css"|"xpath", all=False) -> [{tag, text, attrs}]
+    - read_text(selector=None) -> str
+    - get_attribute(selector, name) -> str | None
+    - click(selector, by="css") -> {clicked}
+    - type / fill(selector, text, clear=True, submit=False) -> {typed}
+    - select(selector, value) -> {selected}
+    - scroll(selector=None | scroll_by={x,y}) -> {ok}
+    - cookies(action="get"|"set"|"clear", url, name, value)
+    - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
+
+    On a terminal browser error (not set up / not connected / op unsupported)
+    the tool raises with a guided pixel fallback — prefer this tool; degrade to
+    the pixel tools only when it says so.
+    """
+    params = {
+        "url": url, "selector": selector, "name": name, "text": text,
+        "value": value, "state": state, "wait": wait, "action": action,
+        "all": all, "clear": clear, "submit": submit, "timeout": timeout,
+    }
+    # `by` is the css/xpath selector mode for most ops, but the {x,y} offset for
+    # `scroll`. The MCP surface keeps them distinct (`by` vs `scroll_by`); the
+    # op handler reads `by` either way.
+    if op == "scroll":
+        if scroll_by is not None:
+            params["by"] = scroll_by
+    else:
+        params["by"] = by
+    params = {k: v for k, v in params.items() if v is not None}
+    return _browser_impl.browser(op=op, **params)
+
+
+@mcp.tool()
+@tool(name="browser_eval", tier=Tier.ONE, risk=Risk.HIGH)
+def browser_eval(expression: str):
+    """Run arbitrary JavaScript in the active page (HIGH risk).
+
+    Returns the evaluated value. Separate from `browser` so the common ops keep
+    a lower risk ceiling; this is the escape hatch for anything not yet a
+    first-class op.
+    """
+    return _browser_impl.browser_eval(expression=expression)
 
 
 # --- CLI: management subcommands ---
