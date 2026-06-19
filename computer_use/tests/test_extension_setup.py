@@ -180,6 +180,23 @@ class TestWSLRegistration:
             r"C:\Users\alice\AppData\Local\Google\Chrome\com.vadgr.cua.json"
         )
 
+    def test_windows_relay_path_points_at_the_exe(self):
+        p = S.windows_relay_path(windows_user="alice")
+        assert p.endswith("vadgr-cua-host.exe")
+        assert p.startswith("C:\\Users\\alice\\")
+        assert "vadgr-cua" in p
+
+    def test_ensure_registered_wsl_manifest_path_is_the_relay_exe(self, tmp_path):
+        chrome = tmp_path / "com.vadgr.cua.json"
+        S.ensure_registered(
+            paths={"chrome": chrome},
+            platform="wsl",
+            windows_user="alice",
+            registry_writer=lambda k, v: None,
+        )
+        data = json.loads(chrome.read_text())
+        assert data["path"].endswith("vadgr-cua-host.exe")
+
     def test_non_wsl_linux_unchanged(self, tmp_path):
         chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
         result = S.ensure_registered(
