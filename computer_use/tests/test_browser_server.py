@@ -99,6 +99,18 @@ class TestDiscoveryFile:
         assert t1 and t2 and t1 != t2
         assert len(t1) >= 16
 
+    def test_wsl_discovery_path_is_under_mnt_c(self):
+        p = S.wsl_discovery_path(windows_user="alice")
+        assert str(p).startswith("/mnt/c/Users/alice/")
+        assert p.name == "browser.port"
+
+    def test_write_discovery_wsl_also_writes_windows_copy(self, tmp_path):
+        linux = tmp_path / "linux" / "browser.port"
+        win = tmp_path / "win" / "browser.port"
+        S.write_discovery(7000, "tk", path=linux, windows_copy=win)
+        assert S.read_discovery(path=linux) == (7000, "tk")
+        assert S.read_discovery(path=win) == (7000, "tk")
+
 
 class TestListener:
     def test_full_hello_plus_navigate_roundtrip(self, tmp_path):

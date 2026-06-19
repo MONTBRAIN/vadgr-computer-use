@@ -59,21 +59,56 @@ def discovery_path() -> Path:
     return Path.home() / ".vadgr-cua" / "browser.port"
 
 
+def wsl_discovery_path(windows_user: str | None = None) -> Path:
+    """A Windows-readable copy of the discovery file (under ``/mnt/c``).
+
+    On WSL the Windows-side relay shim reads the discovery file from the Windows
+    filesystem, so cua-in-WSL also writes a copy the shim can ``CreateFile`` on
+    the Windows side.
+    """
+    from computer_use.browser.bridge import windows_user_home_mnt
+
+    return (
+        windows_user_home_mnt(windows_user)
+        / "AppData" / "Local" / "vadgr-cua" / "browser.port"
+    )
+
+
 def generate_token() -> str:
     """A fresh per-run auth token. Loopback is local, but a token stops any
     other local process from hijacking the listener."""
     return secrets.token_hex(16)
 
 
-def write_discovery(port: int, token: str, *, path: Path | None = None) -> Path:
-    """Write ``{port, token}`` JSON to the discovery file (0600)."""
-    dest = Path(path) if path is not None else discovery_path()
+def _write_one(dest: Path, payload: str) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps({"port": port, "token": token}), encoding="utf-8")
+    dest.write_text(payload, encoding="utf-8")
     try:
         dest.chmod(0o600)
     except OSError:  # pragma: no cover - non-posix best-effort
         pass
+
+
+def write_discovery(
+    port: int,
+    token: str,
+    *,
+    path: Path | None = None,
+    windows_copy: Path | None = None,
+) -> Path:
+    """Write ``{port, token}`` JSON to the discovery file (0600).
+
+    On WSL, ``windows_copy`` also writes a Windows-readable copy under
+    ``/mnt/c`` so the Windows-side relay shim can find the listener.
+    """
+    dest = Path(path) if path is not None else discovery_path()
+    payload = json.dumps({"port": port, "token": token})
+    _write_one(dest, payload)
+    if windows_copy is not None:
+        try:
+            _write_one(Path(windows_copy), payload)
+        except OSError:  # pragma: no cover - /mnt/c may be unavailable
+            pass
     return dest
 
 
@@ -137,10 +172,12 @@ class BrowserServer:
         *,
         bridge: NativeMessagingBridge | None = None,
         discovery_path: Path | None = None,
+        windows_copy: Path | None = None,
         host: str = "127.0.0.1",
     ) -> None:
         self.bridge = bridge if bridge is not None else NativeMessagingBridge()
         self._discovery_path = discovery_path
+        self._windows_copy = windows_copy
         self._host = host
         self.token = generate_token()
         self._sock: socket.socket | None = None
@@ -156,7 +193,10 @@ class BrowserServer:
         self._sock.listen(8)
         self._sock.settimeout(0.25)
         self.port = self._sock.getsockname()[1]
-        write_discovery(self.port, self.token, path=self._discovery_path)
+        write_discovery(
+            self.port, self.token,
+            path=self._discovery_path, windows_copy=self._windows_copy,
+        )
         self._thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._thread.start()
         return self.port
@@ -232,10 +272,20 @@ def ensure_server(bridge: NativeMessagingBridge | None = None) -> BrowserServer:
     """Start (once) and return the process-wide listener.
 
     Best-effort: callers may guard with try/except so a transport failure never
-    breaks the rest of cua.
+    breaks the rest of cua. On WSL it also drops a Windows-readable discovery
+    copy so the Windows relay shim can reach the listener.
     """
     global _SERVER
     if _SERVER is None:
-        _SERVER = BrowserServer(bridge=bridge)
+        win_copy = None
+        try:
+            from computer_use.platform.detect import detect_platform
+            from computer_use.core.types import Platform
+
+            if detect_platform() == Platform.WSL2:
+                win_copy = wsl_discovery_path()
+        except Exception:
+            win_copy = None
+        _SERVER = BrowserServer(bridge=bridge, windows_copy=win_copy)
         _SERVER.start()
     return _SERVER

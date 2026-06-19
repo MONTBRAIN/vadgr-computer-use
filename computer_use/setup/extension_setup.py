@@ -85,6 +85,21 @@ _WIN_REGISTRY_KEYS = {
 }
 
 
+def windows_relay_path(windows_user: str | None = None) -> str:
+    """The Windows-form path of the relay shim Chrome spawns on Windows (WSL).
+
+    On WSL the manifest ``path`` cannot point at a Linux launcher — Chrome runs
+    on Windows. It points at ``vadgr-cua-host.exe``, a tiny stdio<->TCP
+    forwarder placed under the Windows user's ``AppData\\Local\\vadgr-cua``
+    (see ``computer_use/browser/winhost/``). Returns the ``C:\\...`` form
+    written into the manifest + the registry.
+    """
+    from computer_use.browser.bridge import windows_user_home_mnt
+
+    mnt = windows_user_home_mnt(windows_user) / "AppData" / "Local" / "vadgr-cua"
+    return _mnt_to_windows_path(mnt / "vadgr-cua-host.exe")
+
+
 def host_launcher_path(platform: str | None = None) -> Path:
     """Stable path for the generated launcher Chrome executes as the host."""
     plat = platform or sys.platform
@@ -130,20 +145,58 @@ def _winreg_writer(subkey: str, value: str) -> None:  # pragma: no cover - Windo
         winreg.CloseKey(key)
 
 
-def register_windows_registry(manifest_path, browsers, *, writer=None) -> list[str]:
-    """Point each browser's HKCU native-host key at ``manifest_path``.
+# Resolve reg.exe via the WSL interop path; falls back to PATH.
+_REG_EXE = "/mnt/c/Windows/System32/reg.exe"
+
+
+def reg_exe_writer(subkey: str, value: str, *, runner=None) -> None:
+    """Set ``HKCU\\<subkey>`` default value via Windows ``reg.exe`` from WSL.
+
+    This is the WSL analogue of ``_winreg_writer`` — cua-in-Linux cannot use
+    ``winreg``, so it shells out to the Windows ``reg.exe`` over interop. The
+    ``runner(argv)`` seam is injected in tests; it defaults to ``subprocess``.
+    """
+    import os
+
+    reg = _REG_EXE if os.path.exists(_REG_EXE) else "reg.exe"
+    argv = [
+        reg, "ADD", f"HKCU\\{subkey}",
+        "/ve", "/t", "REG_SZ", "/d", value, "/f",
+    ]
+    if runner is None:  # pragma: no cover - real interop
+        import subprocess
+
+        subprocess.run(argv, check=False, capture_output=True, timeout=10)
+    else:
+        runner(argv)
+
+
+def register_windows_registry(
+    manifest_path, browsers, *, writer=None, value=None
+) -> list[str]:
+    """Point each browser's HKCU native-host key at the manifest.
 
     ``writer(subkey, value)`` is injected in tests; defaults to a winreg write.
+    ``value`` overrides the registry value (the WSL path uses the Windows-form
+    ``C:\\...`` path, not the ``/mnt/c`` view).
     """
     write = writer or _winreg_writer
+    val = value if value is not None else str(manifest_path)
     done: list[str] = []
     for browser in browsers:
         subkey = _WIN_REGISTRY_KEYS.get(browser)
         if subkey is None:
             continue
-        write(subkey, str(manifest_path))
+        write(subkey, val)
         done.append(browser)
     return done
+
+
+def _mnt_to_windows_path(p) -> str:
+    """``/mnt/c/Users/..`` -> ``C:\\Users\\..`` (WSL view -> Windows form)."""
+    from computer_use.platform.wsl2 import wsl_to_win_path
+
+    return wsl_to_win_path(str(p))
 
 
 def ensure_registered(
@@ -152,13 +205,32 @@ def ensure_registered(
     host_path: str | None = None,
     platform: str | None = None,
     registry_writer=None,
+    windows_user: str | None = None,
 ) -> dict:
     """Self-register the native host so Chrome can reach cua — no manual step.
 
-    Writes the launcher, the per-OS manifest, and (on Windows) the registry
-    keys. Idempotent: safe to call on every startup. Returns what was written.
+    Writes the launcher, the per-OS manifest, and the registry keys (Windows
+    and WSL). On WSL cua-in-Linux targets the *Windows* Chrome it actually
+    drives: the manifest is written under ``/mnt/c`` and the registry key is set
+    via ``reg.exe`` interop. Idempotent: safe to call on every startup.
     """
     plat = platform or sys.platform
+    if plat == "wsl":
+        targets = paths if paths is not None else manifest_paths(
+            "wsl", windows_user=windows_user
+        )
+        # On WSL the manifest `path` must point at the Windows relay shim
+        # (a .exe Chrome spawns on Windows); the launcher script is irrelevant.
+        host = host_path or windows_relay_path(windows_user=windows_user)
+        written = install_manifests(host, targets)
+        reg = registry_writer or reg_exe_writer
+        for browser, dest in targets.items():
+            win_value = _mnt_to_windows_path(dest)
+            register_windows_registry(
+                dest, [browser], writer=reg, value=win_value
+            )
+        return {"host_path": host, "browsers": written, "platform": plat}
+
     targets = paths if paths is not None else manifest_paths(plat)
     host = host_path or write_launcher(platform=plat)
     written = install_manifests(host, targets)

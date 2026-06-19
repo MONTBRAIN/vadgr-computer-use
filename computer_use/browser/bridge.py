@@ -89,15 +89,62 @@ class BrowserSession:
 
 # --- the per-OS native-host manifest locations (browser.md) ---
 
-def manifest_paths(platform: str | None = None) -> dict[str, Path]:
+def windows_user_home_mnt(windows_user: str | None = None) -> Path:
+    """The WSL view of the Windows user's home: ``/mnt/c/Users/<user>``.
+
+    ``windows_user`` is injectable for tests; otherwise it is resolved from the
+    interop ``USERPROFILE``/``USERNAME`` the bridge daemon already relies on,
+    falling back to the Linux ``USER`` (which usually matches).
+    """
+    user = windows_user or _detect_windows_user()
+    return Path("/mnt/c/Users") / user
+
+
+def _detect_windows_user() -> str:  # pragma: no cover - interop, mocked in tests
+    import os
+
+    for env in ("WIN_USER", "USERNAME"):
+        val = os.environ.get(env)
+        if val:
+            return val
+    # Best-effort interop probe; cheap and only on the WSL path.
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["cmd.exe", "/c", "echo %USERNAME%"],
+            capture_output=True, text=True, timeout=5,
+        )
+        name = out.stdout.strip()
+        if name:
+            return name
+    except Exception:
+        pass
+    return os.environ.get("USER", "user")
+
+
+def manifest_paths(
+    platform: str | None = None, *, windows_user: str | None = None
+) -> dict[str, Path]:
     """Per-OS native-host manifest paths, keyed by browser.
 
     Mirrors the table in ``0.4.0/browser.md``. Windows registers via a registry
     key pointing at the manifest file; the path returned there is where the
-    setup script writes the manifest itself.
+    setup script writes the manifest itself. On WSL the targets are the
+    *Windows* Chrome locations, written from Linux via ``/mnt/c``.
     """
     plat = platform or sys.platform
     home = Path.home()
+    if plat == "wsl":
+        # cua-in-WSL drives Windows Chrome — register to the Windows locations.
+        win = windows_user_home_mnt(windows_user)
+        local = win / "AppData" / "Local"
+        return {
+            "chrome": local / "Google" / "Chrome" / "User Data"
+            / "NativeMessagingHosts" / _MANIFEST_NAME,
+            "edge": local / "Microsoft" / "Edge" / "User Data"
+            / "NativeMessagingHosts" / _MANIFEST_NAME,
+        }
     if plat == "darwin":
         base = home / "Library" / "Application Support"
         return {

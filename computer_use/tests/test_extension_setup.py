@@ -115,3 +115,80 @@ class TestSelfRegister:
         )
         assert calls, "Windows registration must write a registry key"
         assert all(v == str(chrome) for _, v in calls)
+
+
+class TestWSLRegistration:
+    """On WSL, cua-in-Linux must register to the *Windows* Chrome it drives:
+    write the manifest under /mnt/c and set the registry key via reg.exe."""
+
+    def test_manifest_paths_wsl_targets_windows_under_mnt_c(self):
+        paths = S.manifest_paths("wsl", windows_user="alice")
+        for browser, p in paths.items():
+            assert str(p).startswith("/mnt/c/Users/alice/")
+            assert p.name == "com.vadgr.cua.json"
+        assert "chrome" in paths and "edge" in paths
+
+    def test_reg_exe_writer_builds_the_right_command(self):
+        runs: list[list[str]] = []
+        S.reg_exe_writer(
+            r"Software\Google\Chrome\NativeMessagingHosts\com.vadgr.cua",
+            r"C:\Users\alice\manifest.json",
+            runner=lambda argv: runs.append(argv),
+        )
+        assert len(runs) == 1
+        argv = runs[0]
+        assert argv[0].endswith("reg.exe")
+        assert "ADD" in argv
+        # HKCU\<subkey>, default value (/ve), REG_SZ, the manifest path
+        assert any("HKCU" in a and "com.vadgr.cua" in a for a in argv)
+        assert "/ve" in argv
+        assert "REG_SZ" in argv
+        assert r"C:\Users\alice\manifest.json" in argv
+
+    def test_ensure_registered_wsl_writes_windows_manifest_and_calls_reg_exe(
+        self, tmp_path
+    ):
+        # Redirect /mnt/c to a tmp dir via an injected path map.
+        chrome = tmp_path / "Users" / "alice" / "chrome" / "com.vadgr.cua.json"
+        edge = tmp_path / "Users" / "alice" / "edge" / "com.vadgr.cua.json"
+        reg_calls: list[tuple[str, str]] = []
+        result = S.ensure_registered(
+            paths={"chrome": chrome, "edge": edge},
+            host_path="C:\\\\Users\\\\alice\\\\relay.exe",
+            platform="wsl",
+            registry_writer=lambda k, v: reg_calls.append((k, v)),
+        )
+        # Manifests written to the Windows-side (here, tmp) locations.
+        assert chrome.exists() and edge.exists()
+        data = json.loads(chrome.read_text())
+        assert data["allowed_origins"] == [f"chrome-extension://{S.EXTENSION_ID}/"]
+        # reg.exe-style writer was invoked for both browsers, with Win paths.
+        assert {k for k, _ in reg_calls}
+        chrome_keys = [k for k, _ in reg_calls if r"Google\Chrome" in k]
+        edge_keys = [k for k, _ in reg_calls if r"Microsoft\Edge" in k]
+        assert chrome_keys and edge_keys
+        # the registry value is the Windows-form path of the manifest.
+        by_key = dict(reg_calls)
+        assert by_key[chrome_keys[0]] == S._mnt_to_windows_path(chrome)
+        assert by_key[edge_keys[0]] == S._mnt_to_windows_path(edge)
+
+    def test_ensure_registered_wsl_value_is_windows_form_under_mnt_c(self, tmp_path):
+        # A real /mnt/c-style path converts to a C:\ registry value.
+        chrome = "/mnt/c/Users/alice/AppData/Local/Google/Chrome/com.vadgr.cua.json"
+        # Write into a tmp dir but assert the *value* conversion independently.
+        assert S._mnt_to_windows_path(chrome) == (
+            r"C:\Users\alice\AppData\Local\Google\Chrome\com.vadgr.cua.json"
+        )
+
+    def test_non_wsl_linux_unchanged(self, tmp_path):
+        chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
+        result = S.ensure_registered(
+            paths={"chrome": chrome},
+            host_path="/opt/host.sh",
+            platform="linux",
+            registry_writer=lambda k, v: (_ for _ in ()).throw(
+                AssertionError("registry must not be touched on linux")
+            ),
+        )
+        assert result["platform"] == "linux"
+        assert chrome.exists()
