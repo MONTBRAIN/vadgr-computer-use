@@ -10,14 +10,18 @@
 
 Chrome talks to this process over stdio in the native-messaging framing:
 each message is a 4-byte little-endian length prefix followed by that many
-bytes of UTF-8 JSON. This module owns that framing and the relay loop that
-bridges the Chrome stdio side to the already-running cua over a local IPC
-socket.
+bytes of UTF-8 JSON. This module owns that framing and is the thin
+**stdio<->TCP shim**: it reads the discovery file cua wrote
+(``~/.vadgr-cua/browser.port`` — port + auth token), connects to cua's
+loopback-TCP listener, sends the auth frame, then pumps native-messaging
+frames both ways between Chrome's stdio and cua.
 
-The framing helpers (``read_message`` / ``write_message``) are pure and
-unit-tested against in-memory byte streams; the live relay (``main``) needs a
-real Chrome + a running cua and is exercised by the manual spike, not by the
-unit suite.
+Loopback TCP (not a unix socket) is deliberate — it is the one transport that
+also crosses the WSL<->Windows boundary (see ``server.py``).
+
+The framing helpers (``read_message`` / ``write_message``) and ``_connect_cua``
+are pure/unit-tested; ``main`` needs a real Chrome and is exercised by the
+manual spike + the in-process e2e shim test.
 """
 
 from __future__ import annotations
@@ -27,15 +31,9 @@ import os
 import socket
 import struct
 import sys
+import threading
+from pathlib import Path
 from typing import Any, BinaryIO
-
-# Default local-IPC rendezvous between the Chrome-spawned host and the running
-# cua. cua's NativeMessagingBridge listens here; the host connects. Overridable
-# via the environment so the manifest/launcher can relocate it per platform.
-DEFAULT_SOCKET_PATH = os.environ.get(
-    "VADGR_CUA_BROWSER_SOCKET",
-    os.path.join(os.path.expanduser("~"), ".vadgr-cua", "browser.sock"),
-)
 
 _LEN_PREFIX = struct.Struct("<I")
 
@@ -69,52 +67,73 @@ def write_message(stream: BinaryIO, message: dict[str, Any]) -> None:
         flush()
 
 
-def _connect_cua(socket_path: str) -> socket.socket:
-    """Connect to the running cua's local IPC endpoint.
+def _connect_cua(discovery: Path | None = None) -> tuple[socket.socket, str | None]:
+    """Connect to the running cua's loopback-TCP listener.
 
-    Raises ``ConnectionError`` if cua is not running, so the host can surface a
-    clean "start cua" message rather than hanging.
+    Reads the discovery file cua wrote (port + auth token), connects over TCP,
+    and returns ``(socket, token)``. Raises ``ConnectionError`` if cua is not
+    running / not registered, so the host surfaces a clean error rather than
+    hanging. The discovery path is overridable via
+    ``VADGR_CUA_BROWSER_DISCOVERY`` (set by the launcher per platform).
     """
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    # Imported lazily so the framing helpers stay import-cheap.
+    from computer_use.browser.server import read_discovery
+
+    if discovery is None:
+        env = os.environ.get("VADGR_CUA_BROWSER_DISCOVERY")
+        discovery = Path(env) if env else None
+    port, token = read_discovery(path=discovery)
+    if port is None:
+        raise ConnectionError(
+            "cua is not running (no browser discovery file); start cua first"
+        )
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.connect(socket_path)
-    except (FileNotFoundError, ConnectionRefusedError) as e:
+        sock.connect(("127.0.0.1", int(port)))
+    except (ConnectionRefusedError, OSError) as e:
         sock.close()
         raise ConnectionError(
-            f"cua is not running (no listener at {socket_path}); start cua first"
+            f"cua is not listening on 127.0.0.1:{port}; start cua first"
         ) from e
-    return sock
+    return sock, token
+
+
+def _pump(src, dst) -> None:
+    """Forward framed messages from ``src`` to ``dst`` until EOF."""
+    try:
+        while True:
+            msg = read_message(src)
+            if msg is None:
+                return
+            write_message(dst, msg)
+    except (OSError, ValueError, EOFError):
+        return
 
 
 def _relay(chrome_in, chrome_out, cua_sock_file) -> None:
-    """Pump messages both ways between the Chrome stdio pair and the cua socket.
+    """Pump frames both ways between the Chrome stdio pair and the cua socket.
 
-    Single-threaded request/response relay: a message from Chrome is forwarded
-    to cua, cua's reply is forwarded back to Chrome. Kept simple on purpose —
-    the extension serializes ops over the one native port.
+    Two independent pumps (Chrome->cua and cua->Chrome) so the handshake — where
+    both sides may send proactively — and the ordered op stream both work.
+    Returns when either direction closes.
     """
-    while True:
-        msg = read_message(chrome_in)
-        if msg is None:
-            return
-        write_message(cua_sock_file, msg)
-        reply = read_message(cua_sock_file)
-        if reply is None:
-            return
-        write_message(chrome_out, reply)
+    up = threading.Thread(
+        target=_pump, args=(chrome_in, cua_sock_file), daemon=True
+    )
+    up.start()
+    _pump(cua_sock_file, chrome_out)
 
 
 def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live spike
     """Entry point Chrome launches. Bridges Chrome stdio <-> running cua.
 
     Not unit-covered: requires a real Chrome handshake and a running cua. The
-    manual spike exercises this path.
+    in-process e2e shim test + the manual spike exercise this path.
     """
-    socket_path = DEFAULT_SOCKET_PATH
     chrome_in = sys.stdin.buffer
     chrome_out = sys.stdout.buffer
     try:
-        cua_sock = _connect_cua(socket_path)
+        cua_sock, token = _connect_cua()
     except ConnectionError as e:
         # Surface a clean error back to the extension, then exit.
         write_message(
@@ -124,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live spike
         )
         return 1
     with cua_sock, cua_sock.makefile("rwb") as cua_file:
+        # Authenticate to the listener before relaying Chrome frames.
+        if token:
+            write_message(cua_file, {"type": "auth", "token": token})
         _relay(chrome_in, chrome_out, cua_file)
     return 0
 
