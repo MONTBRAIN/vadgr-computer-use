@@ -761,6 +761,31 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _start_browser_tier() -> None:
+    """Best-effort: self-register the native host and start the TCP listener.
+
+    Registering at startup (not only lazily on first browser use) means the
+    extension's load order never matters — Chrome can spawn the host shim and
+    reach a live listener whenever the user enables the extension. Wrapped so a
+    transport/registration failure never blocks the MCP server from coming up.
+    """
+    try:
+        from computer_use.setup.extension_setup import ensure_registered
+
+        ensure_registered()
+    except Exception as e:  # best-effort — never break startup
+        logger.debug("browser-tier self-registration skipped: %s", e)
+    try:
+        from computer_use.browser import tool as browser_tool
+        from computer_use.browser.server import ensure_server
+
+        # Share the tool's bridge so the session the listener registers is the
+        # one the `browser` tool routes ops to.
+        ensure_server(bridge=browser_tool._default_bridge())
+    except Exception as e:
+        logger.debug("browser-tier listener not started: %s", e)
+
+
 def _run_mcp_server(args) -> int:
     """Run the FastMCP server with the parsed CLI args."""
     global _MAX_WIDTH
@@ -771,6 +796,8 @@ def _run_mcp_server(args) -> int:
         args.transport,
         _MAX_WIDTH or "auto",
     )
+
+    _start_browser_tier()
 
     if args.transport == "sse":
         mcp.settings.port = args.port

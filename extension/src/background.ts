@@ -17,12 +17,22 @@ import {
   OpMessage,
   serverHello,
 } from "./protocol";
+import { ReconnectController } from "./reconnect";
 
 const HOST_NAME = "com.vadgr.cua";
 const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.4.0";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();
+
+// Auto-reconnect: MV3 service workers idle-terminate and the native host can
+// drop, so load order must never matter. On disconnect we back off and retry;
+// the backoff resets once a connection succeeds. (Logic unit-tested in
+// reconnect.test.ts.)
+const reconnect = new ReconnectController(
+  () => connect(),
+  (fn, delay) => setTimeout(fn, delay),
+);
 
 function detectBrowser(): string {
   const ua = navigator.userAgent;
@@ -35,7 +45,11 @@ function connect(): void {
   port.onMessage.addListener(onMessage);
   port.onDisconnect.addListener(() => {
     port = null;
+    // Schedule a backed-off reconnect so the session self-heals.
+    reconnect.onDisconnect();
   });
+  // The port is connected; reset the backoff so the next drop starts at base.
+  reconnect.onConnected();
   // cua sends its hello first; we reply with ours. Send ours proactively too,
   // so a cua that listens-first still negotiates.
   const hello: ServerHello = serverHello(EXT_VERSION, detectBrowser());

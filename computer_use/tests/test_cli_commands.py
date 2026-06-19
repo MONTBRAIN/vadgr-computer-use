@@ -89,6 +89,39 @@ class TestBrowserSetup:
         assert "chrome" in out
 
 
+class TestBrowserTierStartup:
+    def test_run_mcp_server_starts_browser_tier_best_effort(self):
+        from computer_use import mcp_server
+
+        args = MagicMock(transport="stdio", max_width=0)
+        with patch.object(mcp_server, "_start_browser_tier") as mock_start, \
+             patch.object(mcp_server.mcp, "run"):
+            mcp_server._run_mcp_server(args)
+        mock_start.assert_called_once()
+
+    def test_start_browser_tier_registers_and_starts_listener(self):
+        from computer_use import mcp_server
+
+        with patch(
+            "computer_use.setup.extension_setup.ensure_registered"
+        ) as mock_reg, patch(
+            "computer_use.browser.server.ensure_server"
+        ) as mock_srv:
+            mcp_server._start_browser_tier()
+        mock_reg.assert_called_once()
+        mock_srv.assert_called_once()
+
+    def test_start_browser_tier_swallows_errors(self):
+        from computer_use import mcp_server
+
+        with patch(
+            "computer_use.setup.extension_setup.ensure_registered",
+            side_effect=RuntimeError("boom"),
+        ):
+            # Must not raise — startup is best-effort.
+            mcp_server._start_browser_tier()
+
+
 # --- doctor ---
 
 
