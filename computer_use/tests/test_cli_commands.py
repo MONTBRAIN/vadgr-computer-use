@@ -63,6 +63,31 @@ class TestDispatch:
             assert mcp_server.main(["restart-daemon"]) == 0
             mock_cmd.assert_called_once()
 
+    def test_browser_setup_dispatches(self):
+        from computer_use import mcp_server
+
+        with patch.object(
+            mcp_server, "_cmd_browser_setup", return_value=0
+        ) as mock_cmd:
+            assert mcp_server.main(["browser-setup"]) == 0
+            mock_cmd.assert_called_once()
+
+
+class TestBrowserSetup:
+    def test_calls_ensure_registered_and_prints_steps(self, capsys):
+        from computer_use import mcp_server
+
+        with patch(
+            "computer_use.setup.extension_setup.ensure_registered",
+            return_value={"browsers": ["chrome"], "host_path": "/h",
+                          "platform": "linux"},
+        ) as mock_reg:
+            rc = mcp_server._cmd_browser_setup(object())
+        assert rc == 0
+        mock_reg.assert_called_once()
+        out = capsys.readouterr().out
+        assert "chrome" in out
+
 
 # --- doctor ---
 

@@ -673,6 +673,22 @@ def _cmd_setup(args) -> int:
     return 0
 
 
+def _cmd_browser_setup(args) -> int:
+    """Self-register the browser-tier native host and print the load steps.
+
+    Writes the native-host manifest (+ registry on Windows/WSL) so Chrome can
+    spawn the host shim, then prints how to sideload the extension. Best-effort
+    on the registration, explicit on the instructions.
+    """
+    from computer_use.setup.extension_setup import ensure_registered, load_steps
+
+    result = ensure_registered()
+    print(f"native host registered for: {', '.join(result['browsers'])}")
+    print(f"host: {result['host_path']}\n")
+    print(load_steps())
+    return 0
+
+
 def _cmd_stop_daemon(args) -> int:
     """Best-effort stop. Always returns 0 -- stop is idempotent."""
     _get_supervisor().stop()
@@ -695,6 +711,7 @@ def _cmd_restart_daemon(args) -> int:
 _SUBCOMMAND_NAMES: dict = {
     "doctor": "_cmd_doctor",
     "setup": "_cmd_setup",
+    "browser-setup": "_cmd_browser_setup",
     "install-daemon": "_cmd_install_daemon",
     "stop-daemon": "_cmd_stop_daemon",
     "restart-daemon": "_cmd_restart_daemon",
@@ -729,6 +746,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "setup",
         help="Fire macOS permission prompts and print state (no-op elsewhere)",
+    )
+    sub.add_parser(
+        "browser-setup",
+        help="Register the browser-tier native host and print the load steps",
     )
     sub.add_parser(
         "install-daemon",
