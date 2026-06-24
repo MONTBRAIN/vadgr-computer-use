@@ -8,7 +8,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["tabs", "cookies", "nativeMessaging", "offscreen"],
+  "permissions": ["tabs", "cookies", "nativeMessaging", "offscreen", "scripting"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {

@@ -32,19 +32,54 @@ async function summary(tab: chrome.tabs.Tab) {
   return { url: tab.url ?? "", title: tab.title ?? "" };
 }
 
+// Ops that are safe to re-deliver: pure reads + idempotent scroll. A mutating
+// op (click/type/fill/select) must NEVER be auto-retried — a retry could double-
+// click or act on the wrong page after a navigation.
+const RETRYABLE_OPS = new Set([
+  "wait_for",
+  "query",
+  "read_text",
+  "get_attribute",
+  "scroll",
+  "eval",
+]);
+
+// The content script is reachable only once its onMessage listener has
+// registered. On a fresh page (just navigated) there is a window where it has
+// not — sendMessage then throws "Receiving end does not exist" / "Could not
+// establish connection". The content script is declared for <all_urls> but
+// races document_idle; force it in and retry.
+function isUnreachable(msg: string): boolean {
+  return /receiving end does not exist|could not establish connection/i.test(msg);
+}
+// The op's own navigation tore down the page mid-message (channel/bfcache
+// closed). The action still happened — report it as a navigation, not an error.
+function isNavClose(msg: string): boolean {
+  return /message channel is closed|back\/forward cache/i.test(msg);
+}
+
 // Forward a DOM op into the active tab's content script and await its reply.
-// A DOM op (e.g. clicking a submit/link) can trigger a full-page navigation,
-// which unloads the content script before it replies — the message channel /
-// bfcache closes. The action still happened, so report it as a navigation
-// rather than surfacing a transport error. (A genuinely missing content script
-// raises "Receiving end does not exist", which we deliberately do NOT swallow.)
+// Handles the two post-navigation failure modes distinctly: an unreachable
+// content script (re-inject + retry, for safe read ops) vs the op having itself
+// navigated away (report {navigated}). A mutating op that loses its channel is
+// reported as a navigation, never blindly retried.
 async function forwardToContent(op: string, params: Record<string, unknown>) {
   const tab = await activeTab();
   try {
     return await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params });
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
-    if (/message channel is closed|back\/forward cache/i.test(msg)) {
+    if (isUnreachable(msg) && RETRYABLE_OPS.has(op)) {
+      // Inject the content script into the current page, then retry once.
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id! },
+        files: ["content.js"],
+      });
+      return await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params });
+    }
+    if (isNavClose(msg) || isUnreachable(msg)) {
+      // A mutating op (or a read whose page is still tearing down) lost its
+      // channel to a navigation. The action dispatched; report the navigation.
       return { navigated: true };
     }
     throw e;

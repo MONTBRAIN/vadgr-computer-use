@@ -33,15 +33,23 @@ export function buildContentRouter(): Router {
   return r;
 }
 
-const router = buildContentRouter();
+// This script is both a declared content script (auto-injected at document_idle)
+// and re-injected on demand by the service worker after a navigation. Guard so a
+// second injection into the same page does not register a duplicate listener
+// (which would double-respond and close the message channel).
+const w = window as unknown as { __vadgrCuaContent?: boolean };
+if (!w.__vadgrCuaContent) {
+  w.__vadgrCuaContent = true;
+  const router = buildContentRouter();
 
-chrome.runtime?.onMessage?.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type !== "op") return false;
-  router
-    .handle({ type: "op", id: 0, op: msg.op, params: msg.params ?? {} })
-    .then((res) => {
-      if (res.ok) sendResponse(res.result);
-      else sendResponse(Promise.reject(new Error(res.error.message)));
-    });
-  return true; // async response
-});
+  chrome.runtime?.onMessage?.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== "op") return false;
+    router
+      .handle({ type: "op", id: 0, op: msg.op, params: msg.params ?? {} })
+      .then((res) => {
+        if (res.ok) sendResponse(res.result);
+        else sendResponse(Promise.reject(new Error(res.error.message)));
+      });
+    return true; // async response
+  });
+}
