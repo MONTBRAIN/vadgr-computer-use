@@ -77,7 +77,18 @@ export function opClick(p: { selector: string; by?: string }) {
   const el = require(p.selector, p.by) as HTMLElement;
   el.scrollIntoView?.({ block: "center" });
   el.click();
-  return { clicked: true };
+  // Self-verify: for a checkable control, read back the post-click state so the
+  // result carries the proof the click took effect (not just that it dispatched).
+  // For other elements the effect is page-level — the agent verifies via a
+  // read-back op (or the SW reports {navigated} when the click navigated away).
+  const out: { clicked: boolean; checked?: boolean } = { clicked: true };
+  if (
+    el instanceof HTMLInputElement &&
+    (el.type === "checkbox" || el.type === "radio")
+  ) {
+    out.checked = el.checked;
+  }
+  return out;
 }
 
 export function opQuery(p: { selector: string; by?: string; all?: boolean }) {
@@ -116,8 +127,14 @@ export function opType(p: {
   if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
     throw new OpFailed(`${p.selector} is not a text input`);
   }
+  const before = el.value;
   const typed = fillField(el, p.text, { clear: p.clear, submit: p.submit });
-  return { typed };
+  // Self-verify: read back the live value and confirm the DOM actually holds
+  // what we typed. (On `submit` the field may reset/navigate — verify the page
+  // reaction, not the field; `ok` then reflects the field, not the submit.)
+  const expected = (p.clear ?? true) ? p.text : before + p.text;
+  const value = el.value;
+  return { typed, value, ok: value === expected };
 }
 
 export function opSelect(p: { selector: string; value: string }) {
@@ -131,7 +148,9 @@ export function opSelect(p: { selector: string; value: string }) {
   if (!match) throw new OpFailed(`no option matched "${p.value}"`);
   el.value = match.value;
   el.dispatchEvent(new Event("change", { bubbles: true }));
-  return { selected: match.value };
+  // Self-verify: read back the live <select> value so the result proves the
+  // option stuck (the page's change handler can't have reverted it unseen).
+  return { selected: match.value, value: el.value, ok: el.value === match.value };
 }
 
 export function opScroll(p: { selector?: string | null; by?: { x?: number; y?: number } }) {

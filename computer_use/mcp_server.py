@@ -56,7 +56,13 @@ mcp = FastMCP(
         "5. If a click lands on the wrong target, take a screenshot, reassess "
         "coordinates, and retry.\n"
         "6. Screenshots are point-in-time. Don't rely on older screenshots from "
-        "earlier turns -- the UI may have changed. Take a fresh one when needed."
+        "earlier turns -- the UI may have changed. Take a fresh one when needed.\n"
+        "7. The `browser` tool (Tier 1, MV3 extension) verifies differently: the "
+        "DOM is the ground truth, so after ANY mutating browser op "
+        "(click/type/fill/select) CONFIRM the effect with a structured read-back "
+        "-- the op's returned `ok`/`checked`, or get_attribute/read_text/query/"
+        "wait_for -- not a screenshot (web state changes too fast to screenshot "
+        "reliably). Never continue on an unverified browser action."
     ),
 )
 
@@ -545,13 +551,27 @@ def browser(
     - wait_for(selector, state="visible"|"hidden"|"attached", timeout) -> {matched}
     - query(selector, by="css"|"xpath", all=False) -> [{tag, text, attrs}]
     - read_text(selector=None) -> str
-    - get_attribute(selector, name) -> str | None
-    - click(selector, by="css") -> {clicked}
-    - type / fill(selector, text, clear=True, submit=False) -> {typed}
-    - select(selector, value) -> {selected}
+    - get_attribute(selector, name) -> live value/checked/selected/disabled, else attr
+    - click(selector, by="css") -> {clicked, checked?}
+    - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
+    - select(selector, value) -> {selected, value, ok}
     - scroll(selector=None | scroll_by={x,y}) -> {ok}
     - cookies(action="get"|"set"|"clear", url, name, value)
     - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
+
+    VERIFY EVERY MUTATING OP — the DOM is the ground truth; never assume an
+    action worked (this is the web equivalent of screenshot-before/after):
+    - type/fill -> check the returned `ok` (or get_attribute(selector,"value")
+      equals what you typed).
+    - checkbox/radio click -> the returned `checked` (or get_attribute
+      "checked") flipped to the state you intended.
+    - select -> the returned `ok` (or get_attribute(selector,"value") is the
+      chosen option).
+    - a click that should change the page -> wait_for the expected element, then
+      read_text/query to confirm the new state; a click that navigates returns
+      {navigated, url} — confirm the destination is right.
+    If the read-back does NOT match, the action did NOT take effect — retry or
+    stop; do not continue on an unverified action.
 
     On a terminal browser error (not set up / not connected / op unsupported)
     the tool raises with a guided pixel fallback — prefer this tool; degrade to

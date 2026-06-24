@@ -28,6 +28,13 @@ describe("opClick", () => {
     expect(clicked).toBe(true);
   });
 
+  it("self-verifies a checkbox click by reading back checked", () => {
+    document.body.innerHTML = `<input type="checkbox" id="c" />`;
+    const r = opClick({ selector: "#c" });
+    expect(r).toEqual({ clicked: true, checked: true });
+    expect((document.querySelector("#c") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("throws op_failed when nothing matches", () => {
     expect(() => opClick({ selector: "#missing" })).toThrowError(/no element/i);
   });
@@ -133,7 +140,7 @@ describe("opSelect", () => {
     let changed = false;
     sel.addEventListener("change", () => (changed = true));
     const r = opSelect({ selector: "#s", value: "b" });
-    expect(r).toEqual({ selected: "b" });
+    expect(r).toEqual({ selected: "b", value: "b", ok: true });
     expect(sel.value).toBe("b");
     expect(changed).toBe(true);
   });
@@ -147,11 +154,17 @@ describe("opSelect", () => {
 });
 
 describe("opType", () => {
-  it("fills a field and reports the count", () => {
+  it("fills a field and self-verifies the read-back value", () => {
     document.body.innerHTML = `<input id="n" />`;
     const r = opType({ selector: "#n", text: "abc", clear: true, submit: false });
-    expect(r).toEqual({ typed: 3 });
+    expect(r).toEqual({ typed: 3, value: "abc", ok: true });
     expect((document.querySelector("#n") as HTMLInputElement).value).toBe("abc");
+  });
+
+  it("appends and self-verifies when clear=false", () => {
+    document.body.innerHTML = `<input id="n" value="ab" />`;
+    const r = opType({ selector: "#n", text: "cd", clear: false, submit: false });
+    expect(r).toEqual({ typed: 2, value: "abcd", ok: true });
   });
 });
 
