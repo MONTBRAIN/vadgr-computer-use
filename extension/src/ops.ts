@@ -60,8 +60,8 @@ function isNavClose(msg: string): boolean {
 // Unwrap a content-script result envelope. On ok:false we THROW so the SW
 // router turns it into a proper {ok:false, error} reply — otherwise an op
 // failure (e.g. a selector that matches nothing) would reach cua as a
-// success-looking value and defeat verification.
-function unwrap(res: unknown): unknown {
+// success-looking value and defeat verification. Exported for unit testing.
+export function unwrap(res: unknown): unknown {
   if (res && typeof res === "object" && (res as any).type === "result") {
     const r = res as { ok: boolean; result?: unknown; error?: { message?: string } };
     if (r.ok) return r.result;
@@ -116,6 +116,45 @@ async function evalInPage(expression: string) {
   return { value: inj?.result };
 }
 
+// Wait for a navigation to leave `beforeUrl` and finish loading, or give up
+// after `timeout`. A history move with no entry in that direction is a benign
+// no-op: it never leaves `beforeUrl`, times out, and the caller returns the
+// unchanged page — far friendlier than the old hard "no page in history" error.
+function settleNav(
+  tabId: number,
+  beforeUrl: string | undefined,
+  timeout = 4000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeout;
+    const tick = async () => {
+      const t = await chrome.tabs.get(tabId).catch(() => null);
+      if (t && t.url !== beforeUrl && t.status === "complete") return resolve();
+      if (Date.now() >= deadline) return resolve();
+      setTimeout(tick, 80);
+    };
+    tick();
+  });
+}
+
+// back/forward via the page History API (run in the MAIN world like eval).
+// chrome.tabs.goBack/goForward are gated by the user-gesture rule, so
+// extension-initiated chrome.tabs.update navigations are unreachable through
+// them — they fail "no page in history" even when history.length is large.
+// history.go() uses the page session history and is not gated.
+async function historyGo(delta: number) {
+  const tab = await activeTab();
+  const before = (await chrome.tabs.get(tab.id!)).url;
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id! },
+    world: "MAIN",
+    func: (d: number) => history.go(d),
+    args: [delta],
+  });
+  await settleNav(tab.id!, before);
+  return summary(await chrome.tabs.get(tab.id!));
+}
+
 // --- registration ---
 
 export function buildRouter(): Router {
@@ -129,16 +168,8 @@ export function buildRouter(): Router {
     const updated = await chrome.tabs.get(tab.id!);
     return summary(updated);
   });
-  r.register("back", async () => {
-    const tab = await activeTab();
-    await chrome.tabs.goBack(tab.id!);
-    return summary(await chrome.tabs.get(tab.id!));
-  });
-  r.register("forward", async () => {
-    const tab = await activeTab();
-    await chrome.tabs.goForward(tab.id!);
-    return summary(await chrome.tabs.get(tab.id!));
-  });
+  r.register("back", () => historyGo(-1));
+  r.register("forward", () => historyGo(1));
   r.register("reload", async () => {
     const tab = await activeTab();
     await chrome.tabs.reload(tab.id!);
