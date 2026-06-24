@@ -41,7 +41,6 @@ const RETRYABLE_OPS = new Set([
   "read_text",
   "get_attribute",
   "scroll",
-  "eval",
 ]);
 
 // The content script is reachable only once its onMessage listener has
@@ -58,32 +57,63 @@ function isNavClose(msg: string): boolean {
   return /message channel is closed|back\/forward cache/i.test(msg);
 }
 
+// Unwrap a content-script result envelope. On ok:false we THROW so the SW
+// router turns it into a proper {ok:false, error} reply — otherwise an op
+// failure (e.g. a selector that matches nothing) would reach cua as a
+// success-looking value and defeat verification.
+function unwrap(res: unknown): unknown {
+  if (res && typeof res === "object" && (res as any).type === "result") {
+    const r = res as { ok: boolean; result?: unknown; error?: { message?: string } };
+    if (r.ok) return r.result;
+    throw new Error(r.error?.message ?? "op failed");
+  }
+  return res; // navigation sentinel or legacy shape — pass through
+}
+
 // Forward a DOM op into the active tab's content script and await its reply.
 // Handles the two post-navigation failure modes distinctly: an unreachable
 // content script (re-inject + retry, for safe read ops) vs the op having itself
 // navigated away (report {navigated}). A mutating op that loses its channel is
-// reported as a navigation, never blindly retried.
+// reported as a navigation, never blindly retried. A genuine op failure
+// (ok:false) is re-raised by unwrap, never masked.
 async function forwardToContent(op: string, params: Record<string, unknown>) {
   const tab = await activeTab();
   try {
-    return await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params });
+    return unwrap(await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params }));
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     if (isUnreachable(msg) && RETRYABLE_OPS.has(op)) {
-      // Inject the content script into the current page, then retry once.
+      // Content script not present yet (fresh navigation) — inject + retry once.
       await chrome.scripting.executeScript({
         target: { tabId: tab.id! },
         files: ["content.js"],
       });
-      return await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params });
+      return unwrap(
+        await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params }),
+      );
     }
-    if (isNavClose(msg) || isUnreachable(msg)) {
-      // A mutating op (or a read whose page is still tearing down) lost its
-      // channel to a navigation. The action dispatched; report the navigation.
+    if (isNavClose(msg)) {
+      // The op's own navigation tore down the page mid-message. The action
+      // dispatched; report the navigation rather than a transport error.
       return { navigated: true };
     }
     throw e;
   }
+}
+
+// `eval` runs JS in the page's MAIN world via chrome.scripting — the content
+// script's isolated world is CSP-blocked from eval under MV3. Returns {value}.
+// (HIGH-risk escape hatch; page CSP may still forbid eval, which now surfaces
+// as a real error instead of an empty result.)
+async function evalInPage(expression: string) {
+  const tab = await activeTab();
+  const [inj] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id! },
+    world: "MAIN",
+    func: (expr: string) => (0, eval)(expr),
+    args: [expression],
+  });
+  return { value: inj?.result };
 }
 
 // --- registration ---
@@ -136,6 +166,9 @@ export function buildRouter(): Router {
     throw new Error(`unknown cookies action ${action}`);
   });
 
+  // eval runs in the page MAIN world (not the content script).
+  r.register("eval", (p) => evalInPage(String(p.expression)));
+
   // DOM ops — forwarded to the content script.
   for (const op of [
     "wait_for",
@@ -147,7 +180,6 @@ export function buildRouter(): Router {
     "fill",
     "select",
     "scroll",
-    "eval",
   ]) {
     r.register(op, (p) => forwardToContent(op, p));
   }

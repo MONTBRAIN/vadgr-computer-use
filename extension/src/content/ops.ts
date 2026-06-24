@@ -195,9 +195,6 @@ export function opWaitFor(p: {
   });
 }
 
-export function opEval(p: { expression: string }) {
-  // The page-world eval. In a real content script this is bridged into the page
-  // via a script injection; here we keep the indirect-eval seam for tests.
-  const value = (0, eval)(p.expression);
-  return { value };
-}
+// NOTE: `eval` is intentionally NOT handled here. The content-script isolated
+// world is CSP-blocked from eval under MV3, so it runs in the service worker via
+// chrome.scripting main-world injection (see src/ops.ts).

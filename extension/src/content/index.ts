@@ -8,7 +8,6 @@
 import { Router } from "../router";
 import {
   opClick,
-  opEval,
   opGetAttribute,
   opQuery,
   opReadText,
@@ -29,7 +28,8 @@ export function buildContentRouter(): Router {
   r.register("select", (p) => opSelect(p as any));
   r.register("scroll", (p) => opScroll(p as any));
   r.register("wait_for", (p) => opWaitFor(p as any));
-  r.register("eval", (p) => opEval(p as any));
+  // `eval` is handled in the service worker (main-world injection): the
+  // content-script isolated world is CSP-blocked from eval under MV3.
   return r;
 }
 
@@ -46,10 +46,11 @@ if (!w.__vadgrCuaContent) {
     if (msg?.type !== "op") return false;
     router
       .handle({ type: "op", id: 0, op: msg.op, params: msg.params ?? {} })
-      .then((res) => {
-        if (res.ok) sendResponse(res.result);
-        else sendResponse(Promise.reject(new Error(res.error.message)));
-      });
+      // Send the full result envelope ({ok, result|error}) — it is serializable
+      // and the service worker unwraps it, re-raising on ok:false. (A rejected
+      // Promise here is NOT serializable: Chrome turns it into {}, which the SW
+      // would read as a successful empty result and silently mask the failure.)
+      .then((res) => sendResponse(res));
     return true; // async response
   });
 }
