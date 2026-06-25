@@ -23,6 +23,7 @@ of truth for the test harness).
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -98,6 +99,45 @@ def windows_relay_path(windows_user: str | None = None) -> str:
 
     mnt = windows_user_home_mnt(windows_user) / "AppData" / "Local" / "vadgr-cua"
     return _mnt_to_windows_path(mnt / "vadgr-cua-host.exe")
+
+
+def bundled_relay_exe() -> Path:
+    """Path to the packaged Windows relay shim (shipped as package data next to
+    ``computer_use/browser/winhost/__init__.py``)."""
+    from computer_use.browser import winhost
+
+    return Path(winhost.__file__).resolve().parent / "vadgr-cua-host.exe"
+
+
+def relay_exe_dest(windows_user: str | None = None) -> Path:
+    """The ``/mnt/c`` destination the relay shim must live at for Windows Chrome
+    to spawn it — the WSL view of
+    ``%LOCALAPPDATA%\\vadgr-cua\\vadgr-cua-host.exe``."""
+    from computer_use.browser.bridge import windows_user_home_mnt
+
+    return (
+        windows_user_home_mnt(windows_user)
+        / "AppData" / "Local" / "vadgr-cua" / "vadgr-cua-host.exe"
+    )
+
+
+def ensure_relay_exe(
+    windows_user: str | None = None,
+    *,
+    src: Path | None = None,
+    dest: Path | None = None,
+) -> Path:
+    """Copy the packaged relay shim to the Windows-readable location the manifest
+    points at, so the WSL bridge needs **no manual file placement**. Idempotent:
+    copies only when the destination is missing or differs in size. Returns the
+    destination path.
+    """
+    src = Path(src) if src is not None else bundled_relay_exe()
+    dest = Path(dest) if dest is not None else relay_exe_dest(windows_user)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not dest.exists() or dest.stat().st_size != src.stat().st_size:
+        shutil.copy2(src, dest)
+    return dest
 
 
 def host_launcher_path(platform: str | None = None) -> Path:
@@ -205,6 +245,7 @@ def ensure_registered(
     host_path: str | None = None,
     platform: str | None = None,
     registry_writer=None,
+    relay_installer=None,
     windows_user: str | None = None,
 ) -> dict:
     """Self-register the native host so Chrome can reach cua — no manual step.
@@ -222,6 +263,9 @@ def ensure_registered(
         # On WSL the manifest `path` must point at the Windows relay shim
         # (a .exe Chrome spawns on Windows); the launcher script is irrelevant.
         host = host_path or windows_relay_path(windows_user=windows_user)
+        # Place the packaged relay shim where the manifest points — no manual copy.
+        if host_path is None:
+            (relay_installer or ensure_relay_exe)(windows_user=windows_user)
         written = install_manifests(host, targets)
         reg = registry_writer or reg_exe_writer
         for browser, dest in targets.items():

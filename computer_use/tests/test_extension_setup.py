@@ -193,9 +193,48 @@ class TestWSLRegistration:
             platform="wsl",
             windows_user="alice",
             registry_writer=lambda k, v: None,
+            relay_installer=lambda windows_user=None: None,
         )
         data = json.loads(chrome.read_text())
         assert data["path"].endswith("vadgr-cua-host.exe")
+
+    def test_ensure_registered_wsl_installs_the_relay_exe(self, tmp_path):
+        # The WSL path auto-places the relay shim (no manual copy) — the installer
+        # is invoked with the resolved windows_user.
+        seen = {}
+        S.ensure_registered(
+            paths={"chrome": tmp_path / "m.json"},
+            platform="wsl",
+            windows_user="alice",
+            registry_writer=lambda k, v: None,
+            relay_installer=lambda windows_user=None: seen.setdefault("user", windows_user),
+        )
+        assert seen["user"] == "alice"
+
+    def test_ensure_relay_exe_copies_to_dest(self, tmp_path):
+        src = tmp_path / "src" / "vadgr-cua-host.exe"
+        src.parent.mkdir()
+        src.write_bytes(b"RELAYBINARY")
+        dest = tmp_path / "win" / "AppData" / "Local" / "vadgr-cua" / "vadgr-cua-host.exe"
+        out = S.ensure_relay_exe(src=src, dest=dest)
+        assert out == dest
+        assert dest.read_bytes() == b"RELAYBINARY"
+
+    def test_ensure_relay_exe_is_idempotent_on_same_size(self, tmp_path):
+        src = tmp_path / "src.exe"
+        src.write_bytes(b"NEWBYTES")  # 8 bytes
+        dest = tmp_path / "dest.exe"
+        dest.write_bytes(b"OLDBYTES")  # also 8 bytes -> same size, treated as present
+        S.ensure_relay_exe(src=src, dest=dest)
+        assert dest.read_bytes() == b"OLDBYTES"  # not overwritten
+
+    def test_ensure_relay_exe_recopies_when_size_differs(self, tmp_path):
+        src = tmp_path / "src.exe"
+        src.write_bytes(b"A_LONGER_BINARY")
+        dest = tmp_path / "dest.exe"
+        dest.write_bytes(b"short")
+        S.ensure_relay_exe(src=src, dest=dest)
+        assert dest.read_bytes() == b"A_LONGER_BINARY"
 
     def test_non_wsl_linux_unchanged(self, tmp_path):
         chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
