@@ -5,7 +5,7 @@
 // call (the extension holds no element handles between ops, so ops are robust
 // to navigation / DOM churn).
 
-import { fillField, setText } from "./fill";
+import { fillContentEditable, fillField, setText } from "./fill";
 
 export class OpFailed extends Error {}
 
@@ -117,6 +117,15 @@ export function opGetAttribute(p: { selector: string; name: string }) {
   return el.getAttribute(p.name);
 }
 
+// A contenteditable host (incl. inherited editability, with an attribute fallback
+// for DOM harnesses that don't compute `isContentEditable`).
+function isContentEditableEl(el: Element): el is HTMLElement {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const attr = el.getAttribute("contenteditable");
+  return attr === "" || attr === "true" || attr === "plaintext-only";
+}
+
 export function opType(p: {
   selector: string;
   text: string;
@@ -124,17 +133,36 @@ export function opType(p: {
   submit?: boolean;
 }) {
   const el = require(p.selector);
-  if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) {
-    throw new OpFailed(`${p.selector} is not a text input`);
+
+  // Plain text inputs — native value-setter path.
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    const before = el.value;
+    const typed = fillField(el, p.text, { clear: p.clear, submit: p.submit });
+    // Self-verify: read back the live value and confirm the DOM actually holds
+    // what we typed. (On `submit` the field may reset/navigate — verify the page
+    // reaction, not the field; `ok` then reflects the field, not the submit.)
+    const expected = (p.clear ?? true) ? p.text : before + p.text;
+    const value = el.value;
+    return { typed, value, ok: value === expected };
   }
-  const before = el.value;
-  const typed = fillField(el, p.text, { clear: p.clear, submit: p.submit });
-  // Self-verify: read back the live value and confirm the DOM actually holds
-  // what we typed. (On `submit` the field may reset/navigate — verify the page
-  // reaction, not the field; `ok` then reflects the field, not the submit.)
-  const expected = (p.clear ?? true) ? p.text : before + p.text;
-  const value = el.value;
-  return { typed, value, ok: value === expected };
+
+  // Rich editors — contenteditable path (execCommand insertText).
+  if (isContentEditableEl(el)) {
+    const typed = fillContentEditable(el, p.text, { clear: p.clear });
+    if (p.submit) {
+      el.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true,
+        }),
+      );
+    }
+    // Self-verify by read-back: the editor's text must contain what we typed
+    // (editors wrap text in nodes, so `includes` not `===`).
+    const value = (el.innerText ?? el.textContent ?? "").trim();
+    return { typed, value, ok: value.includes(p.text.trim()) };
+  }
+
+  throw new OpFailed(`${p.selector} is not a text input or contenteditable`);
 }
 
 export function opSelect(p: { selector: string; value: string }) {

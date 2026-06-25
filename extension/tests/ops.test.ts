@@ -166,6 +166,24 @@ describe("opType", () => {
     const r = opType({ selector: "#n", text: "cd", clear: false, submit: false });
     expect(r).toEqual({ typed: 2, value: "abcd", ok: true });
   });
+
+  it("fills a contenteditable element and self-verifies the read-back", () => {
+    document.body.innerHTML = `<div id="ce" contenteditable="true"></div>`;
+    const r = opType({ selector: "#ce", text: "TEST CONTENT", clear: true });
+    expect(r.typed).toBe(12);
+    expect(r.ok).toBe(true);
+    expect(r.value).toContain("TEST CONTENT");
+    expect((document.querySelector("#ce") as HTMLElement).textContent).toContain(
+      "TEST CONTENT",
+    );
+  });
+
+  it("rejects an element that is neither a text input nor contenteditable", () => {
+    document.body.innerHTML = `<div id="d">x</div>`;
+    expect(() => opType({ selector: "#d", text: "y" })).toThrowError(
+      /not a text input or contenteditable/i,
+    );
+  });
 });
 
 describe("opWaitFor", () => {
