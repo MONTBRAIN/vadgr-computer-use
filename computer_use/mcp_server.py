@@ -544,6 +544,7 @@ def browser(
     timeout: int = 5000,
     scroll_by: dict = None,
     key: str = None,
+    force: bool = False,
 ):
     """Drive the browser by selector, through the MV3 extension (Tier 1).
 
@@ -576,6 +577,11 @@ def browser(
     If the read-back does NOT match, the action did NOT take effect — retry or
     stop; do not continue on an unverified action.
 
+    ACTIONABILITY: a mutating op refuses a non-actionable target (hidden / covered
+    / disabled) with op_failed — act on the VISIBLE element, not a hidden mirror
+    (e.g. some pages have a hidden form-field twin of the real editor). Pass
+    force=True only to bypass this for a deliberately-hidden real control.
+
     On a terminal browser error (not set up / not connected / op unsupported)
     the tool raises with a guided pixel fallback — prefer this tool; degrade to
     the pixel tools only when it says so.
@@ -584,7 +590,7 @@ def browser(
         "url": url, "selector": selector, "name": name, "text": text,
         "value": value, "state": state, "wait": wait, "action": action,
         "all": all, "clear": clear, "submit": submit, "timeout": timeout,
-        "key": key,
+        "key": key, "force": force,
     }
     # `by` is the css/xpath selector mode for most ops, but the {x,y} offset for
     # `scroll`. The MCP surface keeps them distinct (`by` vs `scroll_by`); the

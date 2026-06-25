@@ -105,8 +105,9 @@ def _get_attribute(bridge: BrowserBridge, selector: str, name: str) -> Any:
 # --- act ---
 
 @_ops.operation("click")
-def _click(bridge: BrowserBridge, selector: str, by: str = "css") -> Any:
-    return bridge.send("click", selector=selector, by=by)
+def _click(bridge: BrowserBridge, selector: str, by: str = "css",
+           force: bool = False) -> Any:
+    return bridge.send("click", selector=selector, by=by, force=force)
 
 
 @_ops.operation("type")
@@ -116,9 +117,10 @@ def _type(
     text: str,
     clear: bool = True,
     submit: bool = False,
+    force: bool = False,
 ) -> Any:
     return bridge.send("type", selector=selector, text=text, clear=clear,
-                       submit=submit)
+                       submit=submit, force=force)
 
 
 @_ops.operation("fill")
@@ -128,14 +130,16 @@ def _fill(
     text: str,
     clear: bool = True,
     submit: bool = False,
+    force: bool = False,
 ) -> Any:
     return bridge.send("fill", selector=selector, text=text, clear=clear,
-                       submit=submit)
+                       submit=submit, force=force)
 
 
 @_ops.operation("select")
-def _select(bridge: BrowserBridge, selector: str, value: str) -> Any:
-    return bridge.send("select", selector=selector, value=value)
+def _select(bridge: BrowserBridge, selector: str, value: str,
+            force: bool = False) -> Any:
+    return bridge.send("select", selector=selector, value=value, force=force)
 
 
 @_ops.operation("scroll")

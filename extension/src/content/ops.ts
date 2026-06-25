@@ -6,8 +6,10 @@
 // to navigation / DOM churn).
 
 import { fillContentEditable, fillField, setText } from "./fill";
+import { OpFailed } from "./errors";
+import { assertActionable } from "./actionable";
 
-export class OpFailed extends Error {}
+export { OpFailed };
 
 // Standard XPathResult constants. Referenced by value so the code does not
 // depend on a global `XPathResult` binding (absent in some DOM harnesses);
@@ -73,8 +75,9 @@ function isVisible(el: Element): boolean {
   return true;
 }
 
-export function opClick(p: { selector: string; by?: string }) {
+export function opClick(p: { selector: string; by?: string; force?: boolean }) {
   const el = require(p.selector, p.by) as HTMLElement;
+  assertActionable(el, p.selector, { force: p.force });
   el.scrollIntoView?.({ block: "center" });
   el.click();
   // Self-verify: for a checkable control, read back the post-click state so the
@@ -131,8 +134,12 @@ export function opType(p: {
   text: string;
   clear?: boolean;
   submit?: boolean;
+  force?: boolean;
 }) {
   const el = require(p.selector);
+  // Gate first: a hidden text target is almost always a non-authoritative mirror
+  // (the Gmail empty-body trap). Refuse it so the read-back can't be hollow.
+  assertActionable(el as HTMLElement, p.selector, { force: p.force });
 
   // Plain text inputs — native value-setter path.
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -165,11 +172,12 @@ export function opType(p: {
   throw new OpFailed(`${p.selector} is not a text input or contenteditable`);
 }
 
-export function opSelect(p: { selector: string; value: string }) {
+export function opSelect(p: { selector: string; value: string; force?: boolean }) {
   const el = require(p.selector);
   if (!(el instanceof HTMLSelectElement)) {
     throw new OpFailed(`${p.selector} is not a <select>`);
   }
+  assertActionable(el, p.selector, { force: p.force });
   const match = Array.from(el.options).find(
     (o) => o.value === p.value || o.text.trim() === p.value,
   );
