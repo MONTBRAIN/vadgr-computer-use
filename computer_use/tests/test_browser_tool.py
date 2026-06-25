@@ -47,6 +47,20 @@ class TestOpRouting:
         assert params["by"] == "css"
         assert params["all"] is False
 
+    def test_press_forwards_key(self):
+        fake = FakeBridge(responses={"press": {"pressed": "Enter"}})
+        out = T.browser(op="press", bridge=fake, key="Enter", selector="#x")
+        assert out == {"pressed": "Enter"}
+        params = fake.calls[0][1]
+        assert params["key"] == "Enter"
+        assert params["selector"] == "#x"
+
+    def test_accessibility_tree_op(self):
+        fake = FakeBridge(responses={"accessibility_tree": {"nodes": []}})
+        out = T.browser(op="accessibility_tree", bridge=fake)
+        assert out == {"nodes": []}
+        assert fake.calls[0][0] == "accessibility_tree"
+
     def test_unknown_op_raises_tool_error(self):
         fake = FakeBridge()
         with pytest.raises(ToolError):

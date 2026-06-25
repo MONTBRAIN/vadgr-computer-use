@@ -28,6 +28,9 @@ export const SUPPORTED_OPS = [
   "cookies",
   "status",
   "eval",
+  // CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
+  "press",
+  "accessibility_tree",
 ] as const;
 
 export type OpName = (typeof SUPPORTED_OPS)[number];

@@ -7,6 +7,9 @@
 // an op is a new handler + a register() line.
 
 import { Router } from "./router";
+import type { Executor, Params } from "./executors/types";
+import { withEscalation } from "./executors/escalation";
+import { CdpExecutor, chromeDebuggerAttach } from "./executors/cdp";
 
 // --- helpers ---
 
@@ -155,65 +158,96 @@ async function historyGo(delta: number) {
   return summary(await chrome.tabs.get(tab.id!));
 }
 
+// --- executors (the backends behind the Executor seam) ---
+
+async function cookiesOp(p: Params) {
+  const action = (p.action as string) ?? "get";
+  if (action === "get") return chrome.cookies.getAll({ url: p.url as string | undefined });
+  if (action === "set")
+    return chrome.cookies.set({ url: String(p.url), name: String(p.name), value: String(p.value) });
+  if (action === "clear") {
+    await chrome.cookies.remove({ url: String(p.url), name: String(p.name) });
+    return { ok: true };
+  }
+  throw new Error(`unknown cookies action ${action}`);
+}
+
+// chrome.tabs / chrome.cookies / scripting — navigation, cookies, page eval.
+// Not interactive page actions, so these never escalate.
+const tabsExecutor: Executor = {
+  name: "tabs",
+  async execute(op: string, p: Params) {
+    switch (op) {
+      case "navigate": {
+        const tab = await activeTab();
+        await chrome.tabs.update(tab.id!, { url: String(p.url) });
+        await tabComplete(tab.id!);
+        return summary(await chrome.tabs.get(tab.id!));
+      }
+      case "back":
+        return historyGo(-1);
+      case "forward":
+        return historyGo(1);
+      case "reload": {
+        const tab = await activeTab();
+        await chrome.tabs.reload(tab.id!);
+        await tabComplete(tab.id!);
+        return summary(await chrome.tabs.get(tab.id!));
+      }
+      case "cookies":
+        return cookiesOp(p);
+      case "eval":
+        return evalInPage(String(p.expression));
+      default:
+        throw new Error(`tabs path has no op '${op}'`);
+    }
+  },
+};
+
+// The content-script DOM fast path.
+const domExecutor: Executor = {
+  name: "dom",
+  execute(op: string, p: Params) {
+    return forwardToContent(op, p);
+  },
+};
+
+// The CDP universal path (chrome.debugger). Null when the API is absent (no
+// `debugger` permission / non-extension test context) → escalation is skipped.
+function defaultCdp(): Executor | null {
+  if (typeof chrome === "undefined" || !chrome.debugger) return null;
+  return new CdpExecutor(chromeDebuggerAttach(async () => (await activeTab()).id!));
+}
+
+const TABS_OPS = ["navigate", "back", "forward", "reload", "cookies", "eval"];
+const DOM_OPS = [
+  "wait_for", "query", "read_text", "get_attribute",
+  "click", "type", "fill", "select", "scroll",
+];
+// Interactive ops that self-verify (have a read-back `ok`) AND that the CDP path
+// can perform — these escalate DOM→CDP on `ok:false`. (click/select gain
+// escalation when the CDP path grows those ops; until then they stay DOM-only.)
+const ESCALATING = new Set(["type", "fill"]);
+// CDP-only ops (no DOM equivalent).
+const CDP_ONLY = ["press", "accessibility_tree"];
+const isInteractive = (op: string) => ESCALATING.has(op);
+
 // --- registration ---
 
-export function buildRouter(): Router {
+export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   const r = new Router();
 
-  // navigation (chrome.tabs)
-  r.register("navigate", async (p) => {
-    const tab = await activeTab();
-    await chrome.tabs.update(tab.id!, { url: String(p.url) });
-    await tabComplete(tab.id!);
-    const updated = await chrome.tabs.get(tab.id!);
-    return summary(updated);
-  });
-  r.register("back", () => historyGo(-1));
-  r.register("forward", () => historyGo(1));
-  r.register("reload", async () => {
-    const tab = await activeTab();
-    await chrome.tabs.reload(tab.id!);
-    await tabComplete(tab.id!);
-    return summary(await chrome.tabs.get(tab.id!));
-  });
+  for (const op of TABS_OPS) r.register(op, (p) => tabsExecutor.execute(op, p));
 
-  // cookies (chrome.cookies)
-  r.register("cookies", async (p) => {
-    const action = (p.action as string) ?? "get";
-    if (action === "get") {
-      return chrome.cookies.getAll({ url: p.url as string | undefined });
+  for (const op of DOM_OPS) {
+    if (ESCALATING.has(op)) {
+      r.register(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
+    } else {
+      r.register(op, (p) => domExecutor.execute(op, p));
     }
-    if (action === "set") {
-      return chrome.cookies.set({
-        url: String(p.url),
-        name: String(p.name),
-        value: String(p.value),
-      });
-    }
-    if (action === "clear") {
-      await chrome.cookies.remove({ url: String(p.url), name: String(p.name) });
-      return { ok: true };
-    }
-    throw new Error(`unknown cookies action ${action}`);
-  });
-
-  // eval runs in the page MAIN world (not the content script).
-  r.register("eval", (p) => evalInPage(String(p.expression)));
-
-  // DOM ops — forwarded to the content script.
-  for (const op of [
-    "wait_for",
-    "query",
-    "read_text",
-    "get_attribute",
-    "click",
-    "type",
-    "fill",
-    "select",
-    "scroll",
-  ]) {
-    r.register(op, (p) => forwardToContent(op, p));
   }
+
+  if (cdp) for (const op of CDP_ONLY) r.register(op, (p) => cdp.execute(op, p));
 
   return r;
 }

@@ -22,12 +22,15 @@ class TestConstants:
             "navigate", "back", "forward", "reload", "wait_for", "query",
             "read_text", "get_attribute", "click", "type", "fill", "select",
             "scroll", "cookies", "status", "eval",
+            # CDP universal path (additive, 0.5.0).
+            "press", "accessibility_tree",
         }
         assert expected <= set(P.SUPPORTED_OPS)
 
-    def test_supported_ops_excludes_later_minor_ops(self):
+    def test_supported_ops_excludes_still_later_minor_ops(self):
+        # Ops that have NOT landed yet (later 0.5.0/0.6.0 rounds).
         forbidden = {
-            "accessibility_tree", "press", "hover", "dialog", "upload",
+            "hover", "dialog", "upload",
             "tabs", "storage", "screenshot", "downloads",
         }
         assert forbidden.isdisjoint(set(P.SUPPORTED_OPS))

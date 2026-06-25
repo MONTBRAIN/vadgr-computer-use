@@ -147,6 +147,22 @@ def _scroll(
     return bridge.send("scroll", selector=selector, by=by)
 
 
+# --- CDP universal path (chrome.debugger) ---
+
+@_ops.operation("press")
+def _press(bridge: BrowserBridge, key: str, selector: str | None = None) -> Any:
+    # A *trusted* key event (via chrome.debugger Input) — for chords / keys that
+    # DOM-dispatched events can't trip (Enter on a custom widget, isTrusted-gated).
+    return bridge.send("press", key=key, selector=selector)
+
+
+@_ops.operation("accessibility_tree")
+def _accessibility_tree(bridge: BrowserBridge) -> Any:
+    # The browser's own semantic model — every control normalized to role/name/
+    # value regardless of HTML/framework (via chrome.debugger Accessibility).
+    return bridge.send("accessibility_tree")
+
+
 @_ops.operation("cookies")
 def _cookies(
     bridge: BrowserBridge,

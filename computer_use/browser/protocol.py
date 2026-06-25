@@ -52,6 +52,9 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "cookies",
     "status",
     "eval",
+    # CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
+    "press",
+    "accessibility_tree",
 )
 
 

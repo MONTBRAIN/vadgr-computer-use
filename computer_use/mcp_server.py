@@ -543,6 +543,7 @@ def browser(
     submit: bool = False,
     timeout: int = 5000,
     scroll_by: dict = None,
+    key: str = None,
 ):
     """Drive the browser by selector, through the MV3 extension (Tier 1).
 
@@ -556,6 +557,8 @@ def browser(
     - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
     - select(selector, value) -> {selected, value, ok}
     - scroll(selector=None | scroll_by={x,y}) -> {ok}
+    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger)
+    - accessibility_tree() -> {nodes:[{role, name, value}]}  (semantic snapshot)
     - cookies(action="get"|"set"|"clear", url, name, value)
     - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
 
@@ -581,6 +584,7 @@ def browser(
         "url": url, "selector": selector, "name": name, "text": text,
         "value": value, "state": state, "wait": wait, "action": action,
         "all": all, "clear": clear, "submit": submit, "timeout": timeout,
+        "key": key,
     }
     # `by` is the css/xpath selector mode for most ops, but the {x,y} offset for
     # `scroll`. The MCP surface keeps them distinct (`by` vs `scroll_by`); the
