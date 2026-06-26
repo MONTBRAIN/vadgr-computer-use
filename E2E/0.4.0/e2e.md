@@ -120,9 +120,9 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part A (A1-A9) | not run | pass | pass | pass |
-| Part B (B1-B7) | not run | pass | pass | pass |
-| Overall | not run | pass | pass | pass |
+| Part A (A1-A9) | pass | pass | pass | pass |
+| Part B (B1-B7) | pass | pass | pass | pass |
+| Overall | pass | pass | pass | pass |
 
 Status notes:
 - WSL was exercised during development of this branch: Part A nine of nine, and
@@ -152,4 +152,28 @@ Status notes:
   prevents subagents from spawning their own cua server; each test was driven
   by one naive, goal-level subagent at a time, judged from verbatim DOM read-
   backs).
-- Linux: pending.
+- Linux (2026-06-26): Ubuntu 24.04.4 LTS (Noble Numbat), kernel
+  6.17.0-14-generic x86_64, Google Chrome 149.0.7827.200, Python 3.12.3, Node
+  v20.18.1. Part A nine of nine, Part B seven of seven. Every
+  outcome confirmed from real cua DOM read-backs; A9 raised `op_failed` on a
+  non-matching selector. B1 sent a live Gmail (recipient chip confirmed with
+  `data-hovercard-id` before Send, then verified by the Sent row carrying the
+  intended subject+body and the inbox count ticking 8.679→8.680 on the round-
+  trip — no hollow send). B2 played the studio "Bohemian Rhapsody" (5:55) with
+  the player time advancing 0:08→0:22 and the toggle reading "Pausar". B5 the
+  actionability gate refused the add-to-cart button while it was covered by
+  another element and only succeeded after it was scrolled into view (no
+  `force=true`); cart read back the same Contigo bottle (ASIN B0GH96ZLGF). B6
+  ran the Flights search from the on-screen origin/destination/date fields (New
+  York → Los Angeles, one-way, 2026-07-20; no route in the URL) and read back
+  real fares (American JFK–LAX 681.745 COP; Southwest LGA–BUR 732.601 COP). B7
+  react/react read back 246,147 stars and JavaScript as the top language. Linux
+  build note: this VM shipped without pip/venv/node and without gcc, so cua was
+  installed by bootstrapping pip via get-pip.py into a `--without-pip` venv and
+  installing the package `--no-deps` plus the browser-tier deps (evdev, the
+  Linux pixel-input dep, needs a C toolchain and is lazily guarded, so the
+  browser tier runs without it); the extension was built with a locally-unpacked
+  Node tarball. Routed through the same orchestrator-shares-the-cua-connection
+  methodology as macOS/Windows native (single-listener bond prevents subagents
+  from spawning their own cua server; each test was driven goal-level, one at a
+  time, judged from verbatim DOM read-backs).
