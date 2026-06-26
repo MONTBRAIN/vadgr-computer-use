@@ -114,7 +114,10 @@ on its own. A self-reported success with no read-back is a fail.
 
 ## Per-OS results
 
-Fill these in by running the runbook on each OS.
+Fill these in by running the runbook on each OS. In the status note, record
+the specific OS version you ran on (e.g. `macOS 26.5.1 (Darwin 25.5.0, arm64)`,
+`Windows 11 23H2`, `Ubuntu 24.04`) so a future regression can be reproduced on
+the same build.
 
 Legend: pass / fail / blocked (login or anti-bot) / not run
 
@@ -139,7 +142,7 @@ Status notes:
   was instead driven by one naive, goal-level Claude subagent at a time, routed
   through the orchestrator's live cua connection, and judged from the subagents'
   verbatim read-backs (same no-parallel, DOM-as-ground-truth, naive-agent rules).
-- macOS (2026-06-26): Part A nine of nine, Part B seven of seven. Every
+- macOS 26.5.1 (build 25F80, Darwin 25.5.0, arm64) on 2026-06-26: Part A nine of nine, Part B seven of seven. Every
   outcome confirmed from real cua DOM read-backs; A9 raised `op_failed` on a
   non-matching selector; B1 sent a live Gmail (verified by Sent row + Inbox
   round-trip + unread count delta, recipient chip confirmed with
