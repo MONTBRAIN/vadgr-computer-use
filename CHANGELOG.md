@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.4.1] - 2026-06-26
+
+### Fixed
+- Restore the desktop screenshot tier on GNOME 49/50 (Ubuntu 25.10/26.04): add an
+  XDG Desktop Portal screenshot backend as the portable Wayland capture path. It
+  is tried after the no-dialog CLI tools, so GNOME 46 / Ubuntu 24.04 keeps using
+  `gnome-screenshot` unchanged (no new consent dialog) while GNOME 49+ — where the
+  CLI tools no longer work — transparently falls through to the portal.
+
+### Added
+- Provider/resolver backend abstraction (`SessionContext` + `CaptureProvider` /
+  `InputProvider` + `BackendResolver`) so adding a desktop is one provider, not a
+  factory edit. `vadgr-cua doctor` now reports the resolved capture/input backend
+  and candidate applicability under `platform_backends`.
+- Pure-python uinput input fallback (no `evdev`, no C compiler) and an X11 XTEST
+  executor via `python-xlib` (no `xdotool`).
+- `vadgr-cua install-deps`: distro-aware provisioning (apt/dnf/pacman/zypper) for
+  `wl-clipboard` and the `/dev/uinput` udev rule. Prints the plan; `--yes` runs it.
+
+### Changed
+- `evdev` moved to the optional `[linux-uinput]` extra; `python-xlib` added as a
+  Linux dependency. A plain `pip install` no longer needs a C compiler.
+
 ## [0.4.0] - 2026-06-17
 
 ### Added
