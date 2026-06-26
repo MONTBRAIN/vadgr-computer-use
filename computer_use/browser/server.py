@@ -44,7 +44,6 @@ from computer_use.browser.native_host import read_message, write_message
 from computer_use.browser.protocol import (
     BrowserError,
     BrowserErrorCode,
-    PROTOCOL_VERSION,
     client_hello,
     op_message,
     parse_result,
