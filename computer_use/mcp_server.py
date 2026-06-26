@@ -664,8 +664,25 @@ def _cmd_doctor(args) -> int:
         from computer_use.platform.macos import macos_permission_status
         status.update(macos_permission_status())
     status.update(_registry_status())
+    if sys.platform == "linux":
+        status["platform_backends"] = _platform_backends_status()
     print(_json.dumps(status, indent=2))
     return 0
+
+
+def _platform_backends_status() -> dict:
+    """Resolved capture/input backends for the live Linux session (for doctor).
+
+    Reports which backend the resolver selects and which candidates applied, so a
+    user (or agent) can see why a tier is or isn't available. Best-effort: any
+    failure degrades to an error string rather than breaking doctor.
+    """
+    try:
+        from computer_use.platform.linux_providers import describe_backends
+
+        return describe_backends()
+    except Exception as exc:  # pragma: no cover - defensive
+        return {"error": str(exc)}
 
 
 def _cmd_install_daemon(args) -> int:
