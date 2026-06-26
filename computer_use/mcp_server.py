@@ -736,6 +736,17 @@ def _cmd_browser_setup(args) -> int:
     return 0
 
 
+def _cmd_install_deps(args) -> int:
+    """Provision the system deps pip can't (wl-clipboard, /dev/uinput udev rule).
+
+    Prints a distro-aware plan by default; executes it with --yes.
+    """
+    from computer_use.setup.deps import install_deps
+
+    yes = getattr(args, "yes", False)
+    return install_deps(assume_yes=yes, dry_run=not yes)
+
+
 def _cmd_stop_daemon(args) -> int:
     """Best-effort stop. Always returns 0 -- stop is idempotent."""
     _get_supervisor().stop()
@@ -760,6 +771,7 @@ _SUBCOMMAND_NAMES: dict = {
     "setup": "_cmd_setup",
     "browser-setup": "_cmd_browser_setup",
     "install-daemon": "_cmd_install_daemon",
+    "install-deps": "_cmd_install_deps",
     "stop-daemon": "_cmd_stop_daemon",
     "restart-daemon": "_cmd_restart_daemon",
 }
@@ -801,6 +813,13 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "install-daemon",
         help="Deploy and launch the Windows bridge daemon (WSL2 only)",
+    )
+    deps_parser = sub.add_parser(
+        "install-deps",
+        help="Provision system deps pip can't (wl-clipboard, /dev/uinput udev rule)",
+    )
+    deps_parser.add_argument(
+        "--yes", action="store_true", help="Execute the plan instead of printing it",
     )
     sub.add_parser("stop-daemon", help="Stop the Windows bridge daemon")
     sub.add_parser("restart-daemon", help="Stop then start the daemon")

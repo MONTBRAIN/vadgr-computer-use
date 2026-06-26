@@ -716,9 +716,20 @@ class TestEvdevActionExecutor:
 
 class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_wayland", return_value=False)
-    def test_x11_returns_xdotool(self, _mock):
+    def test_x11_prefers_xtest(self, _mock):
+        from computer_use.platform.linux import _create_action_executor, XTestExecutor
+
+        inst = MagicMock(spec=XTestExecutor)
+        with patch("computer_use.platform.linux.XTestExecutor", return_value=inst):
+            ex = _create_action_executor()
+        assert ex is inst
+
+    @patch("computer_use.platform.linux._is_wayland", return_value=False)
+    def test_x11_falls_back_to_xdotool_when_xtest_unavailable(self, _mock):
         from computer_use.platform.linux import _create_action_executor, LinuxActionExecutor
-        ex = _create_action_executor()
+
+        with patch("computer_use.platform.linux.XTestExecutor", side_effect=Exception("no xlib")):
+            ex = _create_action_executor()
         assert isinstance(ex, LinuxActionExecutor)
 
     @pytest.mark.skipif(not _has_jeepney, reason="jeepney not installed")
