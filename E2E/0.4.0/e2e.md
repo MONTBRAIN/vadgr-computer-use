@@ -120,12 +120,23 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part A (A1-A9) | not run | not run | not run | pass |
-| Part B (B1-B7) | not run | not run | not run | pass |
-| Overall | not run | not run | not run | pass |
+| Part A (A1-A9) | not run | not run | pass | pass |
+| Part B (B1-B7) | not run | not run | pass | pass |
+| Overall | not run | not run | pass | pass |
 
 Status notes:
 - WSL was exercised during development of this branch: Part A nine of nine, and
   Part B seven of seven (including a live Gmail send and the actionability gate
   firing on the hidden form mirror).
-- Windows native, Linux, and macOS: pending.
+- Windows native (2026-06-26): Part A nine of nine, Part B seven of seven. Every
+  outcome confirmed from real cua DOM read-backs; A9 raised `op_failed` on a
+  non-matching selector; B1 sent a live Gmail (the "Mensaje enviado" toast read
+  back); B6 ran the Flights search from the on-screen origin/destination/date
+  fields (no route in the URL) and read back real fares. Methodology note: the
+  runbook's `claude -p` runner could not be used as-written because the cua
+  native-host bond is single-listener — the orchestrating session already owned
+  the extension, so a subagent's own cua server saw `not_connected`. Each test
+  was instead driven by one naive, goal-level Claude subagent at a time, routed
+  through the orchestrator's live cua connection, and judged from the subagents'
+  verbatim read-backs (same no-parallel, DOM-as-ground-truth, naive-agent rules).
+- Linux and macOS: pending.
