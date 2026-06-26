@@ -128,9 +128,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 | Overall | pass | pass | pass | pass |
 
 Status notes:
-- WSL was exercised during development of this branch: Part A nine of nine, and
-  Part B seven of seven (including a live Gmail send and the actionability gate
-  firing on the hidden form mirror).
+- WSL (during 0.4.0 development): WSL2 Ubuntu 24.04.4 LTS (kernel
+  6.6.87.2-microsoft-standard-WSL2) on Windows 11 Pro build 26200, Google Chrome
+  149.0.7827.103. Part A nine of nine, Part B seven of seven (including a live
+  Gmail send and the actionability gate firing on the hidden form mirror).
 - Windows native (2026-06-26): Windows 11 Pro 25H2 (build 26200.8655, x64),
   Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Part A nine of
   nine, Part B seven of seven. Every
