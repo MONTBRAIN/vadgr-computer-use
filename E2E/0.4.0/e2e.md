@@ -131,7 +131,9 @@ Status notes:
 - WSL was exercised during development of this branch: Part A nine of nine, and
   Part B seven of seven (including a live Gmail send and the actionability gate
   firing on the hidden form mirror).
-- Windows native (2026-06-26): Part A nine of nine, Part B seven of seven. Every
+- Windows native (2026-06-26): Windows 11 Pro 25H2 (build 26200.8655, x64),
+  Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Part A nine of
+  nine, Part B seven of seven. Every
   outcome confirmed from real cua DOM read-backs; A9 raised `op_failed` on a
   non-matching selector; B1 sent a live Gmail (the "Mensaje enviado" toast read
   back); B6 ran the Flights search from the on-screen origin/destination/date
