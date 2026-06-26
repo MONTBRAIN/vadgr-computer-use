@@ -44,6 +44,9 @@ from computer_use.core.smooth_move import (
 from computer_use.core.errors import PlatformNotSupportedError
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import AvailabilityReport, PlatformBackend
+from computer_use.platform.portal import PortalScreenshotCapture, portal_available
+from computer_use.platform.uinput import UinputDevice
+from computer_use.platform.xtest import XTestExecutor
 
 logger = logging.getLogger("computer_use.platform.linux")
 
@@ -314,8 +317,17 @@ def _create_screen_capture() -> ScreenCapture:
             logger.debug("%s installed but failed, trying next tool", tool)
             continue
 
+    # Portable catch-net: the XDG screenshot portal. Tried AFTER the no-dialog CLI
+    # tools so an older desktop (e.g. GNOME 46 / Ubuntu 24.04, where
+    # gnome-screenshot still works) keeps its silent path unchanged, while GNOME
+    # 49+ — where the CLI tools are dead — transparently falls through to here.
+    if portal_available():
+        logger.info("Wayland: using XDG screenshot portal")
+        return PortalScreenshotCapture()
+
     raise ScreenCaptureError(
-        "No working Wayland screenshot tool found. Install one of: grim, gnome-screenshot"
+        "No working Wayland screenshot tool found. Install one of: grim, "
+        "gnome-screenshot, or an XDG screenshot portal"
     )
 
 
@@ -922,6 +934,71 @@ class EvdevActionExecutor(_WaylandActionExecutor):
 
 
 # ---------------------------------------------------------------------------
+# Pure-python uinput action execution (Wayland fallback -- no evdev/compiler)
+# ---------------------------------------------------------------------------
+
+
+class UinputActionExecutor(_WaylandActionExecutor):
+    """Wayland input via the pure-python uinput device (no evdev package).
+
+    The non-GNOME Wayland fallback: writes a virtual absolute-pointer + keyboard
+    to /dev/uinput. Reuses the layout-aware typing/key logic from the base; only
+    the transport (a UinputDevice) differs. Raises OSError from the constructor
+    if /dev/uinput is not writable, so the factory can fall through cleanly.
+    """
+
+    def __init__(self, screen_w: int = 1366, screen_h: int = 768):
+        super().__init__()
+        self._dev = UinputDevice(screen_w=screen_w, screen_h=screen_h)
+
+    def _raw_move(self, x: int, y: int) -> None:
+        self._dev.move_abs(x, y)
+        self._tracker.update(x, y)
+
+    def move_mouse(self, x: int, y: int) -> None:
+        smooth_move(x, y, self._tracker.get_pos, self._raw_move)
+
+    def _key_event(self, keycode: int, down: bool) -> None:
+        self._dev.key(keycode, down)
+
+    def click(self, x: int, y: int, button: str = "left") -> None:
+        self.move_mouse(x, y)
+        time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
+        self._dev.button(self._btn_code(button), True)
+        time.sleep(0.04)
+        self._dev.button(self._btn_code(button), False)
+
+    def double_click(self, x: int, y: int) -> None:
+        self.move_mouse(x, y)
+        time.sleep(PRE_CLICK_BASE + random.random() * PRE_CLICK_RAND)
+        for _ in range(2):
+            self._dev.button(self._btn_code("left"), True)
+            time.sleep(0.04)
+            self._dev.button(self._btn_code("left"), False)
+            time.sleep(0.08)
+
+    def scroll(self, x: int, y: int, amount: int) -> None:
+        self._raw_move(x, y)
+        time.sleep(0.05)
+        for _ in range(abs(amount)):
+            self._dev.wheel(1 if amount > 0 else -1)
+            time.sleep(0.03)
+
+    def drag(self, start_x, start_y, end_x, end_y, duration: float = 0.5) -> None:
+        self.move_mouse(start_x, start_y)
+        time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
+        self._dev.button(self._btn_code("left"), True)
+        path = windmouse_path(start_x, start_y, end_x, end_y,
+                              gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
+        delays = generate_delays(len(path), duration)
+        for i, (px, py) in enumerate(path):
+            self._raw_move(px, py)
+            if i < len(delays):
+                time.sleep(delays[i])
+        self._dev.button(self._btn_code("left"), False)
+
+
+# ---------------------------------------------------------------------------
 # Mutter RemoteDesktop (GNOME Wayland -- proper input injection via DBus)
 # ---------------------------------------------------------------------------
 
@@ -1249,7 +1326,15 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
     Priority: Mutter RemoteDesktop (GNOME) > evdev (other Wayland) > xdotool (X11).
     """
     if not _is_wayland():
-        return LinuxActionExecutor()
+        # X11: prefer pure-python XTEST; fall back to xdotool if python-xlib or
+        # the XTEST extension is unavailable.
+        try:
+            executor = XTestExecutor()
+            logger.info("X11: using XTEST (python-xlib)")
+            return executor
+        except Exception as e:
+            logger.info("X11: XTEST unavailable (%s), falling back to xdotool", e)
+            return LinuxActionExecutor()
 
     if _is_mutter_available():
         try:
@@ -1269,6 +1354,15 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
             mouse.close()
         if kbd:
             kbd.close()
+
+    # Pure-python uinput fallback (no evdev package, no compiler). Needs
+    # /dev/uinput writable (the installer ships a udev rule for that).
+    try:
+        executor = UinputActionExecutor(screen_w, screen_h)
+        logger.info("Wayland: using pure-python uinput")
+        return executor
+    except OSError as e:
+        logger.warning("uinput fallback unavailable: %s", e)
 
     raise PlatformNotSupportedError(
         "No working Wayland input method. On GNOME, ensure Mutter is running "
@@ -1422,7 +1516,7 @@ def _query_foreground_window() -> Optional[ForegroundWindow]:
 
 
 def _wayland_screenshot_tool_available() -> bool:
-    return any(shutil.which(tool) for tool, _cls in _WAYLAND_TOOLS)
+    return any(shutil.which(tool) for tool, _cls in _WAYLAND_TOOLS) or portal_available()
 
 
 class LinuxBackend(PlatformBackend):

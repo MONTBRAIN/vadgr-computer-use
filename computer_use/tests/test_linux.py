@@ -94,13 +94,24 @@ class TestCreateScreenCapture:
             capture = _create_screen_capture()
             assert isinstance(capture, GnomeScreenCapture)
 
+    @patch("computer_use.platform.linux.portal_available", return_value=False)
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("shutil.which", return_value=None)
-    def test_wayland_no_tools_raises(self, _which, _wayland):
+    def test_wayland_no_tools_raises(self, _which, _wayland, _portal):
         from computer_use.platform.linux import _create_screen_capture
 
         with pytest.raises(ScreenCaptureError, match="No working Wayland screenshot tool"):
             _create_screen_capture()
+
+    @patch("computer_use.platform.linux.portal_available", return_value=True)
+    @patch("computer_use.platform.linux._is_wayland", return_value=True)
+    @patch("shutil.which", return_value=None)
+    def test_wayland_uses_portal_when_no_cli_tool(self, _which, _wayland, _portal):
+        """GNOME 49+: no working CLI tool, but the XDG portal carries capture."""
+        from computer_use.platform.linux import _create_screen_capture, PortalScreenshotCapture
+
+        capture = _create_screen_capture()
+        assert isinstance(capture, PortalScreenshotCapture)
 
 
 # -- Grim capture (wlroots Wayland) --
