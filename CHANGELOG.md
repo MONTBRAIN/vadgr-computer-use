@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-06-17
+
+### Added
+- Browser tier (Tier 1): an MV3 browser extension bridged to cua over native
+  messaging, acting DOM-first (content scripts + `chrome.tabs`/`chrome.cookies`;
+  no `chrome.debugger`). Drives the user's own logged-in browser by selector.
+- `browser` MCP tool (Tier ONE, MEDIUM) op-routed via `OperationGroup`:
+  `navigate`/`back`/`forward`/`reload`, `wait_for`, `query`, `read_text`,
+  `get_attribute`, `click`, `type`/`fill`, `select`, `scroll`, `cookies`, and
+  the `status` pre-flight op.
+- `browser_eval` MCP tool (Tier ONE, HIGH): arbitrary JS in the page, kept
+  separate so the common ops keep a lower risk ceiling.
+- Availability & failure model: a typed `BrowserError` taxonomy (`not_set_up`,
+  `not_connected`, `op_unsupported`, `proto_mismatch`, `waking`, `op_failed`)
+  mapped to a `ToolError` carrying remediation + a guided pixel fallback;
+  `status` reports `{connected, browsers, setup, reason}`.
+- `computer_use.browser`: the wire protocol (`PROTOCOL_VERSION=1`, the `hello`
+  handshake, `supported_ops`), `BrowserBridge` (`NativeMessagingBridge` +
+  `FakeBridge`, session registry, per-OS manifest probe), and the native-host
+  stdio framing.
+- `computer_use.setup.extension_setup`: installs the `com.vadgr.cua.json`
+  native-host manifest to the per-OS paths with `allowed_origins` pinned to the
+  extension's stable dev ID.
+- `extension/`: the MV3 extension (manifest with a pinned `key` for a stable
+  unpacked ID, service worker, op router, content DOM ops, the ported native
+  value-setter fill, Offscreen keep-alive), with vitest + happy-dom unit tests.
+
+### Changed
+- Tool catalog grows from 21 to 23 (adds the two Tier ONE browser tools).
+  `tier_breakdown` now reports `{"0": 8, "0.5": 0, "1": 2, "2": 13}`.
+
+### Notes
+- cua and `extension/` are independent builds that share no imports — only the
+  versioned wire protocol (`protocol.py` / `protocol.ts`).
+- The live native-messaging round-trip (Chrome → native host → running cua) and
+  the MV3 service-worker keep-alive are wired but exercised by a manual spike;
+  the framing, routing, error model, DOM ops and fill are unit-tested headlessly.
+
 ## [0.3.1] - 2026-06-12
 
 ### Fixed

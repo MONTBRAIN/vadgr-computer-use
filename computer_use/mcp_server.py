@@ -56,7 +56,13 @@ mcp = FastMCP(
         "5. If a click lands on the wrong target, take a screenshot, reassess "
         "coordinates, and retry.\n"
         "6. Screenshots are point-in-time. Don't rely on older screenshots from "
-        "earlier turns -- the UI may have changed. Take a fresh one when needed."
+        "earlier turns -- the UI may have changed. Take a fresh one when needed.\n"
+        "7. The `browser` tool (Tier 1, MV3 extension) verifies differently: the "
+        "DOM is the ground truth, so after ANY mutating browser op "
+        "(click/type/fill/select) CONFIRM the effect with a structured read-back "
+        "-- the op's returned `ok`/`checked`, or get_attribute/read_text/query/"
+        "wait_for -- not a screenshot (web state changes too fast to screenshot "
+        "reliably). Never continue on an unverified browser action."
     ),
 )
 
@@ -388,6 +394,8 @@ from computer_use.tools.system import shell as _shell_impl
 from computer_use.tools.system import tempfile as _tempfile_impl
 from computer_use.tools.system import time as _time_impl
 
+from computer_use.browser import tool as _browser_impl
+
 
 @mcp.tool()
 @tool(name="fs", tier=Tier.ZERO, risk=Risk.MEDIUM)
@@ -510,6 +518,104 @@ def clipboard(op: str, text: str = None):
     return _clipboard_impl.clipboard(op=op, text=text)
 
 
+# --- Tier 1: browser (MV3 extension + native messaging) ---
+#
+# One op-routed `browser` tool plus the separate HIGH-risk `browser_eval`.
+# Both are thin clients over a BrowserBridge; they are always registered (the
+# *action* fails with a guided error when no browser is connected, never the
+# registration).
+
+@mcp.tool()
+@tool(name="browser", tier=Tier.ONE, risk=Risk.MEDIUM)
+def browser(
+    op: str,
+    url: str = None,
+    selector: str = None,
+    name: str = None,
+    text: str = None,
+    value: str = None,
+    by: str = "css",
+    state: str = "visible",
+    wait: str = "load",
+    action: str = "get",
+    all: bool = False,
+    clear: bool = True,
+    submit: bool = False,
+    timeout: int = 5000,
+    scroll_by: dict = None,
+    key: str = None,
+    force: bool = False,
+):
+    """Drive the browser by selector, through the MV3 extension (Tier 1).
+
+    Sub-ops:
+    - navigate(url, wait="load") / back / forward / reload -> {url, title}
+    - wait_for(selector, state="visible"|"hidden"|"attached", timeout) -> {matched}
+    - query(selector, by="css"|"xpath", all=False) -> [{tag, text, attrs}]
+    - read_text(selector=None) -> str
+    - get_attribute(selector, name) -> live value/checked/selected/disabled, else attr
+    - click(selector, by="css") -> {clicked, checked?}
+    - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
+    - select(selector, value) -> {selected, value, ok}
+    - scroll(selector=None | scroll_by={x,y}) -> {ok}
+    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger)
+    - accessibility_tree() -> {nodes:[{role, name, value}]}  (semantic snapshot)
+    - cookies(action="get"|"set"|"clear", url, name, value)
+    - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
+
+    VERIFY EVERY MUTATING OP — the DOM is the ground truth; never assume an
+    action worked (this is the web equivalent of screenshot-before/after):
+    - type/fill -> check the returned `ok` (or get_attribute(selector,"value")
+      equals what you typed).
+    - checkbox/radio click -> the returned `checked` (or get_attribute
+      "checked") flipped to the state you intended.
+    - select -> the returned `ok` (or get_attribute(selector,"value") is the
+      chosen option).
+    - a click that should change the page -> wait_for the expected element, then
+      read_text/query to confirm the new state; a click that navigates returns
+      {navigated, url} — confirm the destination is right.
+    If the read-back does NOT match, the action did NOT take effect — retry or
+    stop; do not continue on an unverified action.
+
+    ACTIONABILITY: a mutating op refuses a non-actionable target (hidden / covered
+    / disabled) with op_failed — act on the VISIBLE element, not a hidden mirror
+    (e.g. some pages have a hidden form-field twin of the real editor). Pass
+    force=True only to bypass this for a deliberately-hidden real control.
+
+    On a terminal browser error (not set up / not connected / op unsupported)
+    the tool raises with a guided pixel fallback — prefer this tool; degrade to
+    the pixel tools only when it says so.
+    """
+    params = {
+        "url": url, "selector": selector, "name": name, "text": text,
+        "value": value, "state": state, "wait": wait, "action": action,
+        "all": all, "clear": clear, "submit": submit, "timeout": timeout,
+        "key": key, "force": force,
+    }
+    # `by` is the css/xpath selector mode for most ops, but the {x,y} offset for
+    # `scroll`. The MCP surface keeps them distinct (`by` vs `scroll_by`); the
+    # op handler reads `by` either way.
+    if op == "scroll":
+        if scroll_by is not None:
+            params["by"] = scroll_by
+    else:
+        params["by"] = by
+    params = {k: v for k, v in params.items() if v is not None}
+    return _browser_impl.browser(op=op, **params)
+
+
+@mcp.tool()
+@tool(name="browser_eval", tier=Tier.ONE, risk=Risk.HIGH)
+def browser_eval(expression: str):
+    """Run arbitrary JavaScript in the active page (HIGH risk).
+
+    Returns the evaluated value. Separate from `browser` so the common ops keep
+    a lower risk ceiling; this is the escape hatch for anything not yet a
+    first-class op.
+    """
+    return _browser_impl.browser_eval(expression=expression)
+
+
 # --- CLI: management subcommands ---
 #
 # The package ships a single entry point (`vadgr-cua`). With no arguments
@@ -597,6 +703,22 @@ def _cmd_setup(args) -> int:
     return 0
 
 
+def _cmd_browser_setup(args) -> int:
+    """Self-register the browser-tier native host and print the load steps.
+
+    Writes the native-host manifest (+ registry on Windows/WSL) so Chrome can
+    spawn the host shim, then prints how to sideload the extension. Best-effort
+    on the registration, explicit on the instructions.
+    """
+    from computer_use.setup.extension_setup import ensure_registered, load_steps
+
+    result = ensure_registered()
+    print(f"native host registered for: {', '.join(result['browsers'])}")
+    print(f"host: {result['host_path']}\n")
+    print(load_steps())
+    return 0
+
+
 def _cmd_stop_daemon(args) -> int:
     """Best-effort stop. Always returns 0 -- stop is idempotent."""
     _get_supervisor().stop()
@@ -619,6 +741,7 @@ def _cmd_restart_daemon(args) -> int:
 _SUBCOMMAND_NAMES: dict = {
     "doctor": "_cmd_doctor",
     "setup": "_cmd_setup",
+    "browser-setup": "_cmd_browser_setup",
     "install-daemon": "_cmd_install_daemon",
     "stop-daemon": "_cmd_stop_daemon",
     "restart-daemon": "_cmd_restart_daemon",
@@ -655,6 +778,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Fire macOS permission prompts and print state (no-op elsewhere)",
     )
     sub.add_parser(
+        "browser-setup",
+        help="Register the browser-tier native host and print the load steps",
+    )
+    sub.add_parser(
         "install-daemon",
         help="Deploy and launch the Windows bridge daemon (WSL2 only)",
     )
@@ -662,6 +789,31 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("restart-daemon", help="Stop then start the daemon")
 
     return parser
+
+
+def _start_browser_tier() -> None:
+    """Best-effort: self-register the native host and start the TCP listener.
+
+    Registering at startup (not only lazily on first browser use) means the
+    extension's load order never matters — Chrome can spawn the host shim and
+    reach a live listener whenever the user enables the extension. Wrapped so a
+    transport/registration failure never blocks the MCP server from coming up.
+    """
+    try:
+        from computer_use.setup.extension_setup import ensure_registered
+
+        ensure_registered()
+    except Exception as e:  # best-effort — never break startup
+        logger.debug("browser-tier self-registration skipped: %s", e)
+    try:
+        from computer_use.browser import tool as browser_tool
+        from computer_use.browser.server import ensure_server
+
+        # Share the tool's bridge so the session the listener registers is the
+        # one the `browser` tool routes ops to.
+        ensure_server(bridge=browser_tool._default_bridge())
+    except Exception as e:
+        logger.debug("browser-tier listener not started: %s", e)
 
 
 def _run_mcp_server(args) -> int:
@@ -674,6 +826,8 @@ def _run_mcp_server(args) -> int:
         args.transport,
         _MAX_WIDTH or "auto",
     )
+
+    _start_browser_tier()
 
     if args.transport == "sse":
         mcp.settings.port = args.port
