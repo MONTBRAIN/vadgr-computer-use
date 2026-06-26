@@ -14,9 +14,9 @@ the resolver and each backend in isolation; they do not prove that a real agent 
 *see the screen and drive the mouse/keyboard* on each desktop. Run this runbook on
 each target and record the result in the table at the bottom.
 
-Targets: **Ubuntu 24.04 / GNOME 46 (backward-compat regression)**, Ubuntu 26.04 /
-GNOME 50, KDE Plasma (Wayland), Sway (wlroots), and an X11 session. The desktop
-tier on Windows / macOS / WSL is unchanged by 0.4.1 and is covered by its own runs.
+Target: **Ubuntu 24.04.4 LTS** — the project's Linux baseline. (0.4.1 is a
+Linux-only change; the desktop tier on Windows / macOS / WSL is untouched and
+covered by its own runs.)
 
 ## The approach: a Claude subagent over `claude -p` (reused from 0.4.0)
 
@@ -142,13 +142,13 @@ and the resolved backends (capture / input) in the status note.
 
 Legend: pass / fail / blocked / not run
 
-| | Ubuntu 24.04 / GNOME 46 | Ubuntu 26.04 / GNOME 50 | KDE Plasma (Wayland) | Sway (wlroots) | X11 |
-|---|---|---|---|---|---|
-| Part A (A1-A9) | not run | not run | not run | not run | not run |
-| Part B (B1-B3) | not run | not run | not run | not run | not run |
-| Backward-compat gate | n/a (this IS the baseline) | n/a | n/a | n/a | n/a |
-| Resolved backends (capture / input) | | | | | |
-| Overall | not run | not run | not run | not run | not run |
+| | Ubuntu 24.04.4 LTS |
+|---|---|
+| Part A (A1-A9) | not run |
+| Part B (B1-B3) | not run |
+| Backward-compat gate (same backends as today, no portal dialog) | not run |
+| Resolved backends (capture / input) | |
+| Overall | not run |
 
 Status notes:
 - (record per target: OS build, desktop/compositor version, resolved capture+input
