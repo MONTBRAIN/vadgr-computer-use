@@ -120,9 +120,9 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part A (A1-A9) | not run | not run | pass | pass |
-| Part B (B1-B7) | not run | not run | pass | pass |
-| Overall | not run | not run | pass | pass |
+| Part A (A1-A9) | not run | pass | pass | pass |
+| Part B (B1-B7) | not run | pass | pass | pass |
+| Overall | not run | pass | pass | pass |
 
 Status notes:
 - WSL was exercised during development of this branch: Part A nine of nine, and
@@ -139,4 +139,17 @@ Status notes:
   was instead driven by one naive, goal-level Claude subagent at a time, routed
   through the orchestrator's live cua connection, and judged from the subagents'
   verbatim read-backs (same no-parallel, DOM-as-ground-truth, naive-agent rules).
-- Linux and macOS: pending.
+- macOS (2026-06-26): Part A nine of nine, Part B seven of seven. Every
+  outcome confirmed from real cua DOM read-backs; A9 raised `op_failed` on a
+  non-matching selector; B1 sent a live Gmail (verified by Sent row + Inbox
+  round-trip + unread count delta, recipient chip confirmed with
+  `data-hovercard-id` before Send so no hollow-send); B5 the actionability gate
+  refused the hidden Prime-row add-to-cart and the subagent expanded the
+  non-Prime offer accordion before adding (no `force=true`); B6 ran Flights
+  search from the on-screen origin/destination/date fields (no route in the
+  URL) and read back real fares. Routed through the same orchestrator-shares-
+  the-cua-connection methodology as Windows native (single-listener bond
+  prevents subagents from spawning their own cua server; each test was driven
+  by one naive, goal-level subagent at a time, judged from verbatim DOM read-
+  backs).
+- Linux: pending.
