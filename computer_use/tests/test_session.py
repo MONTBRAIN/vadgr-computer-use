@@ -6,8 +6,8 @@
 
 import pytest
 
-from computer_use.platform import session as S
-from computer_use.platform.session import SessionContext
+from computer_use.platform.resolver import session as S
+from computer_use.platform.resolver.session import SessionContext
 
 
 @pytest.fixture(autouse=True)

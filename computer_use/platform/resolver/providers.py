@@ -28,7 +28,7 @@ from typing import Protocol, runtime_checkable
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.screenshot import ScreenCapture
-from computer_use.platform.session import SessionContext
+from computer_use.platform.resolver.session import SessionContext
 
 
 class BackendUnavailable(Exception):

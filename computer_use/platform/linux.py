@@ -44,9 +44,9 @@ from computer_use.core.smooth_move import (
 from computer_use.core.errors import PlatformNotSupportedError
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.platform.base import AvailabilityReport, PlatformBackend
-from computer_use.platform.portal import PortalScreenshotCapture, portal_available
-from computer_use.platform.uinput import UinputDevice
-from computer_use.platform.xtest import XTestExecutor
+from computer_use.platform.backends.portal import PortalScreenshotCapture, portal_available
+from computer_use.platform.backends.uinput import UinputDevice
+from computer_use.platform.backends.xtest import XTestExecutor
 
 logger = logging.getLogger("computer_use.platform.linux")
 

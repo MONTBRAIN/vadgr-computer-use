@@ -678,7 +678,7 @@ def _platform_backends_status() -> dict:
     failure degrades to an error string rather than breaking doctor.
     """
     try:
-        from computer_use.platform.linux_providers import describe_backends
+        from computer_use.platform.backends.linux_providers import describe_backends
 
         return describe_backends()
     except Exception as exc:  # pragma: no cover - defensive

@@ -28,10 +28,10 @@ import shutil
 from dataclasses import dataclass
 from typing import Callable
 
-from computer_use.platform import registry
-from computer_use.platform.portal import portal_available
-from computer_use.platform.providers import BackendUnavailable
-from computer_use.platform.session import SessionContext
+from computer_use.platform.resolver import registry
+from computer_use.platform.backends.portal import portal_available
+from computer_use.platform.resolver.providers import BackendUnavailable
+from computer_use.platform.resolver.session import SessionContext
 
 
 def _mutter_available() -> bool:

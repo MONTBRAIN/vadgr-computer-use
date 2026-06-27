@@ -6,8 +6,8 @@
 
 from unittest.mock import patch
 
-from computer_use.platform.linux_providers import describe_backends
-from computer_use.platform.session import SessionContext
+from computer_use.platform.backends.linux_providers import describe_backends
+from computer_use.platform.resolver.session import SessionContext
 
 
 def _ctx(server="wayland", compositor="gnome", has_uinput=False, libs=frozenset()):
@@ -21,8 +21,8 @@ class TestDescribe:
         assert d["input"]["selected"] == "xtest"
 
     def test_gnome_wayland_with_portal_selects_portal_and_mutter(self):
-        with patch("computer_use.platform.linux_providers.portal_available", return_value=True), \
-             patch("computer_use.platform.linux_providers._mutter_available", return_value=True), \
+        with patch("computer_use.platform.backends.linux_providers.portal_available", return_value=True), \
+             patch("computer_use.platform.backends.linux_providers._mutter_available", return_value=True), \
              patch("shutil.which", return_value=None):
             d = describe_backends(_ctx(server="wayland", compositor="gnome"))
         assert d["capture"]["selected"] == "portal"
@@ -30,14 +30,14 @@ class TestDescribe:
 
     def test_gnome_with_gnome_screenshot_prefers_it_over_portal(self):
         """Backward-compat: 24.04 keeps gnome-screenshot ahead of the portal."""
-        with patch("computer_use.platform.linux_providers.portal_available", return_value=True), \
+        with patch("computer_use.platform.backends.linux_providers.portal_available", return_value=True), \
              patch("shutil.which", side_effect=lambda c: "/u/" + c if c == "gnome-screenshot" else None):
             d = describe_backends(_ctx(server="wayland", compositor="gnome"))
         assert d["capture"]["selected"] == "gnome-screenshot"
 
     def test_wlroots_uinput_when_writable(self):
-        with patch("computer_use.platform.linux_providers.portal_available", return_value=False), \
-             patch("computer_use.platform.linux_providers._mutter_available", return_value=False), \
+        with patch("computer_use.platform.backends.linux_providers.portal_available", return_value=False), \
+             patch("computer_use.platform.backends.linux_providers._mutter_available", return_value=False), \
              patch("shutil.which", side_effect=lambda c: "/u/grim" if c == "grim" else None):
             d = describe_backends(_ctx(server="wayland", compositor="wlroots", has_uinput=True))
         assert d["capture"]["selected"] == "grim"

@@ -36,7 +36,7 @@ from computer_use.core.errors import ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.types import Region, ScreenState
 
-logger = logging.getLogger("computer_use.platform.portal")
+logger = logging.getLogger("computer_use.platform.backends.portal")
 
 try:
     import jeepney as _jeepney

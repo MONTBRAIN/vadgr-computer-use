@@ -11,7 +11,7 @@ import pytest
 
 from computer_use.core.errors import ScreenCaptureError
 from computer_use.core.types import Region
-from computer_use.platform.portal import PortalScreenshotCapture
+from computer_use.platform.backends.portal import PortalScreenshotCapture
 
 
 def _png(tmp_path, w, h, color=(10, 20, 30)):

@@ -4,7 +4,7 @@
 
 """XTestExecutor: click/scroll/drag/key mechanics via an injected X-input seam."""
 
-from computer_use.platform.xtest import XTestExecutor
+from computer_use.platform.backends.xtest import XTestExecutor
 
 
 class FakeXInput:

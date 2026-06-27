@@ -22,7 +22,7 @@ decorators.
 
 from __future__ import annotations
 
-from computer_use.platform.providers import CaptureProvider, InputProvider
+from computer_use.platform.resolver.providers import CaptureProvider, InputProvider
 
 CAPTURE_PROVIDERS: list[CaptureProvider] = []
 INPUT_PROVIDERS: list[InputProvider] = []

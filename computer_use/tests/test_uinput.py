@@ -6,7 +6,7 @@
 
 import struct
 
-from computer_use.platform import uinput as U
+from computer_use.platform.backends import uinput as U
 
 
 class FakeFd:
