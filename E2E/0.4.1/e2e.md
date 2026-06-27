@@ -30,7 +30,9 @@ verdict from the agent's tool stream:
    the effect on its own is part of what this measures.
 2. The verdict comes from the `tool_use` / `tool_result` stream (cua's real
    read-backs) **and an independent ground-truth** (a file written to disk, a
-   `wl-paste`, a before/after screenshot contrast) — never the agent's prose.
+   `wl-paste`, a before/after screenshot contrast) — never the agent's prose. See
+   [`../README.md`](../README.md) for where that JSON lives (the run stream, and
+   the `~/.claude` session transcript fallback) and how to read it.
 3. A self-reported success with no confirming read-back is a fail.
 
 Run **one** subagent at a time, never in parallel — they share one real screen,
