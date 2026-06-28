@@ -215,5 +215,9 @@ Status notes:
     after click→type→ctrl+s). C1/C2 not run as separate tasks; the integration loop
     they exercise (screenshot→click→type→verify) is covered by C3 + Part B.
   - Resolved backends (`vadgr-cua doctor`): capture=portal, input=mutter-remotedesktop.
+  - Extra live validation (beyond the scripted suite): drew a house on autodraw.com
+    via 13 `drag` strokes + tool-select `click`, then closed the browser tab by
+    landing a `click` precisely on the tab's close (×) button — both confirmed from
+    follow-up portal screenshots. Exercises sustained pointer accuracy on GNOME 50.
 - Ubuntu 24.04.4: to be run on that machine (backward-compat baseline — expect
   capture=gnome-screenshot, input=mutter-remotedesktop, no portal dialog).
