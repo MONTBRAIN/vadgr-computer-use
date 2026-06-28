@@ -19,7 +19,10 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Pure-python uinput input fallback (no `evdev`, no C compiler) and an X11 XTEST
   executor via `python-xlib` (no `xdotool`).
 - `vadgr-cua install-deps`: distro-aware provisioning (apt/dnf/pacman/zypper) for
-  `wl-clipboard` and the `/dev/uinput` udev rule. Prints the plan; `--yes` runs it.
+  `wl-clipboard` and the `/dev/uinput` udev rule. Prints the plan; `--yes` runs the
+  whole plan under a single privilege prompt — `pkexec` (graphical polkit auth, no
+  terminal sudo) when a display is present, falling back to `sudo`. This is the
+  second of the two install commands: `pip install` then `vadgr-cua install-deps`.
 
 ### Changed
 - `evdev` moved to the optional `[linux-uinput]` extra; `python-xlib` added as a
