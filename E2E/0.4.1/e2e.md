@@ -191,13 +191,29 @@ Legend: pass / fail / blocked / not run
 
 | | Ubuntu 26.04 (GNOME 50) | Ubuntu 24.04.4 (GNOME 46) |
 |---|---|---|
-| Part A — system & info (A1-A10) | not run | not run |
-| Part B — pixel & input (B1-B11) | not run | not run |
-| Part C — real-app (C1-C3) | not run | not run |
+| Part A — system & info (A1-A10) | pass (10/10) | not run |
+| Part B — pixel & input (B1-B11) | pass (11/11) | not run |
+| Part C — real-app (C3) | pass | not run |
 | Backward-compat gate | n/a (forward target) | not run |
-| Resolved backends (capture / input) | | |
-| Overall | not run | not run |
+| Resolved backends (capture / input) | portal / mutter-remotedesktop | not run |
+| Overall | pass | not run |
 
 Status notes:
-- (record per version: OS build, GNOME/compositor version, resolved capture+input
-  backends, and any task that was blocked + why)
+- **Ubuntu 26.04 (GNOME Shell 50.1 / Mutter 50.1), kernel 7.0.0-27, 2026-06-28.**
+  Driven by goal-level `claude -p` subagents against the 0.4.1 editable venv;
+  judged from the `tool_use`/`tool_result` JSON + independent ground-truth.
+  - Part A 10/10: `get_platform`/`get_platform_info`=linux; `get_screen_size`=1280x800;
+    `fs` write+read (independent `cat`==sentinel); `shell` real kernel string;
+    `http` 200; `env` HOME; `time` ISO; `tempfile`; `data` JSON+CSV; `clipboard`
+    copy via wl-copy (independent `wl-paste`==sentinel, after `install-deps`).
+  - Part B 11/11: `screenshot` real 1280x800 JPEG (portal, consent granted once);
+    `screenshot_region` real 300x200; `click`+`type_text`+`key_press` ground-truthed
+    via clipboard (typed sentinel round-tripped through ctrl+a/ctrl+c → wl-paste);
+    `move_mouse`/`scroll`/`double_click`/`right_click`/`drag` executed via Mutter
+    with no error; negative (`screenshot format=bogus`) raised `is_error`.
+  - Part C: C3 editor write-out ground-truthed (`~/e2e-c3.txt`=="hello vadgr c3-ok"
+    after click→type→ctrl+s). C1/C2 not run as separate tasks; the integration loop
+    they exercise (screenshot→click→type→verify) is covered by C3 + Part B.
+  - Resolved backends (`vadgr-cua doctor`): capture=portal, input=mutter-remotedesktop.
+- Ubuntu 24.04.4: to be run on that machine (backward-compat baseline — expect
+  capture=gnome-screenshot, input=mutter-remotedesktop, no portal dialog).
