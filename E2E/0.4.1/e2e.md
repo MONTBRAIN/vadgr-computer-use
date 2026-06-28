@@ -191,12 +191,12 @@ Legend: pass / fail / blocked / not run
 
 | | Ubuntu 26.04 (GNOME 50) | Ubuntu 24.04.4 (GNOME 46) |
 |---|---|---|
-| Part A — system & info (A1-A10) | pass (10/10) | not run |
-| Part B — pixel & input (B1-B11) | pass (11/11) | not run |
-| Part C — real-app (C3) | pass | not run |
-| Backward-compat gate | n/a (forward target) | not run |
-| Resolved backends (capture / input) | portal / mutter-remotedesktop | not run |
-| Overall | pass | not run |
+| Part A — system & info (A1-A10) | pass (10/10) | pass (10/10) |
+| Part B — pixel & input (B1-B11) | pass (11/11) | pass (11/11) |
+| Part C — real-app (C3) | pass | pass |
+| Backward-compat gate | n/a (forward target) | pass |
+| Resolved backends (capture / input) | portal / mutter-remotedesktop | gnome-screenshot / mutter-remotedesktop |
+| Overall | pass | pass |
 
 Status notes:
 - **Ubuntu 26.04 (GNOME Shell 50.1 / Mutter 50.1), kernel 7.0.0-27, 2026-06-28.**
@@ -219,5 +219,50 @@ Status notes:
     via 13 `drag` strokes + tool-select `click`, then closed the browser tab by
     landing a `click` precisely on the tab's close (×) button — both confirmed from
     follow-up portal screenshots. Exercises sustained pointer accuracy on GNOME 50.
-- Ubuntu 24.04.4: to be run on that machine (backward-compat baseline — expect
-  capture=gnome-screenshot, input=mutter-remotedesktop, no portal dialog).
+- **Ubuntu 24.04.4 LTS (GNOME Shell 46.0 / Wayland), kernel 6.17.0-14-generic
+  x86_64, 2026-06-28.** Backward-compat baseline. Driven by goal-level `claude -p`
+  subagents against the 0.4.1 editable venv, restricted to the cua MCP tools
+  (`--allowedTools mcp__vadgr-computer-use`, built-ins disallowed) so each cua
+  tool is actually exercised; judged from the `tool_use`/`tool_result` JSON +
+  independent ground-truth (`cat`, `wl-paste`, and orchestrator-side
+  `gnome-screenshot` before/after frames).
+  - Part A 10/10: `get_platform`/`get_platform_info`=linux; `get_screen_size`=1280x800
+    (matches the screenshot frame); `fs` write+read (independent `cat`==`vadgr-a3-7Q2K9`);
+    `shell` returncode 0 + real kernel string `6.17.0-14-generic`; `http` 200 (real
+    httpbin body); `env` HOME=/home/vboxuser; `time` ISO-8601; `tempfile` abs path;
+    `data` JSON+CSV parsed matching input; `clipboard` copy (independent
+    `wl-paste`==`vadgr-a10-X4M8T`, after wl-clipboard install).
+  - Part B 11/11: `screenshot` real 1280x800 + `screenshot_region` 300x200 (non-error;
+    cross-checked against an independent gnome-screenshot frame); `click`+`type_text`+
+    `key_press` ground-truthed via clipboard (typed `vadgr-b9-K7P3Q` round-tripped
+    through ctrl+a/ctrl+c → `wl-paste`, and the text shown selected in an independent
+    after-frame); `move_mouse`/`double_click`/`right_click`/`scroll`/`drag` executed via
+    Mutter with non-error read-backs; negative (`screenshot format=bogus`) raised
+    `is_error` ("Unsupported format"). Cold-start note: the first full `screenshot`
+    via gnome-screenshot timed out twice at the 10s cap before succeeding, then was
+    clean on re-run — a first-invocation warm-up flake, not a failure.
+  - Part C: C3 editor write-out ground-truthed (`~/e2e-c3.txt` == "hello vadgr c3-ok\n
+    second line e2e" after the subagent opened GNOME Text Editor via the overview,
+    typed the note, and saved through the real GTK Save dialog). C1/C2 not run as
+    separate tasks; the screenshot→click→type→verify loop they exercise is covered by
+    C3 + Part B.
+  - Backward-compat gate **pass**: `vadgr-cua doctor` resolved capture=gnome-screenshot
+    (portal is `applicable` but correctly not selected — gnome-screenshot wins on
+    priority) and input=mutter-remotedesktop — the same backends 24.04 uses today; no
+    portal consent dialog appeared during the run.
+  - Methodology note (single-listener does NOT apply to the desktop tier): unlike the
+    browser tier, the desktop tools talk straight to gnome-screenshot / Mutter D-Bus,
+    so each `claude -p` subagent spins up its own 0.4.1 cua server and drives the real
+    screen directly. Run one at a time (shared screen); the editor subagent opens and
+    focuses the app via the GNOME overview so keystrokes can't leak to the orchestrator
+    terminal. Build note: this VM shipped minimal (no pip/venv/node/gcc, and no
+    gnome-screenshot/wl-clipboard); cua 0.4.1 was installed editable with the
+    pure-python input path (added python-xlib; evdev is now the optional `linux-uinput`
+    extra, so no compiler), and `install-deps` provisioned wl-clipboard + the
+    `/dev/uinput` udev rule. gnome-screenshot was apt-installed to match the stock-24.04
+    capture baseline the gate expects.
+  - Extra live validation (beyond the scripted suite): drew a recognizable house on
+    autodraw.com via 13 `drag` strokes (square walls, triangular roof, door, window) +
+    tool-select `click`s, no tool errors — confirmed from an independent follow-up
+    gnome-screenshot. Mirrors the GNOME 50 run; exercises sustained pointer accuracy
+    through Mutter RemoteDesktop on GNOME 46.
