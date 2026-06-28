@@ -1,4 +1,4 @@
-# Desktop tier 0.4.1 - cross-desktop end to end test runbook
+# Desktop tier 0.4.1 - end to end test runbook
 
 > Status: **implementation complete and unit-green; awaiting user approval of
 > this test suite before any run** (per ENGINEERING.md §2 — the runbook gate).
@@ -7,30 +7,37 @@
 > reporting (`platform_backends`), the pure-python uinput executor, the
 > python-xlib XTEST executor, and `vadgr-cua install-deps`.
 
-Per-desktop end to end validation of the **desktop tier** (screenshot + input)
-after the cross-desktop backend rework: the provider/resolver abstraction, the XDG
-portal screenshot path, pure-python uinput, and python-xlib XTEST. Unit tests prove
-the resolver and each backend in isolation; they do not prove that a real agent can
-*see the screen and drive the mouse/keyboard* on each desktop. Run this runbook on
-each target and record the result in the table at the bottom.
+End to end validation of the **desktop tier** after the backend rework (provider/
+resolver selection, XDG portal capture, pure-python uinput, python-xlib XTEST).
+Unit tests prove the resolver and each backend in isolation; they do not prove that
+a real agent can *see the screen and drive the mouse/keyboard* and that **every
+tool actually works** on a live session. Run this runbook and record the result in
+the table at the bottom.
 
-Target: **Ubuntu 24.04.4 LTS** — the project's Linux baseline. (0.4.1 is a
-Linux-only change; the desktop tier on Windows / macOS / WSL is untouched and
-covered by its own runs.)
+Targets: **Ubuntu 26.04 (GNOME 50)** and **Ubuntu 24.04.4 LTS (GNOME 46)** — the
+goal is the tier working on both. 24.04 is also the backward-compatibility baseline
+(it must keep selecting the backends it uses today). 0.4.1 is a Linux-only change;
+the desktop tier on Windows / macOS / WSL is untouched and covered by its own runs.
+
+## Scope: which tools this runbook exercises
+
+**Every non-browser tool is tested here** (the full desktop + system surface). The
+**browser tier (`browser`, `browser_eval`) is out of scope** — it already has its
+own agent suite (`E2E/0.4.0/e2e.md`), which is reused and **not re-run** for this
+minor. The tool-coverage checklist at the end maps each tool to its test.
 
 ## The approach: a Claude subagent over `claude -p` (reused from 0.4.0)
 
-Real end to end is driven by a real agent, never a script. A `.py` that calls the
-executor directly is an acceptance test, not the e2e. The runner gives a headless
-Claude Code subagent the cua MCP server and a goal-level task, then reads the
-verdict from the agent's tool stream:
+Real end to end is driven by a real agent, never a script. The runner gives a
+headless Claude Code subagent the cua MCP server and a goal-level task, then reads
+the verdict from the agent's tool stream:
 
 1. The task prompt is **goal-level only** — the outcome, never the coordinates or
    the tool names. Whether the agent screenshots, grounds its clicks, and verifies
-   the effect on its own is part of what this measures.
-2. The verdict comes from the `tool_use` / `tool_result` stream (cua's real
-   read-backs) **and an independent ground-truth** (a file written to disk, a
-   `wl-paste`, a before/after screenshot contrast) — never the agent's prose. See
+   on its own is part of what this measures.
+2. The verdict comes from the `tool_use` / `tool_result` JSON (cua's real
+   read-backs) **and an independent ground-truth** (a file on disk, a `wl-paste`, a
+   before/after screenshot contrast) — never the agent's prose. See
    [`../README.md`](../README.md) for where that JSON lives (the run stream, and
    the `~/.claude` session transcript fallback) and how to read it.
 3. A self-reported success with no confirming read-back is a fail.
@@ -38,15 +45,15 @@ verdict from the agent's tool stream:
 Run **one** subagent at a time, never in parallel — they share one real screen,
 mouse, and keyboard. Finish and judge one test before starting the next.
 
-## Prerequisites (per desktop)
+## Prerequisites
 
 1. Install cua into a venv: `pip install .` (no compiler needed — `evdev` is now an
    optional extra; the default input path is pure-python uinput / XTEST).
 2. Provision system deps: `vadgr-cua install-deps` (clipboard + the `/dev/uinput`
-   udev rule), or accept the printed commands. wlroots targets also need `grim`.
+   udev rule), or accept the printed commands.
 3. **Sanity check:** `vadgr-cua doctor` reports a resolved **capture** and **input**
-   backend for this desktop, and the agent's first `screenshot` returns a real
-   frame. The resolved backend names are recorded in the results table.
+   backend, and the agent's first `screenshot` returns a real frame. Record the
+   resolved backend names in the results table.
 
 ## How the runner drives a test (reused from 0.4.0)
 
@@ -77,81 +84,120 @@ string, which truncates long prompts):
 The portal screenshot path prompts for consent on first use — grant it once before
 the run (or pre-seed the PermissionStore) so the agent sees a silent capture.
 
-## Part A: deterministic primitives (run first)
+## Part A: system & info tools (deterministic, run first)
 
-Each is a goal-level task with an independent ground-truth, so the verdict does not
-depend on a noisy desktop.
+Goal-level asks that force each Tier-0 / info tool; verdict from the `tool_result`
+JSON plus an independent ground-truth.
 
-- **A1 Capture liveness.** Take a screenshot and describe what is on screen. Expect
-  a real, non-blank frame whose content matches the actual desktop. Ground-truth:
-  the resolver selected a working capture backend (cross-check `doctor`); the image
-  decodes with non-trivial content.
-- **A2 Screen size + platform.** Report the screen size and platform. Expect
-  `get_screen_size` to match the screenshot's pixel dimensions and `get_platform` =
-  linux.
-- **A3 Doctor / backend resolution.** Ask which capture and input backends are
-  active. Expect the resolved pair for this desktop (e.g. GNOME 50 -> portal +
-  Mutter RD; GNOME 46 -> gnome-screenshot + Mutter RD; X11 -> mss + XTEST) plus the
-  skip trail for higher-priority providers that did not apply.
-- **A4 Type round-trip (input ground-truth).** Open the desktop's text editor, type
-  the sentinel `vadgr-e2e-<rand>`, and save to `~/e2e-a4.txt`. Ground-truth:
-  independently `cat ~/e2e-a4.txt` contains the exact sentinel — proves keystrokes
-  reached the focused field, not just that the agent claimed so.
-- **A5 Keyboard shortcut + clipboard.** In that editor, select-all and copy
-  (ctrl+a, ctrl+c). Ground-truth: `wl-paste` (Wayland) / `xclip -o` (X11) returns
-  the sentinel.
-- **A6 Scroll.** In a long window, scroll down several steps. Expect a before/after
-  screenshot contrast showing the viewport moved (new content visible).
-- **A7 Click grounding.** Given a visible button/menu (e.g. the editor's menu),
-  screenshot, click it, screenshot again. Expect the menu/dialog actually opened —
-  the click landed where the screenshot showed the target.
-- **A8 Drag.** Drag a window by its title bar (or a slider). Expect a screenshot
-  contrast showing it moved.
-- **A9 Negative.** Act on an impossible target (click far outside screen bounds /
-  an op that cannot succeed). Expect a **raised error**, not a silent success.
+- **A1 Platform** — ask the agent to report the OS and platform details. Exercises
+  `get_platform` (= linux) and `get_platform_info`. Cross-check `/etc/os-release`.
+- **A2 Screen size** — report the screen size. `get_screen_size` returns `WxH`
+  matching the screenshot's pixel dimensions (Part B).
+- **A3 File round-trip** — write a sentinel to `~/e2e-a3.txt` then read it back.
+  Exercises `fs` write+read; ground-truth: independent `cat` matches.
+- **A4 Shell** — run a trivial command (e.g. `echo` / `uname`). Exercises `shell`;
+  `tool_result.returncode == 0` and expected stdout.
+- **A5 HTTP** — GET a known endpoint (e.g. `https://httpbin.org/get`). Exercises
+  `http`; `tool_result.status == 200`.
+- **A6 Env** — read `HOME` (and set a process var). Exercises `env`; value matches
+  the real environment.
+- **A7 Time** — get the current time / sleep briefly. Exercises `time`; ISO-8601
+  result.
+- **A8 Tempfile** — allocate a temp path. Exercises `tempfile`; an absolute path is
+  returned.
+- **A9 Data** — parse a small JSON and a CSV blob. Exercises `data`; structured
+  result matches input.
+- **A10 Clipboard** — copy a sentinel string. Exercises `clipboard`; ground-truth:
+  `wl-paste` (Wayland) / `xclip -o` (X11) returns the sentinel.
 
-**Pass for Part A:** every outcome confirmed from the stream **and** the independent
+**Pass for Part A:** each tool returns a non-error `tool_result` and the
+ground-truth confirms the real side effect.
+
+## Part B: pixel & input tools (the desktop-specific surface)
+
+Each names a tool and is judged from a screenshot read-back or a file/clipboard
+ground-truth — never the agent's prose.
+
+- **B1 screenshot** — capture the screen; expect a real, non-blank frame matching
+  the actual desktop (cross-check the resolved capture backend from `doctor`).
+- **B2 screenshot_region** — capture a sub-rectangle; expect dimensions equal to the
+  requested region and content matching that area of the full frame.
+- **B3 move_mouse** — move over a control with a hover state; screenshot shows the
+  hover highlight (cursor moved without clicking).
+- **B4 click** — screenshot, click a visible button/menu, screenshot again; the
+  expected dialog/menu actually opened (the click landed on the target).
+- **B5 double_click** — double-click a word in a text editor; the word shows
+  selected in the next screenshot.
+- **B6 right_click** — right-click an empty area; a context menu appears.
+- **B7 scroll** — scroll a long window down several steps; before/after screenshot
+  contrast shows the viewport moved.
+- **B8 drag** — drag a window by its title bar (or a slider); screenshot contrast
+  shows it moved.
+- **B9 type_text** — open the text editor, type `vadgr-e2e-<rand>`, save to
+  `~/e2e-b9.txt`; ground-truth: `cat` contains the exact sentinel (keystrokes
+  reached the focused field).
+- **B10 key_press** — in that editor, select-all + copy (`ctrl+a`, `ctrl+c`);
+  ground-truth: `wl-paste` returns the typed text.
+- **B11 negative** — act on an impossible target (click far outside screen bounds /
+  an op that cannot succeed). Expect a `tool_result` with `is_error: true` — a
+  raised error, never a silent success.
+
+**Pass for Part B:** every outcome confirmed from the stream **and** the
 ground-truth; the agent screenshots-then-acts and verifies before moving on without
-being told to; A9 raises.
+being told to; B11 raises.
 
-## Part B: real-app tasks (run after Part A)
+## Part C: real-app integration (run after A and B)
 
-Goal-level multi-step tasks on stock desktop apps — the screenshot -> click -> type
--> verify loop on the messy real UI a fixture can't reach.
+Multi-step goal-level tasks on stock apps — the screenshot -> click -> type -> verify
+loop on the messy real UI a fixture can't reach.
 
-- **B1 File manager.** Open the file manager, go to Home, and report the first
-  folder's name. Verdict from screenshot read-backs.
-- **B2 Settings lookup.** Open Settings -> About and report the OS/desktop version.
-  Cross-check against `/etc/os-release` independently.
-- **B3 Editor write-out.** Open the text editor, write a given two-line note, save
-  to `~/e2e-b3.txt`. Ground-truth: `cat ~/e2e-b3.txt` matches the note exactly.
+- **C1 File manager** — open Files, go to Home, report the first folder's name.
+- **C2 Settings lookup** — open Settings -> About, report the OS/desktop version;
+  cross-check `/etc/os-release`.
+- **C3 Editor write-out** — open the editor, write a given two-line note, save to
+  `~/e2e-c3.txt`; ground-truth: `cat` matches the note exactly.
 
-**Pass for Part B:** the outcome is confirmed from the stream and the agent verifies
-on its own; a self-reported success with no read-back is a fail.
+## Tool-coverage checklist (every non-browser tool has a test)
+
+| Tool | Test | | Tool | Test |
+|---|---|---|---|---|
+| `get_platform` | A1 | | `screenshot` | B1 |
+| `get_platform_info` | A1 | | `screenshot_region` | B2 |
+| `get_screen_size` | A2 | | `move_mouse` | B3 |
+| `fs` | A3 | | `click` | B4 |
+| `shell` | A4 | | `double_click` | B5 |
+| `http` | A5 | | `right_click` | B6 |
+| `env` | A6 | | `scroll` | B7 |
+| `time` | A7 | | `drag` | B8 |
+| `tempfile` | A8 | | `type_text` | B9 |
+| `data` | A9 | | `key_press` | B10 |
+| `clipboard` | A10 | | (error path) | B11 |
+
+Out of scope (reused, not run): `browser`, `browser_eval` — see `E2E/0.4.0/e2e.md`.
 
 ## Backward-compatibility gate (Ubuntu 24.04 / GNOME 46)
 
-On 24.04 the run must additionally prove **no regression**: `doctor` (A3) names the
+On 24.04 the run must additionally prove **no regression**: `doctor` names the
 **same backends 24.04 uses today** — `gnome-screenshot` for capture, Mutter
-RemoteDesktop for input — and **no portal consent dialog appears** during Part A.
+RemoteDesktop for input — and **no portal consent dialog appears** during the run.
 If 24.04 silently switches to the portal or prompts for consent, that is a
 backward-compat **fail** even if the tasks pass.
 
-## Per-desktop results
+## Results
 
-Fill in by running the runbook on each target. Record the exact OS/desktop version
-and the resolved backends (capture / input) in the status note.
+Fill in per Ubuntu version. Record the exact build and the resolved backends.
 
 Legend: pass / fail / blocked / not run
 
-| | Ubuntu 24.04.4 LTS |
-|---|---|
-| Part A (A1-A9) | not run |
-| Part B (B1-B3) | not run |
-| Backward-compat gate (same backends as today, no portal dialog) | not run |
-| Resolved backends (capture / input) | |
-| Overall | not run |
+| | Ubuntu 26.04 (GNOME 50) | Ubuntu 24.04.4 (GNOME 46) |
+|---|---|---|
+| Part A — system & info (A1-A10) | not run | not run |
+| Part B — pixel & input (B1-B11) | not run | not run |
+| Part C — real-app (C1-C3) | not run | not run |
+| Backward-compat gate | n/a (forward target) | not run |
+| Resolved backends (capture / input) | | |
+| Overall | not run | not run |
 
 Status notes:
-- (record per target: OS build, desktop/compositor version, resolved capture+input
+- (record per version: OS build, GNOME/compositor version, resolved capture+input
   backends, and any task that was blocked + why)
