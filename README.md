@@ -4,7 +4,7 @@ Local MCP server for desktop automation. 13 tools for capture, mouse, keyboard, 
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
-> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME)**, **Windows native**, **WSL2**, and **macOS**. macOS asks for Accessibility and Screen Recording permission on first run; see [First run on macOS](#first-run-on-macos). See [Platform support](#platform-support) for detail.
+> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME 46-50, KDE, wlroots)**, **Windows native**, **WSL2**, and **macOS**. On **Linux** run `vadgr-cua install-deps` once after install (clipboard backend + input permissions); on **macOS** grant Accessibility + Screen Recording on first run. See [First run on Linux](#first-run-on-linux), [First run on macOS](#first-run-on-macos), and [Platform support](#platform-support).
 
 ---
 
@@ -14,11 +14,23 @@ Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, sam
 pip install vadgr-computer-use
 ```
 
-That ships a console script called `vadgr-cua`. Verify:
+That ships a console script called `vadgr-cua`. On **Linux**, run the one-time
+system-dependency step (the second of the two install commands):
+
+```bash
+vadgr-cua install-deps        # prints the plan; add --yes to run it
+```
+
+It provisions the clipboard backend (`wl-clipboard`) and `/dev/uinput` access via a
+single graphical auth prompt (`pkexec`, falling back to `sudo`). pip can't install
+those — they are OS packages — so this command bridges the gap. See
+[First run on Linux](#first-run-on-linux).
+
+Verify:
 
 ```bash
 vadgr-cua doctor
-# {"daemon_running": false, "windows_python": null, "port": 19542, ...}
+# Linux also reports the resolved capture/input backends under "platform_backends"
 ```
 
 On WSL2, the bridge daemon auto-launches the first time a tool is called. On other platforms it's a no-op; direct backends handle everything.
@@ -173,18 +185,48 @@ The LLM owns the "where to click" decision; the server owns "how to click it pre
 
 ## Platform support
 
+The Linux backend is selected per session by a capability resolver (run
+`vadgr-cua doctor` to see what it picks and why):
+
 | Platform | Screenshots | Mouse / keyboard | Install notes |
 |----------|-------------|------------------|----------------|
-| Linux / X11 | `mss` | `xdotool` | `apt install xdotool` (or distro equivalent) |
-| Linux / Wayland (GNOME) | `gnome-screenshot` | Mutter RemoteDesktop via `jeepney` | nothing extra; pre-installed on stock GNOME, deps pulled by pip |
-| Linux / Wayland (Sway, Hyprland, wlroots) | `grim` | `evdev` | `apt install grim`; `sudo usermod -aG input $USER` then re-login |
+| Linux / X11 | `mss` | XTEST (`python-xlib`) | nothing extra; pure-Python, no `xdotool` |
+| Linux / Wayland (GNOME 46-48) | `gnome-screenshot` | Mutter RemoteDesktop via `jeepney` | nothing extra |
+| Linux / Wayland (GNOME 49-50) | XDG Screenshot portal | Mutter RemoteDesktop via `jeepney` | one consent prompt on first capture (persisted) |
+| Linux / Wayland (KDE, wlroots) | `grim` (wlroots) / portal | pure-Python uinput | `vadgr-cua install-deps` for `/dev/uinput` access |
 | Windows native | Win32 GDI | SendInput | nothing extra |
 | WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
 | macOS | `mss` | Quartz `CGEvent` (via `pyobjc`) | nothing extra; deps pulled by pip. Grant Accessibility + Screen Recording on first run |
 
-`pip install vadgr-computer-use` pulls `jeepney` and `evdev` automatically on Linux (both are pure-Python or shipped as wheels, no `libdbus-1-dev` or compilation needed). Foreground-window detection on Wayland uses AT-SPI2 if available; install with `pip install vadgr-computer-use[linux-atspi]` to enable it.
+`pip install vadgr-computer-use` pulls `jeepney` and `python-xlib` automatically on Linux (pure-Python, no compilation). The pixel-input fallback uses a pure-Python `/dev/uinput` writer, so **no C compiler is needed**; the optional `evdev`-backed path is available via `pip install vadgr-computer-use[linux-uinput]`. The clipboard backend (`wl-clipboard`) and `/dev/uinput` access are OS-level and installed by `vadgr-cua install-deps`. Foreground-window detection on Wayland uses AT-SPI2 if available; install with `pip install vadgr-computer-use[linux-atspi]` to enable it.
 
 On macOS, `pip install vadgr-computer-use` pulls `pyobjc-framework-Quartz` and `pyobjc-framework-ApplicationServices` (wheel install, no compilation). No Homebrew packages required.
+
+## First run on Linux
+
+After `pip install`, run the one-time system-dependency step:
+
+```bash
+vadgr-cua install-deps --yes   # one pkexec/sudo prompt; omit --yes to preview the plan
+```
+
+It installs the clipboard backend (`wl-clipboard`) and sets up `/dev/uinput` access
+(udev rule + `input` group) under a single graphical auth prompt. pip cannot install
+these because they are OS packages, not Python wheels.
+
+On **GNOME 49/50 Wayland**, the first `screenshot()` shows a one-time GNOME consent
+dialog (the XDG Screenshot portal); click **Share** and the grant is remembered, so
+later screenshots are silent. For unattended/remote runs, trigger one screenshot
+while you are at the machine first so the prompt is out of the way. On GNOME 46-48,
+`gnome-screenshot` is used and there is no prompt. Input (mouse/keyboard) on GNOME
+uses Mutter RemoteDesktop and needs no prompt.
+
+Check what the resolver selected:
+
+```bash
+vadgr-cua doctor
+# "platform_backends": { "capture": {"selected": "portal"}, "input": {"selected": "mutter-remotedesktop"}, ... }
+```
 
 ## First run on macOS
 
