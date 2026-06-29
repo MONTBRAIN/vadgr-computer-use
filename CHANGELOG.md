@@ -28,18 +28,32 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - `evdev` moved to the optional `[linux-uinput]` extra; `python-xlib` added as a
   Linux dependency. A plain `pip install` no longer needs a C compiler.
 
-## [0.4.0] - 2026-06-17
+## [0.4.0] - 2026-06-26
 
 ### Added
 - Browser tier (Tier 1): an MV3 browser extension bridged to cua over native
-  messaging, acting DOM-first (content scripts + `chrome.tabs`/`chrome.cookies`;
-  no `chrome.debugger`). Drives the user's own logged-in browser by selector.
+  messaging. Acts DOM-first (content scripts + `chrome.tabs`/`chrome.cookies`)
+  and escalates to a `chrome.debugger` CDP path only when a DOM op cannot
+  complete. Drives the user's own logged-in browser by selector.
 - `browser` MCP tool (Tier ONE, MEDIUM) op-routed via `OperationGroup`:
   `navigate`/`back`/`forward`/`reload`, `wait_for`, `query`, `read_text`,
-  `get_attribute`, `click`, `type`/`fill`, `select`, `scroll`, `cookies`, and
-  the `status` pre-flight op.
+  `get_attribute`, `click`, `type`/`fill`, `select`, `scroll`, `cookies`,
+  `press`, `accessibility_tree`, and the `status` pre-flight op.
 - `browser_eval` MCP tool (Tier ONE, HIGH): arbitrary JS in the page, kept
   separate so the common ops keep a lower risk ceiling.
+- Actionability gate (Playwright-style): before a mutating op (`type`/`fill`/
+  `click`/`select`) the target is checked for visible / receives-events
+  (hit-test) / enabled; a non-actionable target raises `op_failed` instead of
+  silently acting on a hidden or wrong node. A `force` param bypasses the gate.
+- Self-verifying ops: `type`/`fill` return `{value, ok}`, `select` returns
+  `{selected, value, ok}`, and a checkbox `click` returns `{checked}`, so the
+  agent confirms an action landed from structured read-back rather than a
+  screenshot; the tool descriptions instruct it to. contenteditable editors are
+  filled via `execCommand('insertText')`, the only path that drives rich-editor
+  state.
+- Executor seam + escalation: a DOM executor and a `chrome.debugger` CDP
+  executor behind one interface; on a DOM `ok:false` the escalation policy
+  retries over CDP (trusted `Input` events, `Accessibility.getFullAXTree`).
 - Availability & failure model: a typed `BrowserError` taxonomy (`not_set_up`,
   `not_connected`, `op_unsupported`, `proto_mismatch`, `waking`, `op_failed`)
   mapped to a `ToolError` carrying remediation + a guided pixel fallback;
@@ -50,10 +64,13 @@ All notable changes to this project are documented here. Format follows [Keep a 
   stdio framing.
 - `computer_use.setup.extension_setup`: installs the `com.vadgr.cua.json`
   native-host manifest to the per-OS paths with `allowed_origins` pinned to the
-  extension's stable dev ID.
+  extension's stable dev ID. On WSL it also auto-places the Windows-side relay
+  executable under `%LOCALAPPDATA%\vadgr-cua\`, so no manual copy step is needed.
 - `extension/`: the MV3 extension (manifest with a pinned `key` for a stable
   unpacked ID, service worker, op router, content DOM ops, the ported native
-  value-setter fill, Offscreen keep-alive), with vitest + happy-dom unit tests.
+  value-setter fill, the actionability checks, contenteditable fill, the
+  executor/escalation seam and `chrome.debugger` CDP executor, Offscreen
+  keep-alive), with vitest + happy-dom unit tests.
 
 ### Changed
 - Tool catalog grows from 21 to 23 (adds the two Tier ONE browser tools).
@@ -62,9 +79,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 ### Notes
 - cua and `extension/` are independent builds that share no imports — only the
   versioned wire protocol (`protocol.py` / `protocol.ts`).
-- The live native-messaging round-trip (Chrome → native host → running cua) and
-  the MV3 service-worker keep-alive are wired but exercised by a manual spike;
-  the framing, routing, error model, DOM ops and fill are unit-tested headlessly.
+- Validated end-to-end on real logged-in sites via the agent-driven runbook in
+  `E2E/0.4.0/` (see its per-OS results table); the framing, routing, error
+  model, DOM ops, fill, and actionability checks are also unit-tested headlessly.
 
 ## [0.3.1] - 2026-06-12
 
