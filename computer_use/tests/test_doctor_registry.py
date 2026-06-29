@@ -72,3 +72,20 @@ class TestDoctorReportsRegistry:
         parsed = json.loads(capsys.readouterr().out)
         assert parsed["daemon_running"] is True
         assert parsed["port"] == 19542
+
+    def test_doctor_reports_platform_backends_on_linux(self, capsys):
+        """On Linux, doctor surfaces the resolved capture/input backends."""
+        import sys
+
+        from computer_use import mcp_server
+
+        if sys.platform != "linux":
+            return
+        supervisor = MagicMock()
+        supervisor.status.return_value = {"daemon_running": False}
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
+            mcp_server._cmd_doctor(MagicMock())
+
+        pb = json.loads(capsys.readouterr().out)["platform_backends"]
+        assert "capture" in pb and "input" in pb
+        assert "server" in pb and "compositor" in pb

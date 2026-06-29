@@ -1,0 +1,5 @@
+# vadgr-computer-use: let the 'input' group write /dev/uinput so the pure-python
+# uinput backend can inject mouse/keyboard without root. Install to
+# /etc/udev/rules.d/ and add your user to the 'input' group (see `vadgr-cua
+# install-deps`).
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

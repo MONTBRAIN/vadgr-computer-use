@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vadgr-computer-use"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local-first MCP server for desktop automation: screenshots, mouse, keyboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -32,7 +32,7 @@ dependencies = [
     "pillow>=10",
     "mss>=9",
     "nodriver>=0.40",                                                   # stealth (all OSes)
-    "evdev>=1.6; sys_platform == 'linux'",                              # pixel — Linux input
+    "python-xlib>=0.33; sys_platform == 'linux'",                       # pixel — X11 input via XTEST (pure-python, no xdotool)
     "jeepney>=0.8; sys_platform == 'linux'",                            # pure-python D-Bus
     "dbus-fast>=2.21; sys_platform == 'linux'",                         # structured — Linux AT-SPI (pure-python D-Bus, NOT pygobject)
     "pywinauto>=0.6.8; sys_platform == 'win32'",                        # structured — Windows UIA
@@ -42,6 +42,11 @@ dependencies = [
 
 [project.optional-dependencies]
 data-yaml = ["pyyaml>=6"]
+# Linux uinput via the python-evdev package. Optional because evdev is sdist-only
+# (needs a C toolchain): the default input fallback is the pure-python uinput
+# writer in computer_use.platform.uinput, so a plain `pip install` never needs a
+# compiler. Install this only to use the evdev-backed path.
+linux-uinput = ["evdev>=1.6; sys_platform == 'linux'"]
 dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1"]
 
 [project.scripts]
@@ -61,6 +66,9 @@ exclude = ["computer_use.tests*"]
 # The Windows relay shim Chrome spawns on Windows when cua runs in WSL — shipped
 # as a prebuilt binary (no Python on Windows). Built from winhost/main.go.
 "computer_use.browser.winhost" = ["vadgr-cua-host.exe"]
+# The udev rule `vadgr-cua install-deps` installs so /dev/uinput is writable by
+# the 'input' group (the pure-python uinput fallback needs this).
+"computer_use.setup" = ["udev/*.rules"]
 
 [tool.pytest.ini_options]
 testpaths = ["computer_use/tests"]

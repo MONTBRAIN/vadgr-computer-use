@@ -121,11 +121,11 @@ the same build.
 
 Legend: pass / fail / blocked (login or anti-bot) / not run
 
-| | Linux | macOS | Windows native | WSL |
-|---|---|---|---|---|
-| Part A (A1-A9) | pass | pass | pass | pass |
-| Part B (B1-B7) | pass | pass | pass | pass |
-| Overall | pass | pass | pass | pass |
+| | Linux 24.04 | Linux 26.04 | macOS | Windows native | WSL |
+|---|---|---|---|---|---|
+| Part A (A1-A9) | pass | pass | pass | pass | pass |
+| Part B (B1-B7) | pass | 5/7 pass* | pass | pass | pass |
+| Overall | pass | pass* | pass | pass | pass |
 
 Status notes:
 - WSL (during 0.4.0 development): WSL2 Ubuntu 24.04.4 LTS (kernel
@@ -183,3 +183,27 @@ Status notes:
   methodology as macOS/Windows native (single-listener bond prevents subagents
   from spawning their own cua server; each test was driven goal-level, one at a
   time, judged from verbatim DOM read-backs).
+- Linux 26.04 (2026-06-28): Ubuntu 26.04 LTS (GNOME Shell 50.1 / Mutter 50.1),
+  kernel 7.0.0-27-generic x86_64, Google Chrome with the unpacked extension
+  (re-run of the 0.4.0 browser tier on the 0.4.1 branch — browser tier unchanged).
+  Driven through the orchestrator's live cua `browser` tool (single-listener),
+  judged from DOM read-backs. **Part A nine of nine** (A9 raised `op_failed` on a
+  non-matching selector; the actionability gate also refused saucedemo's
+  modal-covered cart link). **Part B five of seven:** B1 sent a live Gmail
+  (recipient chip `santiagoe4333@gmail.com` confirmed before Send + "Mensaje
+  enviado" toast); B3 Google (15+ real result titles); B4 Wikipedia (Ada Lovelace
+  `.bday` = 1815-12-10); B6 Flights one-way Pasto→Bogotá(BOG) 2026-07-20 from the
+  on-screen origin/destination/date fields (no route in the URL; gate refused two
+  hidden option-list mirrors) read back real fares (cheapest ~401,140 COP); B7
+  react/react 246,277 stars + JavaScript. **B5 Amazon blocked** — an anti-bot
+  "ship to Colombia" interstitial covered the add-to-cart button and the
+  actionability gate correctly refused it (blocked ≠ tier failure). **B2 YouTube
+  Music inconclusive** — the play-button click landed (`{clicked:true}`) but
+  playback could not be cleanly verified. Finding (filed as a follow-up): on the
+  two heavy, event-noisy SPAs (Amazon, YouTube Music) the `browser` responses
+  arrived **off-by-one** (each call returned the previous call's result) while all
+  11 lighter targets were clean — most likely `chrome.debugger` event messages
+  interleaving with command responses under FIFO matching; the fix is MCP-side
+  (correlate by request-id / filter debugger events). `browser_eval` also returns
+  null for complex expressions and on strict-CSP pages (e.g. YouTube Music), so
+  prefer DOM read ops there.
