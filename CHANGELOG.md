@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [0.4.1] - 2026-06-26
+## [0.4.1] - 2026-06-29
 
 ### Fixed
 - Restore the desktop screenshot tier on GNOME 49/50 (Ubuntu 25.10/26.04): add an
