@@ -2,6 +2,52 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-07-03
+
+### Added
+- Session-target model for the browser tier: the extension pins an explicit
+  `{browser, window_id, tab_id}` target resolved once and used by every op by id,
+  instead of resolving each op against the last-focused window. By default the
+  agent opens its own dedicated window in your real Chrome profile (real
+  cookies/logins), kept separate so it never fights your foreground tab. The
+  pinned target survives service-worker idle-termination (`chrome.storage.session`)
+  and follows tabs the agent itself spawns (OAuth popups, `target=_blank`).
+- `use_target(mode="owned"|"attach", window_id=None, tab_id=None)` browser op —
+  explicitly pin the session target. Attach mode snapshots the tab you are
+  currently looking at once, then pins it by id.
+- New browser ops on the `chrome.debugger` path: `hover` (with an optional
+  `reveals` check), `dialog` (one-shot arm for JS `alert`/`confirm`/`prompt`/
+  `beforeunload`), `upload` (file inputs via `DOM.setFileInputFiles`),
+  `element_state` (visible / receives_events / enabled / focused / editable /
+  checked / value / bbox), `focus`/`blur`, `clear`, `get_value`, and `snapshot`
+  (paginated accessibility tree that pierces shadow DOM and frames; supersedes
+  `accessibility_tree`, which stays for back-compat).
+- `upload` translates each file path to the browser process's OS before the op
+  crosses the wire, so a WSL path (`/home/...` or `/mnt/c/...`) reaches Windows
+  Chrome as a path it can actually read. Native Chrome paths pass through
+  unchanged.
+
+### Changed
+- `query` now caps the node count and per-node text and paginates (`limit` +
+  `cursor` -> `next_cursor`), so a large page degrades to pages instead of a
+  single oversized result.
+- The `browser` tool docstring documents that `screenshot` is a pixel tool, not a
+  browser op; `browser(op="screenshot")` now returns that guidance instead of an
+  opaque error.
+- The extension requires the `storage` permission (for `chrome.storage.session`).
+
+### Fixed
+- The browser tier no longer acts on whatever window the user last focused. Every
+  op targets the pinned window/tab by id, so a focus change (or a popup stealing
+  focus) can no longer move the target mid-task. When the pinned tab/window is
+  closed the op fails with a terminal `target_lost` error and remediation; the
+  tier never silently retargets the user's active tab.
+
+### Notes
+- No `PROTOCOL_VERSION` bump — every new op is additive and gated on the
+  extension's `supported_ops`; an older extension returns a precise
+  `op_unsupported` for a 0.5.0 op.
+
 ## [0.4.1] - 2026-06-29
 
 ### Fixed

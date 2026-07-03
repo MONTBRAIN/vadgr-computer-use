@@ -545,32 +545,63 @@ def browser(
     scroll_by: dict = None,
     key: str = None,
     force: bool = False,
+    mode: str = None,
+    window_id: int = None,
+    tab_id: int = None,
+    reveals: str = None,
+    files: list = None,
+    roles: list = None,
+    cursor: int = None,
+    limit: int = None,
+    arm: bool = True,
 ):
     """Drive the browser by selector, through the MV3 extension (Tier 1).
 
     Sub-ops:
     - navigate(url, wait="load") / back / forward / reload -> {url, title}
     - wait_for(selector, state="visible"|"hidden"|"attached", timeout) -> {matched}
-    - query(selector, by="css"|"xpath", all=False) -> [{tag, text, attrs}]
+    - query(selector, by="css"|"xpath", all=False, limit=50, cursor=None)
+      -> {nodes:[{tag, text, attrs}], next_cursor?}  (capped + paginated)
     - read_text(selector=None) -> str
     - get_attribute(selector, name) -> live value/checked/selected/disabled, else attr
+    - get_value(selector) -> {value}  (input/textarea/select AND custom widgets)
+    - element_state(selector) -> {visible, receives_events, enabled, focused,
+      editable, checked?, value?, bbox}  (the explicit actionability read)
     - click(selector, by="css") -> {clicked, checked?}
     - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
+    - clear(selector) -> {value:"", ok}
     - select(selector, value) -> {selected, value, ok}
+    - focus(selector) / blur(selector) -> {focused}
+    - hover(selector, reveals=None) -> {hovered, revealed?}
     - scroll(selector=None | scroll_by={x,y}) -> {ok}
     - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger)
-    - accessibility_tree() -> {nodes:[{role, name, value}]}  (semantic snapshot)
+    - upload(selector, files=[path,...]) -> {uploaded, files, ok}  (paths are on
+      cua's OS; cua rewrites them to the browser's OS automatically)
+    - dialog(action="accept"|"dismiss", text=None, arm=True) -> {armed}  (ARM
+      BEFORE the op that pops the JS dialog — it pauses the renderer synchronously)
+    - snapshot(selector=None, roles=None, cursor=None, limit=50)
+      -> {nodes:[{role, name, state, value, ref}], next_cursor?}  (paginated AX,
+      pierces shadow DOM + frames; supersedes accessibility_tree)
+    - use_target(mode="owned"|"attach", window_id=None, tab_id=None)
+      -> {browser, window_id, tab_id, created}  (pin the session target)
     - cookies(action="get"|"set"|"clear", url, name, value)
     - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
 
+    `screenshot` is NOT a browser op — it is a separate pixel tool. Call the
+    top-level `screenshot` tool to see the page.
+
+    TARGETING: by default the agent acts on its own dedicated window (opened in
+    your real profile), pinned by id, so focus changes never move the target. Use
+    `use_target(mode="attach")` to act on the tab you are currently looking at. If
+    the pinned tab/window is closed the op fails with `target_lost` (terminal) —
+    it never silently grabs your active tab.
+
     VERIFY EVERY MUTATING OP — the DOM is the ground truth; never assume an
     action worked (this is the web equivalent of screenshot-before/after):
-    - type/fill -> check the returned `ok` (or get_attribute(selector,"value")
-      equals what you typed).
-    - checkbox/radio click -> the returned `checked` (or get_attribute
-      "checked") flipped to the state you intended.
-    - select -> the returned `ok` (or get_attribute(selector,"value") is the
-      chosen option).
+    - type/fill/clear -> check the returned `ok` (or get_value/get_attribute).
+    - checkbox/radio click -> the returned `checked` flipped as intended.
+    - select -> the returned `ok` (or get_value is the chosen option).
+    - upload -> the returned `ok` (input's files.length matched).
     - a click that should change the page -> wait_for the expected element, then
       read_text/query to confirm the new state; a click that navigates returns
       {navigated, url} — confirm the destination is right.
@@ -579,19 +610,25 @@ def browser(
 
     ACTIONABILITY: a mutating op refuses a non-actionable target (hidden / covered
     / disabled) with op_failed — act on the VISIBLE element, not a hidden mirror
-    (e.g. some pages have a hidden form-field twin of the real editor). Pass
-    force=True only to bypass this for a deliberately-hidden real control.
+    (e.g. some pages have a hidden form-field twin of the real editor). Use
+    element_state(selector) to check first. Pass force=True only to bypass this
+    for a deliberately-hidden real control.
 
-    On a terminal browser error (not set up / not connected / op unsupported)
-    the tool raises with a guided pixel fallback — prefer this tool; degrade to
-    the pixel tools only when it says so.
+    On a terminal browser error (not set up / not connected / op unsupported /
+    target lost) the tool raises with a guided pixel fallback — prefer this tool;
+    degrade to the pixel tools only when it says so.
     """
     params = {
         "url": url, "selector": selector, "name": name, "text": text,
         "value": value, "state": state, "wait": wait, "action": action,
         "all": all, "clear": clear, "submit": submit, "timeout": timeout,
-        "key": key, "force": force,
+        "key": key, "force": force, "mode": mode, "window_id": window_id,
+        "tab_id": tab_id, "reveals": reveals, "files": files, "roles": roles,
+        "cursor": cursor, "limit": limit,
     }
+    # `arm` defaults True and is only meaningful for `dialog`; pass it there.
+    if op == "dialog":
+        params["arm"] = arm
     # `by` is the css/xpath selector mode for most ops, but the {x,y} offset for
     # `scroll`. The MCP surface keeps them distinct (`by` vs `scroll_by`); the
     # op handler reads `by` either way.

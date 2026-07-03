@@ -55,6 +55,17 @@ SUPPORTED_OPS: tuple[str, ...] = (
     # CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
     "press",
     "accessibility_tree",
+    # 0.5.0 — session targeting + the remaining interaction ops (additive).
+    "use_target",
+    "hover",
+    "dialog",
+    "upload",
+    "element_state",
+    "focus",
+    "blur",
+    "clear",
+    "get_value",
+    "snapshot",
 )
 
 
@@ -71,6 +82,7 @@ class BrowserErrorCode(str, Enum):
     PROTO_MISMATCH = "proto_mismatch"  # envelope versions incompatible
     WAKING = "waking"                  # session existed; SW asleep (retryable)
     OP_FAILED = "op_failed"            # op ran in-page but failed
+    TARGET_LOST = "target_lost"        # pinned tab/window closed (terminal)
 
 
 # Codes that are transient and worth an automatic retry. Everything else is
@@ -148,16 +160,34 @@ def op_message(msg_id: int, op: str, params: dict[str, Any]) -> dict[str, Any]:
     return {"type": "op", "id": msg_id, "op": op, "params": params}
 
 
+# Wire error codes the extension can raise that map to a specific taxonomy code.
+# Anything unrecognized degrades to OP_FAILED (an in-page failure).
+_WIRE_CODES: dict[str, BrowserErrorCode] = {
+    "target_lost": BrowserErrorCode.TARGET_LOST,
+    "op_unsupported": BrowserErrorCode.OP_UNSUPPORTED,
+}
+
+# Per-code remediation for terminal errors surfaced from the extension.
+_WIRE_REMEDIATION: dict[BrowserErrorCode, str] = {
+    BrowserErrorCode.TARGET_LOST: (
+        "re-run `use_target` to pin a tab, or it will re-open in owned mode"
+    ),
+}
+
+
 def parse_result(msg: dict[str, Any]) -> Any:
     """Unwrap a result envelope.
 
-    Returns the ``result`` payload on success; raises ``BrowserError`` with
-    code ``OP_FAILED`` (carrying the page-level reason) on failure.
+    Returns the ``result`` payload on success; raises ``BrowserError`` on
+    failure. A recognized wire ``error.code`` (e.g. ``target_lost``) maps to its
+    taxonomy code with remediation; anything else is ``OP_FAILED``.
     """
     if msg.get("ok"):
         return msg.get("result")
     err = msg.get("error") or {}
+    code = _WIRE_CODES.get(str(err.get("code", "")), BrowserErrorCode.OP_FAILED)
     raise BrowserError(
-        BrowserErrorCode.OP_FAILED,
+        code,
         str(err.get("message", "operation failed")),
+        remediation=_WIRE_REMEDIATION.get(code),
     )

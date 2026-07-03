@@ -31,6 +31,17 @@ export const SUPPORTED_OPS = [
   // CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
   "press",
   "accessibility_tree",
+  // 0.5.0 — session targeting + the remaining interaction ops (additive).
+  "use_target",
+  "hover",
+  "dialog",
+  "upload",
+  "element_state",
+  "focus",
+  "blur",
+  "clear",
+  "get_value",
+  "snapshot",
 ] as const;
 
 export type OpName = (typeof SUPPORTED_OPS)[number];

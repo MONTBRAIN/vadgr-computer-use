@@ -36,7 +36,13 @@ export class Router {
       const result = await handler(msg.params ?? {});
       return okResult(msg.id, result);
     } catch (e) {
-      return errResult(msg.id, "op_failed", e instanceof Error ? e.message : String(e));
+      // A thrown error may carry its own wire code (e.g. TargetLost → target_lost);
+      // otherwise it is a generic in-page op failure.
+      const code =
+        e && typeof e === "object" && typeof (e as any).code === "string"
+          ? (e as any).code
+          : "op_failed";
+      return errResult(msg.id, code, e instanceof Error ? e.message : String(e));
     }
   }
 }
