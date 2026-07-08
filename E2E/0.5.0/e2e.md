@@ -210,6 +210,18 @@ Status notes:
   Findings 3–4 do not change the Part T/A/B verdicts above (all confirmed in pass
   1 and re-confirmed in pass 2 up to the YouTube-tab interaction).
 
+  **Third pass, after the finding-3 teardown fix (extension reloaded + cua
+  session restarted):** the restart itself exercised the teardown→reconnect path
+  (old server died → socket closed → extension re-bonded → `connected:true`,
+  clean ops) — i.e. finding 3's fix verified by equivalence. Then re-ran Part A
+  A1–A9 (9/9 ✅) and the read-only Part B (B3/B4/B7 ✅) through fresh subagents:
+  ~15 ops with zero desync/hang/stale-reply, replies correctly id-correlated
+  throughout. A fully on-demand 45s-timeout repro was not forced — the only
+  reliable trigger (a `beforeunload`-paused renderer) needs prior user activation
+  and leaves a persistent dialog that would re-stall the tab, so it is left to
+  0.6.0's dialog/window controls. Side-effect B-tests (B1 email, B5 cart, B2
+  YouTube, B6 Flights) were not re-run — all green in pass 1.
+
   **Bugs found and fixed on this branch (e2e caught them):**
   1. **Reply desync / off-by-one (correctness).** The native-pipe request loop
      matched replies by arrival order, never by id: `parse_result` ignored the
