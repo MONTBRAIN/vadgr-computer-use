@@ -269,10 +269,17 @@ Status notes:
   fields, no route in the URL; real fares, cheapest 622,390 COP), B2 YouTube Music
   ✅ (player time advanced 0:16→0:19, toggle "Pausar"); B1 Gmail ✅ (live send,
   recipient chip committed + "Mensaje enviado" toast — no regression); B5 Amazon
-  **blocked** (Amazon served the automated session a degraded product page with no
-  standard buybox — `#add-to-cart-button` not rendered on either the `/-/es/` or the
-  clean `/dp/` URL; `element_state` correctly raised on the absent node — anti-bot /
-  layout variance, same as the 0.4.0 26.04 run, not a tier regression). Recovering
+  **blocked (login)** — root cause chased down: it is **not** anti-bot. The first
+  result (an Anker cable) simply **does not ship to Colombia**, so Amazon renders no
+  buybox (`#add-to-cart-button` absent; `element_state` correctly raised). A
+  Colombia-available product (Amazon Basics AAA, priced in COP, `B07KX2N355`) **does**
+  render the buybox (`element_state` → visible/receives_events/enabled), the
+  `add-to-cart` op clicks cleanly and the confirmation panel appears — but it reads
+  "Lo sentimos, hubo un problema" because this Chrome is **not signed into Amazon**
+  (`#nav-link-accountList-nav-line-1` = "Hola, Identifícate", guest cart). That is a
+  login-blocked situation per this runbook's legend, not a tier regression; every
+  browser-tier op (navigate/query/element_state/click/wait_for/read_text) worked
+  cleanly with zero desync. Recovering
   to run B1/B5 after B2 also exercised finding 3/4 live: navigating away from the
   YouTube `beforeunload` tab stalled → the teardown fix dropped the socket → the
   extension reconnected → `use_target attach` pinned a fresh tab, escaping the
