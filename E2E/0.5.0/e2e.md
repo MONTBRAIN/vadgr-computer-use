@@ -80,9 +80,13 @@ Each is a goal-level task; the outcome is judged from the stream.
 - **T9 query cap / pagination.** On `/large` (a big table), `query` a broad
   selector; expect a **capped, paginated** result with a `next_cursor`, not a
   multi-tens-of-thousands-char blob (the 0.4.0 token-budget blowout).
-- **T10 target_lost.** Close the owned window mid-task; expect a terminal
-  `target_lost` error with remediation — the tier must **never** silently retarget
-  the user's active tab.
+- **T10 target_lost.** 0.5.0 has **no `close` op** — window/tab management
+  (open/focus/close/switch) lands in **0.6.0** (browser round 3). `target_lost` is
+  designed to fire when the *user* closes the owned window, so trigger it that way:
+  **manually close the owned window** (click its X) mid-task. Do **not** pixel-close
+  it — a coordinate mis-hit could close one of your real tabs. Expect a terminal
+  `target_lost` error with remediation on the next op; the tier must **never**
+  silently retarget the user's active tab.
 - **T11 screenshot guidance.** Call `browser(op="screenshot")`; expect the "that's
   the pixel `screenshot` tool, not a `browser` op" guidance, not a crash.
 
