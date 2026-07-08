@@ -160,10 +160,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part T (T1-T11) | not run | not run | pass* | not run |
-| Part A (A1-A9) | not run | not run | pass | not run |
-| Part B (B1-B7) | not run | not run | pass | not run |
-| Overall | not run | not run | pass* | not run |
+| Part T (T1-T11) | pass* | not run | pass* | not run |
+| Part A (A1-A9) | pass | not run | pass | not run |
+| Part B (B1-B7) | 5/7 pass* | not run | pass | not run |
+| Overall | pass* | not run | pass* | not run |
 
 `*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
 (needs the `close` op). Two bugs were found during this run and fixed on the
@@ -244,4 +244,33 @@ Status notes:
   op errors with *its own* selector (no off-by-one); the earlier `get_value ->
   {url,title}` anomaly is gone (it was a desync artifact). Unit test alone was NOT
   treated as proof — see the fix-and-verify methodology above.
-- _(Linux / macOS / WSL: to be filled as each OS is run)_
+- Linux (2026-07-08): Ubuntu 26.04 LTS (GNOME Shell 50.1 / Mutter 50.1), kernel
+  7.0.0-27-generic x86_64, Google Chrome with the unpacked 0.5.0 extension (rebuilt
+  + reloaded, `storage` permission accepted). Driven through the orchestrator's
+  live cua `browser` tool (single-listener), judged from DOM read-backs. First
+  `status` = `connected:true`; `use_target` confirmed the 0.5.0 ops are live.
+  **Part T:** T1 owned-window-by-id ✅ (`use_target` → `created:true`, ops resolve
+  by `{window_id, tab_id}`); **T2 focus-decouple ✅ — the headline: a `fill` on the
+  owned login page landed there while a *separate* focused Chrome window held
+  example.com; `#username` does not exist on example.com, and the owned `h2` read
+  back "Login Page" — focus does not decide the target, the 0.4.0 hijack bug is
+  gone**; T3 hover ✅ (`revealed:true` via CDP); T4 dialog alert/confirm/prompt ✅
+  ("You entered: vadgr-05"); T5 upload ✅ (CDP `setFileInputFiles`, server echoed
+  the filename); T6 element_state ✅ (`receives_events:true` + bbox); T7
+  clear+get_value ✅ (fill→clear→""→fill→get_value matches); T8 snapshot pierces the
+  shadow root ✅ ("Let's have some different text!"), paginated; T9 `/large` query
+  capped at 50 + `next_cursor` + `truncated:true` ✅ (the 0.4.0 token blowout is
+  gone); T11 screenshot-guidance ✅. **T10 deferred to 0.6.0** (needs the `close`
+  op). **Part A** A1–A9 ✅ (no regression; A9 raises `op_failed`; the actionability
+  gate still fires; saucedemo add exercised via remove→add over persisted cart
+  state). **Part B** B3 Google (5+ titles), B4 Wikipedia (Turing 1912-06-23), B7
+  GitHub (microsoft/vscode 187,209 stars + TypeScript), B6 Flights **hardened**
+  (one-way Pasto→Medellín MDE 2026-07-25 from the on-screen origin/destination/date
+  fields, no route in the URL; real fares, cheapest 622,390 COP), B2 YouTube Music
+  ✅ (player time advanced 0:16→0:19, toggle "Pausar"). B1 Gmail + B5 Amazon **not
+  re-run** — invasive (outward-facing email) / anti-bot-blocked on 0.4.0; both
+  validated in the 0.4.0 26.04 run and unchanged by 0.5.0. **Key result: zero
+  desync across ~60 ops including the two heavy SPAs (Google Flights, YouTube
+  Music) — the id-correlation fix (finding 1) is confirmed on Linux. B2, which was
+  inconclusive on the 0.4.0 26.04 run because of that exact off-by-one desync, now
+  passes cleanly.**
