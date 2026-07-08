@@ -162,7 +162,7 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 |---|---|---|---|---|
 | Part T (T1-T11) | pass* | not run | pass* | not run |
 | Part A (A1-A9) | pass | not run | pass | not run |
-| Part B (B1-B7) | 5/7 pass* | not run | pass | not run |
+| Part B (B1-B7) | 6/7 pass* | not run | pass | not run |
 | Overall | pass* | not run | pass* | not run |
 
 `*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
@@ -267,9 +267,17 @@ Status notes:
   GitHub (microsoft/vscode 187,209 stars + TypeScript), B6 Flights **hardened**
   (one-way Pasto→Medellín MDE 2026-07-25 from the on-screen origin/destination/date
   fields, no route in the URL; real fares, cheapest 622,390 COP), B2 YouTube Music
-  ✅ (player time advanced 0:16→0:19, toggle "Pausar"). B1 Gmail + B5 Amazon **not
-  re-run** — invasive (outward-facing email) / anti-bot-blocked on 0.4.0; both
-  validated in the 0.4.0 26.04 run and unchanged by 0.5.0. **Key result: zero
+  ✅ (player time advanced 0:16→0:19, toggle "Pausar"); B1 Gmail ✅ (live send,
+  recipient chip committed + "Mensaje enviado" toast — no regression); B5 Amazon
+  **blocked** (Amazon served the automated session a degraded product page with no
+  standard buybox — `#add-to-cart-button` not rendered on either the `/-/es/` or the
+  clean `/dp/` URL; `element_state` correctly raised on the absent node — anti-bot /
+  layout variance, same as the 0.4.0 26.04 run, not a tier regression). Recovering
+  to run B1/B5 after B2 also exercised finding 3/4 live: navigating away from the
+  YouTube `beforeunload` tab stalled → the teardown fix dropped the socket → the
+  extension reconnected → `use_target attach` pinned a fresh tab, escaping the
+  wedged YouTube target (the self-heal path works; the wedge itself is the known
+  finding-4 limitation deferred to 0.6.0). **Key result: zero
   desync across ~60 ops including the two heavy SPAs (Google Flights, YouTube
   Music) — the id-correlation fix (finding 1) is confirmed on Linux. B2, which was
   inconclusive on the 0.4.0 26.04 run because of that exact off-by-one desync, now
