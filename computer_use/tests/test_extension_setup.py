@@ -248,3 +248,28 @@ class TestWSLRegistration:
         )
         assert result["platform"] == "linux"
         assert chrome.exists()
+
+
+class TestWslAutoDetection:
+    def test_ensure_registered_auto_selects_wsl_on_wsl2(self, tmp_path, monkeypatch):
+        # Issue #19: sys.platform is "linux" on WSL2, so ensure_registered must
+        # resolve the platform via detect_platform() and take the WSL branch
+        # WITHOUT an explicit platform= argument.
+        from computer_use.platform.detect import Platform
+
+        monkeypatch.setattr(
+            "computer_use.platform.detect.detect_platform",
+            lambda: Platform.WSL2,
+        )
+        chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
+        reg_calls: list[tuple[str, str]] = []
+        result = S.ensure_registered(
+            paths={"chrome": chrome},
+            host_path="C:\\Users\\alice\\relay.exe",
+            registry_writer=lambda k, v: reg_calls.append((k, v)),
+            relay_installer=lambda windows_user=None: None,
+            # no platform= : must auto-detect WSL2
+        )
+        assert result["platform"] == "wsl"
+        assert chrome.exists()
+        assert reg_calls  # WSL branch wrote the Windows registry key
