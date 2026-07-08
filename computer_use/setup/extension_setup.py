@@ -206,7 +206,13 @@ def reg_exe_writer(subkey: str, value: str, *, runner=None) -> None:
     if runner is None:  # pragma: no cover - real interop
         import subprocess
 
-        subprocess.run(argv, check=False, capture_output=True, timeout=10)
+        subprocess.run(
+            argv, check=False, capture_output=True, timeout=10,
+            # Never inherit fd 0: this reg.exe runs at startup on WSL (the #19
+            # auto-registration path), and a child holding fd 0 (the stdio MCP
+            # JSON-RPC pipe) stalls `initialize` — same class as #18.
+            stdin=subprocess.DEVNULL,
+        )
     else:
         runner(argv)
 

@@ -273,3 +273,23 @@ class TestWslAutoDetection:
         assert result["platform"] == "wsl"
         assert chrome.exists()
         assert reg_calls  # WSL branch wrote the Windows registry key
+
+    def test_reg_exe_writer_does_not_inherit_stdin(self, monkeypatch):
+        # Issue #18 (broadened): the reg.exe registration runs at startup on WSL
+        # (the #19 auto-register path), so it must not inherit fd 0 — the stdio
+        # MCP JSON-RPC pipe — or `initialize` hangs. Must pass DEVNULL.
+        import subprocess
+
+        captured: dict = {}
+
+        def fake_run(argv, **kwargs):
+            captured["kwargs"] = kwargs
+
+            class _R:
+                returncode = 0
+
+            return _R()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        S.reg_exe_writer("Software\\Google\\Chrome\\X", "C:\\path\\m.json")
+        assert captured["kwargs"].get("stdin") is subprocess.DEVNULL
