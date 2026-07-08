@@ -85,15 +85,33 @@ async function targetTab(): Promise<chrome.tabs.Tab> {
   return tab;
 }
 
-function tabComplete(tabId: number): Promise<void> {
+// How long to wait for a navigation to settle before returning whatever state
+// the tab reached. A heavy SPA — or a tab that never reports "complete" — must
+// NOT block the op, and thus the whole single-lock native pipe, forever.
+const NAV_SETTLE_TIMEOUT_MS = 15000;
+
+// Resolve when the navigation settles, always bounded by a timeout. `wait`
+// mirrors cua's navigate wait: "none" returns immediately; anything else waits
+// for tab status "complete". (Chrome's tabs API doesn't surface
+// DOMContentLoaded, so "domcontentloaded" shares the "complete" path but is
+// still time-bounded.) On timeout we resolve — the caller reads the tab's
+// actual url/title — rather than hanging.
+function tabComplete(tabId: number, wait?: string): Promise<void> {
+  if (wait === "none") return Promise.resolve();
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve();
+    };
     const listener = (id: number, info: chrome.tabs.TabChangeInfo) => {
-      if (id === tabId && info.status === "complete") {
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }
+      if (id === tabId && info.status === "complete") finish();
     };
     chrome.tabs.onUpdated.addListener(listener);
+    const timer = setTimeout(finish, NAV_SETTLE_TIMEOUT_MS);
   });
 }
 
@@ -249,7 +267,7 @@ const tabsExecutor: Executor = {
       case "navigate": {
         const tab = await targetTab();
         await chrome.tabs.update(tab.id!, { url: String(p.url) });
-        await tabComplete(tab.id!);
+        await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
       }
       case "back":
@@ -259,7 +277,7 @@ const tabsExecutor: Executor = {
       case "reload": {
         const tab = await targetTab();
         await chrome.tabs.reload(tab.id!);
-        await tabComplete(tab.id!);
+        await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
       }
       case "cookies":

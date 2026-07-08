@@ -28,6 +28,34 @@ confirming read-back is a fail. One subagent at a time, never in parallel.
 > orchestrator's live cua connection, one naive goal-level subagent at a time,
 > judged from verbatim read-backs (same no-parallel, DOM-as-ground-truth rules).
 
+## When a test surfaces a bug: fix it, then push to the PR branch
+
+The e2e exists to *find* bugs, so finding one is a success, not a blocker. The
+procedure when a run surfaces a real defect (a hang, a wrong read-back, a
+silent success, a desync) is:
+
+1. **Stop and root-cause it in the source** — cite the file:line, not a guess.
+   A flaky environment is not a root cause; confirm it in the code.
+2. **Fix it on this PR branch** (`feat/0.5.0-browser-round2`): change the code,
+   add or extend a unit test that would have caught it, and rebuild the
+   extension if the fix is extension-side.
+3. **Verify the fix end-to-end — a unit test is NOT enough.** A green unit test
+   proves the logic in isolation; it does NOT prove the live native-messaging
+   pipe is fixed. The fix is only "verified" once you **restart the cua session
+   (load the rebuilt server) and reload the extension, then re-drive the exact
+   scenario that failed** and watch the real read-back come back correct. Until
+   that end-to-end re-run passes, the fix is "written", not "verified".
+4. **Record the finding** in the per-OS status note below: what broke, the
+   root cause (file:line), the fix commit, AND the end-to-end re-run that
+   confirmed it.
+5. **Commit and push to the PR branch** so the fix ships with the feature, then
+   resume the run from where it stopped.
+
+Do NOT paper over a bug by changing the test to avoid it, do NOT claim a fix
+works on the strength of a unit test alone, and do NOT mark a tier `pass` with a
+known unfixed defect — record it `fail` with the finding until the fix is
+verified end-to-end.
+
 ## Prerequisites (per OS)
 
 1. Install cua from **this branch** into a venv: `pip install .`
@@ -71,8 +99,12 @@ Each is a goal-level task; the outcome is judged from the stream.
   `{visible, enabled, focused, editable, receives_events, bbox}` with
   `receives_events` present (the CDP hit-test), not just the DOM flags.
 - **T7 clear + get_value.** Type into an input, `clear` it (read-back `""`), type
-  again, `get_value` (matches). Also `get_value` on a contenteditable / custom
-  widget via the CDP path.
+  again, `get_value` (matches). Also `get_value` on a **top-level** custom widget
+  (a `contenteditable` div, or a `role=combobox/slider`) via the CDP path. NOTE:
+  `get_value` is top-document-scoped by design — it does NOT pierce iframes, so a
+  rich editor embedded in an iframe (e.g. TinyMCE at `/tinymce`) is read via
+  `snapshot` (T8), not `get_value`. Use a real `https://` fixture, not a `data:`
+  URL (the latter trips the permission gate).
 - **T8 snapshot + pierce.** On `/shadowdom`, `snapshot` the tree; expect nodes
   from **inside the shadow root** (pierced), each with role/name/state/ref. Confirm
   `snapshot` supersedes `accessibility_tree` (both present in `supported_ops`,
@@ -124,4 +156,35 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 | Overall | not run | not run | not run | not run |
 
 Status notes:
-- _(to be filled as each OS is run)_
+- Windows native (2026-07-08, in progress): Windows 11 Pro 25H2 (build 26200.8655,
+  x64), Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through
+  the orchestrator's live cua connection (single-listener methodology). Part T so
+  far: T1 owned-window-by-id ✅, T2 focus-decouple ✅ (ops stayed on the owned
+  window while a different Chrome window held focus — the 0.4.0 hijack bug is
+  gone), T3 hover ✅, T4 dialog (alert/confirm/prompt) ✅, T5 upload ✅, T6
+  element_state (with `receives_events`) ✅, T7 input clear+get_value ✅, T8
+  snapshot pierces the TinyMCE iframe + paginates ✅. T9–T11 + Parts A/B pending.
+
+  **Bugs found and fixed on this branch (e2e caught them):**
+  1. **Reply desync / off-by-one (correctness).** The native-pipe request loop
+     matched replies by arrival order, never by id: `parse_result` ignored the
+     `id` (protocol.py) and `TcpBrowserSession.request` read exactly one frame
+     (server.py). A single stray frame — a reconnect `hello`, or a late reply
+     from a timed-out op — permanently shifted every subsequent reply by one
+     (observed: `use_target` returning a prior op's selector error). Fix:
+     `request` now reads until the frame whose `id` matches, discarding stray
+     `hello`/stale-result frames (server.py `_read_reply`); regression test in
+     `test_browser_server.py::test_request_matches_reply_by_id_skipping_stray_frames`.
+  2. **Unbounded navigation hang (robustness).** `tabComplete` (extension
+     `ops.ts`) waited for tab status `complete` with no timeout and ignored the
+     `wait` param, so a heavy page (`/tinymce`) that never promptly reports
+     `complete` hung the op — and, under the one lock, the whole pipe. Fix: bound
+     `tabComplete` with a 15s settle timeout and honor `wait` (`none` returns
+     immediately); plus a 45s per-op socket read backstop on the cua side
+     (server.py) so a missing reply is a terminal `op_failed`, never a silent hang.
+  **End-to-end verified** (rebuilt server + reloaded extension, re-drove the exact
+  failure): `/tinymce` `wait=load` now returns promptly (no hang); a bogus-selector
+  op errors with *its own* selector (no off-by-one); the earlier `get_value ->
+  {url,title}` anomaly is gone (it was a desync artifact). Unit test alone was NOT
+  treated as proof — see the fix-and-verify methodology above.
+- _(Linux / macOS / WSL: to be filled as each OS is run)_

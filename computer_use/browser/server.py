@@ -125,36 +125,90 @@ class TcpBrowserSession(BrowserSession):
     """A live session backed by one TCP connection to the shim.
 
     ``request`` sends an op envelope and blocks for the matching ``result``.
-    The extension serializes ops over the one native port, so a per-connection
-    lock + a monotonic id is enough; replies arrive in order.
+    Ops are serialized over the one native port under a per-connection lock, but
+    the reply stream is NOT guaranteed 1:1 — a reconnect ``hello`` or a late
+    result can appear — so ``request`` matches the reply by ``id`` (see
+    ``_read_reply``) rather than trusting arrival order, and a per-op socket
+    timeout keeps a stuck tab from hanging the pipe.
     """
 
+    # Per-op read backstop. The extension bounds navigation itself, so this only
+    # trips when a reply never arrives at all (tab/window vanished mid-op). It
+    # must be terminal, never a silent hang of the whole single-lock pipe.
+    _OP_TIMEOUT_S = 45.0
+
     def __init__(self, conn_file, *, browser: str, ext_version: str,
-                 supported_ops: list[str]) -> None:
+                 supported_ops: list[str],
+                 sock: socket.socket | None = None) -> None:
         super().__init__(browser=browser, ext_version=ext_version,
                          supported_ops=supported_ops)
         self._file = conn_file
+        self._sock = sock
         self._lock = threading.Lock()
         self._next_id = 0
+        self._alive = True
+        # Bound each op read so a stuck/closed tab cannot hang the pipe forever.
+        if sock is not None:
+            sock.settimeout(self._OP_TIMEOUT_S)
 
     def request(self, op: str, params: dict[str, Any]) -> Any:
         with self._lock:
+            if not self._alive:
+                raise BrowserError(
+                    BrowserErrorCode.NOT_CONNECTED,
+                    "browser session is closed; reconnect the extension",
+                )
             self._next_id += 1
             msg_id = self._next_id
             try:
                 write_message(self._file, op_message(msg_id, op, params))
-                reply = read_message(self._file)
+                reply = self._read_reply(msg_id)
+            except socket.timeout:
+                # Connection is still up (a late reply gets id-skipped by the
+                # next op), so don't kill the session — fail this op loudly.
+                raise BrowserError(
+                    BrowserErrorCode.OP_FAILED,
+                    f"browser op {op!r} timed out after "
+                    f"{self._OP_TIMEOUT_S:.0f}s with no reply; the tab may be "
+                    "stuck loading or was closed mid-op",
+                    remediation="reload the tab, or re-run use_target to re-pin",
+                )
             except (OSError, ValueError) as e:
+                self._alive = False
                 raise BrowserError(
                     BrowserErrorCode.NOT_CONNECTED,
                     f"browser session connection lost: {e}",
                 ) from e
         if reply is None:
+            self._alive = False
             raise BrowserError(
                 BrowserErrorCode.NOT_CONNECTED,
                 "browser session closed before replying",
             )
         return parse_result(reply)
+
+    def _read_reply(self, msg_id: int) -> dict[str, Any] | None:
+        """Read frames until the *result for msg_id* arrives.
+
+        The op stream is NOT a clean 1:1 request/reply channel: the extension
+        re-posts a ``hello`` whenever the MV3 service worker reconnects, and an
+        op that already timed out on our side can deliver its result late. Match
+        strictly on ``type == "result"`` AND ``id == msg_id`` and DISCARD
+        anything else, so a single stray/late frame can never permanently
+        desync every subsequent reply (the off-by-one this guards against).
+        """
+        while True:
+            reply = read_message(self._file)
+            if reply is None:
+                return None
+            if reply.get("type") != "result":
+                # A control frame (e.g. a reconnect `hello`) — not an op reply.
+                continue
+            rid = reply.get("id")
+            if rid is not None and rid != msg_id:
+                # A late/duplicate result for an earlier op — drop it.
+                continue
+            return reply
 
 
 class BrowserServer:
@@ -216,14 +270,14 @@ class BrowserServer:
         conn.settimeout(None)
         conn_file = conn.makefile("rwb")
         try:
-            self._handshake(conn_file)
+            self._handshake(conn, conn_file)
         except (OSError, ValueError, BrowserError):
             try:
                 conn_file.close()
             finally:
                 conn.close()
 
-    def _handshake(self, conn_file) -> None:
+    def _handshake(self, conn: socket.socket, conn_file) -> None:
         """auth -> cua hello -> extension hello -> register session."""
         # First frame may be an auth frame; if a token is in play it is required.
         first = read_message(conn_file)
@@ -248,6 +302,7 @@ class BrowserServer:
             browser=hello.browser or "chrome",
             ext_version=hello.ext_version,
             supported_ops=hello.supported_ops,
+            sock=conn,
         )
         self.bridge.register_session(session)
 
