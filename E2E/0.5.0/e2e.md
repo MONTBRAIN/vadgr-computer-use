@@ -119,6 +119,16 @@ Each is a goal-level task; the outcome is judged from the stream.
   it — a coordinate mis-hit could close one of your real tabs. Expect a terminal
   `target_lost` error with remediation on the next op; the tier must **never**
   silently retarget the user's active tab.
+
+  **DEFERRED to 0.6.0 — skipped this run.** Observed 2026-07-08 (Windows native):
+  after a manual owned-window close, the next op does **not** raise `target_lost`
+  — owned mode silently **re-establishes** a fresh owned window (`use_target` →
+  `created:true`; the op ran against a new blank page, not the closed one). That
+  is *safe* — it never grabbed the user's active tab, so the "never retarget the
+  user's tab" property holds — but it is not the terminal signal this test
+  asserts. A clean `target_lost` assertion needs `use_target attach` on a pinned
+  tab plus a real `close` op to end it deterministically, both of which mature in
+  **0.6.0** (browser round 3). Re-test T10 there; skipped until then.
 - **T11 screenshot guidance.** Call `browser(op="screenshot")`; expect the "that's
   the pixel `screenshot` tool, not a `browser` op" guidance, not a crash.
 
@@ -150,20 +160,55 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part T (T1-T11) | not run | not run | not run | not run |
-| Part A (A1-A9) | not run | not run | not run | not run |
-| Part B (B1-B7) | not run | not run | not run | not run |
-| Overall | not run | not run | not run | not run |
+| Part T (T1-T11) | not run | not run | pass* | not run |
+| Part A (A1-A9) | not run | not run | pass | not run |
+| Part B (B1-B7) | not run | not run | pass | not run |
+| Overall | not run | not run | pass* | not run |
+
+`*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
+(needs the `close` op). Two bugs were found during this run and fixed on the
+branch before `pass` was recorded — see the finding + fix below.
 
 Status notes:
-- Windows native (2026-07-08, in progress): Windows 11 Pro 25H2 (build 26200.8655,
-  x64), Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through
-  the orchestrator's live cua connection (single-listener methodology). Part T so
-  far: T1 owned-window-by-id ✅, T2 focus-decouple ✅ (ops stayed on the owned
-  window while a different Chrome window held focus — the 0.4.0 hijack bug is
-  gone), T3 hover ✅, T4 dialog (alert/confirm/prompt) ✅, T5 upload ✅, T6
-  element_state (with `receives_events`) ✅, T7 input clear+get_value ✅, T8
-  snapshot pierces the TinyMCE iframe + paginates ✅. T9–T11 + Parts A/B pending.
+- Windows native (2026-07-08): Windows 11 Pro 25H2 (build 26200.8655, x64),
+  Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through the
+  orchestrator's live cua connection (single-listener methodology): Part T op
+  gates directly, Parts A/B via naive goal-level subagents one at a time.
+  **Part T:** T1 owned-window-by-id ✅, T2 focus-decouple ✅ (ops stayed on the
+  owned window while a different Chrome window held focus — the 0.4.0 hijack bug
+  is gone), T3 hover ✅, T4 dialog (alert/confirm/prompt) ✅, T5 upload ✅, T6
+  element_state (with `receives_events`) ✅, T7 input clear+get_value ✅ (get_value
+  is top-document-scoped — iframe editors read via snapshot), T8 snapshot pierces
+  the TinyMCE iframe + paginates ✅, T9 `/large` query capped+paginated
+  (`next_cursor`) ✅, T11 screenshot-guidance ✅; **T10 deferred to 0.6.0** (needs
+  the `close` op). **Part A** A1–A9 ✅ (0.4.0 acceptance re-run, no regression; A9
+  raises). **Part B** B1–B7 ✅ (live Gmail send verified by "Mensaje enviado" +
+  Sent row; B6 Flights driven from on-screen fields, no URL route, real fares;
+  B2 player time advanced).
+
+  **Second confirmation pass — surfaced two more findings (one fixed, one noted):**
+  Pass 2 reused the owned window that B2 left on YouTube Music (playing). That
+  exposed:
+  3. **Session did not self-heal after an op timeout (robustness — FIXED).**
+     Navigating away from the playing YouTube Music tab stalled (its
+     `beforeunload` pauses the renderer), so the op hit the 45s read backstop —
+     good, no infinite hang — but the socket-timeout left cua's buffered reader
+     unrecoverable (`cannot read from timed out object`) and the session wedged
+     dead, because cua never dropped the connection to let the extension
+     reconnect. Fix: `TcpBrowserSession._teardown()` now closes the connection on
+     timeout/read-error, so the native-host relay hits EOF, the extension's port
+     disconnects, and MV3 reconnects with a fresh session that replaces the dead
+     one. (server.py.)
+  4. **Navigate away from a `beforeunload` page returns the stale URL (noted, not
+     yet fixed).** `navigate` reported `{url: <old youtube url>}` as if it
+     succeeded while the `beforeunload` prompt silently blocked the real
+     navigation. `navigate` should auto-accept the `beforeunload` (or report the
+     block) rather than return a stale-but-success-looking URL. Tracked for a
+     navigate-hardening / the 0.6.0 window-management work. Practical mitigation
+     today: the runbook already says run B2 (YouTube) LAST because it leaves a
+     playing tab — don't drive that tab afterward in the same session.
+  Findings 3–4 do not change the Part T/A/B verdicts above (all confirmed in pass
+  1 and re-confirmed in pass 2 up to the YouTube-tab interaction).
 
   **Bugs found and fixed on this branch (e2e caught them):**
   1. **Reply desync / off-by-one (correctness).** The native-pipe request loop

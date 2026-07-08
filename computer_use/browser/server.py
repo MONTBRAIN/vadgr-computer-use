@@ -164,28 +164,49 @@ class TcpBrowserSession(BrowserSession):
                 write_message(self._file, op_message(msg_id, op, params))
                 reply = self._read_reply(msg_id)
             except socket.timeout:
-                # Connection is still up (a late reply gets id-skipped by the
-                # next op), so don't kill the session — fail this op loudly.
+                # A socket-timeout leaves the buffered reader unrecoverable, so
+                # the session can't continue. Tear the connection down: that
+                # drops the extension's native port and MV3 reconnects with a
+                # fresh session, instead of leaving a dead one wedged forever.
+                self._teardown()
                 raise BrowserError(
                     BrowserErrorCode.OP_FAILED,
                     f"browser op {op!r} timed out after "
-                    f"{self._OP_TIMEOUT_S:.0f}s with no reply; the tab may be "
-                    "stuck loading or was closed mid-op",
-                    remediation="reload the tab, or re-run use_target to re-pin",
+                    f"{self._OP_TIMEOUT_S:.0f}s; the tab was stuck (e.g. a "
+                    "beforeunload prompt or a hung load). The session was reset "
+                    "and the extension reconnects automatically",
+                    remediation="retry in a moment; if it persists, reload the tab",
                 )
             except (OSError, ValueError) as e:
-                self._alive = False
+                self._teardown()
                 raise BrowserError(
                     BrowserErrorCode.NOT_CONNECTED,
                     f"browser session connection lost: {e}",
                 ) from e
         if reply is None:
-            self._alive = False
+            self._teardown()
             raise BrowserError(
                 BrowserErrorCode.NOT_CONNECTED,
                 "browser session closed before replying",
             )
         return parse_result(reply)
+
+    def _teardown(self) -> None:
+        """Drop the connection so the extension reconnects with a fresh session.
+
+        A socket-timeout or a read error leaves the buffered reader in an
+        unusable state ("cannot read from timed out object"); reusing it never
+        recovers. Closing our end makes the native-host relay hit EOF and exit,
+        which fires the extension's ``port.onDisconnect`` -> MV3 reconnect ->
+        a new session that *replaces* this dead one on the bridge. Best-effort.
+        """
+        self._alive = False
+        for closer in (self._file, self._sock):
+            try:
+                if closer is not None:
+                    closer.close()
+            except OSError:
+                pass
 
     def _read_reply(self, msg_id: int) -> dict[str, Any] | None:
         """Read frames until the *result for msg_id* arrives.
