@@ -21,7 +21,7 @@ import { ReconnectController } from "./reconnect";
 import { Lifecycle } from "./target/lifecycle";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.5.0";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.6.0";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();

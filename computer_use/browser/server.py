@@ -50,7 +50,7 @@ from computer_use.browser.protocol import (
     parse_server_hello,
 )
 
-CUA_VERSION = "0.5.0"
+CUA_VERSION = "0.6.0"
 
 
 def discovery_path() -> Path:

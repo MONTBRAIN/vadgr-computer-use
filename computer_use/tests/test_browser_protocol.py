@@ -35,12 +35,18 @@ class TestConstants:
         }
         assert expected <= set(P.SUPPORTED_OPS)
 
+    def test_supported_ops_covers_the_0_6_0_ops(self):
+        # Window/tab management op-groups landed in 0.6.0 (additive).
+        assert {"tabs", "windows"} <= set(P.SUPPORTED_OPS)
+
     def test_supported_ops_excludes_still_later_minor_ops(self):
-        # Ops deferred to 0.6.0+ (multi-context + capture).
-        forbidden = {
-            "tabs", "windows", "storage", "screenshot", "downloads",
-        }
+        # Ops deferred past 0.6.0 (capture / downloads / storage).
+        forbidden = {"storage", "screenshot", "downloads", "captureVisibleTab"}
         assert forbidden.isdisjoint(set(P.SUPPORTED_OPS))
+
+    def test_the_0_6_0_ops_do_not_bump_the_protocol_version(self):
+        # Growing supported_ops is additive — the envelope integer stays 1.
+        assert P.PROTOCOL_VERSION == 1
 
 
 class TestHelloHandshake:

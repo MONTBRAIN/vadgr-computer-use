@@ -13,6 +13,13 @@ import { CdpExecutor, chromeDebuggerAttach } from "./executors/cdp";
 import { TargetResolver, type TargetMode } from "./target/resolver";
 import { OwnedWindowManager } from "./target/owned_window";
 import { SessionTargetStore } from "./target/store";
+import type { Provenance } from "./target/registry";
+import type { PinnedTarget } from "./target/owned_window";
+import type {
+  WindowNode,
+  WindowSummary,
+  WindowsEnumApi,
+} from "./target/enumeration";
 
 // --- the session target (the headline of 0.5.0) ---
 //
@@ -34,6 +41,9 @@ function defaultResolver(): TargetResolver {
   const owned = new OwnedWindowManager({
     create: (opts) => chrome.windows.create(opts) as Promise<any>,
   });
+  const windowsApi: WindowsEnumApi = {
+    getAll: (opts) => chrome.windows.getAll(opts) as Promise<any>,
+  };
   const store = new SessionTargetStore({
     // @ts-ignore - chrome.storage.session is present at runtime (session perm).
     get: (keys: string) => chrome.storage.session.get(keys),
@@ -42,7 +52,7 @@ function defaultResolver(): TargetResolver {
     // @ts-ignore
     remove: (keys: string) => chrome.storage.session.remove(keys),
   });
-  return new TargetResolver({ tabs, owned, store });
+  return new TargetResolver({ tabs, owned, windowsApi, store });
 }
 
 export function sharedResolver(): TargetResolver {
@@ -59,6 +69,7 @@ function detectBrowserName(): string {
 }
 
 // The `use_target` control op — explicitly pin the session target and report it.
+// 0.6.0 also switches `current` in the registry and reports `url` + `provenance`.
 async function useTargetOp(p: Params) {
   const out = await sharedResolver().useTarget({
     windowId: p.window_id as number | undefined,
@@ -70,6 +81,8 @@ async function useTargetOp(p: Params) {
     window_id: out.windowId,
     tab_id: out.tabId,
     created: out.created,
+    url: out.url,
+    provenance: out.provenance,
   };
 }
 
@@ -119,19 +132,6 @@ async function summary(tab: chrome.tabs.Tab) {
   return { url: tab.url ?? "", title: tab.title ?? "" };
 }
 
-// Ops that are safe to re-deliver: pure reads + idempotent scroll. A mutating
-// op (click/type/fill/select) must NEVER be auto-retried — a retry could double-
-// click or act on the wrong page after a navigation.
-const RETRYABLE_OPS = new Set([
-  "wait_for",
-  "query",
-  "read_text",
-  "get_attribute",
-  "scroll",
-  "element_state",
-  "get_value",
-]);
-
 // The content script is reachable only once its onMessage listener has
 // registered. On a fresh page (just navigated) there is a window where it has
 // not — sendMessage then throws "Receiving end does not exist" / "Could not
@@ -159,27 +159,37 @@ export function unwrap(res: unknown): unknown {
   return res; // navigation sentinel or legacy shape — pass through
 }
 
-// Forward a DOM op into the active tab's content script and await its reply.
-// Handles the two post-navigation failure modes distinctly: an unreachable
-// content script (re-inject + retry, for safe read ops) vs the op having itself
-// navigated away (report {navigated}). A mutating op that loses its channel is
-// reported as a navigation, never blindly retried. A genuine op failure
-// (ok:false) is re-raised by unwrap, never masked.
-async function forwardToContent(op: string, params: Record<string, unknown>) {
-  const tab = await targetTab();
+// The two channel primitives self-heal needs, injectable so the retry logic is
+// unit-testable with no chrome.* (self_heal.test.ts drives a fake channel).
+export interface ContentChannel {
+  send(op: string, params: Record<string, unknown>): Promise<unknown>;
+  reinject(): Promise<void>;
+}
+
+// Deliver a DOM op to the content script, healing the two post-navigation
+// failure modes distinctly:
+//   - UNREACHABLE ("Receiving end does not exist"): sendMessage found NO
+//     listener, so the message never arrived and the op NEVER RAN. Re-injecting
+//     content.js and delivering ONCE is therefore a first delivery, not a retry
+//     of an executed action — safe for EVERY op, click/fill/type included (0.6.0
+//     closes the 0.5.0 "reads self-heal, writes fail on a fresh page" split).
+//   - NAV-CLOSE (channel torn down mid-message): the op MAY have run, so it is
+//     reported as {navigated} and NEVER redelivered.
+// A genuine op failure (ok:false) is re-raised by unwrap, never masked.
+export async function deliverWithSelfHeal(
+  op: string,
+  params: Record<string, unknown>,
+  ch: ContentChannel,
+): Promise<unknown> {
   try {
-    return unwrap(await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params }));
+    return unwrap(await ch.send(op, params));
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
-    if (isUnreachable(msg) && RETRYABLE_OPS.has(op)) {
-      // Content script not present yet (fresh navigation) — inject + retry once.
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id! },
-        files: ["content.js"],
-      });
-      return unwrap(
-        await chrome.tabs.sendMessage(tab.id!, { type: "op", op, params }),
-      );
+    if (isUnreachable(msg)) {
+      // Content script not present yet (fresh navigation) — inject + deliver
+      // ONCE. Unreachable means not-yet-executed, so this is safe for all ops.
+      await ch.reinject();
+      return unwrap(await ch.send(op, params));
     }
     if (isNavClose(msg)) {
       // The op's own navigation tore down the page mid-message. The action
@@ -188,6 +198,21 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
     }
     throw e;
   }
+}
+
+// Forward a DOM op into the pinned tab's content script and await its reply.
+async function forwardToContent(op: string, params: Record<string, unknown>) {
+  const tab = await targetTab();
+  const ch: ContentChannel = {
+    send: (o, p) => chrome.tabs.sendMessage(tab.id!, { type: "op", op: o, params: p }),
+    reinject: async () => {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id! },
+        files: ["content.js"],
+      });
+    },
+  };
+  return deliverWithSelfHeal(op, params, ch);
 }
 
 // `eval` runs JS in the page's MAIN world via chrome.scripting — the content
@@ -328,25 +353,264 @@ const CDP_ONLY = [
 ];
 const isInteractive = (op: string) => ESCALATING.has(op);
 
+// --- tabs / windows op-groups (0.6.0) ---
+//
+// `tabs` and `windows` are OPERATION GROUPS (sub-op routed via params.op, like
+// cua's Tier-0 fs/shell tools) — so the wire op is "tabs"/"windows" and the
+// sub-op rides in params.op. Provenance-aware and user-context-safe: the agent
+// SEES every context (list), but ACTS only on `current`; a `user` tab/window is
+// closed only with force=True. The chrome.* glue is injected so the routing is
+// unit-testable with no browser.
+
+// The slice of chrome.tabs the mutating group ops depend on.
+export interface TabsMutApi {
+  create(opts: {
+    url?: string;
+    windowId?: number;
+    active?: boolean;
+  }): Promise<{ id?: number; windowId?: number; url?: string }>;
+  update(
+    tabId: number,
+    opts: { active?: boolean },
+  ): Promise<{ id?: number; windowId?: number; url?: string }>;
+  remove(tabId: number): Promise<void>;
+}
+
+// The slice of chrome.windows the mutating group ops depend on.
+export interface WindowsMutApi {
+  create(opts: {
+    url?: string;
+    focused?: boolean;
+    state?: "normal" | "minimized" | "maximized" | "fullscreen";
+    width?: number;
+    height?: number;
+  }): Promise<{ id?: number; tabs?: { id?: number; url?: string }[] }>;
+  update(windowId: number, opts: { focused?: boolean }): Promise<unknown>;
+  remove(windowId: number): Promise<void>;
+}
+
+// The registry surface the group ops drive — the TargetResolver satisfies it.
+export interface TargetControl {
+  resolve(): Promise<PinnedTarget>;
+  adoptCurrent(
+    t: PinnedTarget,
+    provenance: Provenance,
+    url?: string,
+  ): Promise<{ windowId: number; tabId: number; provenance: Provenance }>;
+  provenanceOf(tabId: number): Promise<Provenance>;
+  isOwnedWindow(windowId: number): Promise<boolean>;
+  onTabClosed(tabId: number): Promise<void>;
+  onWindowClosed(windowId: number): Promise<void>;
+  enumerate(): Promise<{ windows: WindowNode[] }>;
+  listWindows(): Promise<{ windows: WindowSummary[] }>;
+}
+
+export async function tabsGroupOp(
+  p: Params,
+  deps: { tabs: TabsMutApi; resolver: TargetControl },
+): Promise<unknown> {
+  const sub = String(p.op ?? "");
+  switch (sub) {
+    case "list":
+      return deps.resolver.enumerate();
+    case "open": {
+      // Default window: the owned window (resolve() opens it cold if needed).
+      let windowId = p.window_id as number | undefined;
+      if (windowId == null) windowId = (await deps.resolver.resolve()).windowId;
+      // background=true (the owned-window discipline) opens unfocused.
+      const background = p.background !== false;
+      const tab = await deps.tabs.create({
+        url: p.url as string | undefined,
+        windowId,
+        active: !background,
+      });
+      const rec = await deps.resolver.adoptCurrent(
+        { windowId: tab.windowId!, tabId: tab.id! },
+        "owned",
+        tab.url,
+      );
+      return {
+        window_id: rec.windowId,
+        tab_id: rec.tabId,
+        url: tab.url ?? "",
+        created: true,
+      };
+    }
+    case "switch": {
+      const tabId = p.tab_id as number;
+      // Activate the tab WITHIN its window — deliberately NO
+      // windows.update({focused}); routing attention never steals the user's
+      // screen (bringing a window forward is windows.focus only).
+      const updated = await deps.tabs.update(tabId, { active: true });
+      const windowId = (p.window_id as number | undefined) ?? updated.windowId!;
+      // Making a context `current` adopts it (owned stays owned via upsert).
+      const rec = await deps.resolver.adoptCurrent(
+        { windowId, tabId },
+        "attached",
+        updated.url,
+      );
+      return {
+        window_id: rec.windowId,
+        tab_id: rec.tabId,
+        url: updated.url ?? "",
+        is_current: true,
+      };
+    }
+    case "close": {
+      const tabId = p.tab_id as number;
+      const force = p.force === true;
+      if ((await deps.resolver.provenanceOf(tabId)) === "user" && !force) {
+        throw new Error(
+          `refusing to close user tab ${tabId} without force=true`,
+        );
+      }
+      await deps.tabs.remove(tabId);
+      await deps.resolver.onTabClosed(tabId);
+      return { closed: true, tab_id: tabId };
+    }
+    default:
+      throw new Error(`tabs has no sub-op '${sub}'`);
+  }
+}
+
+export async function windowsGroupOp(
+  p: Params,
+  deps: { windows: WindowsMutApi; resolver: TargetControl },
+): Promise<unknown> {
+  const sub = String(p.op ?? "");
+  switch (sub) {
+    case "list":
+      return deps.resolver.listWindows();
+    case "open": {
+      // A new OWNED window — unfocused by default (the owned-window discipline).
+      const win = await deps.windows.create({
+        url: p.url as string | undefined,
+        focused: p.focused === true,
+        state: "normal",
+        width: 1200,
+        height: 900,
+      });
+      const tabId = win.tabs?.[0]?.id;
+      if (win.id == null || tabId == null) {
+        throw new Error("windows.open did not return a tab to pin");
+      }
+      const rec = await deps.resolver.adoptCurrent(
+        { windowId: win.id, tabId },
+        "owned",
+        win.tabs?.[0]?.url,
+      );
+      return { window_id: rec.windowId, tab_id: rec.tabId, created: true };
+    }
+    case "focus": {
+      // The explicit, agent-intended raise (never automatic).
+      const windowId = p.window_id as number;
+      await deps.windows.update(windowId, { focused: true });
+      return { focused: true, window_id: windowId };
+    }
+    case "close": {
+      const windowId = p.window_id as number;
+      const force = p.force === true;
+      if (!(await deps.resolver.isOwnedWindow(windowId)) && !force) {
+        throw new Error(
+          `refusing to close non-owned window ${windowId} without force=true`,
+        );
+      }
+      await deps.windows.remove(windowId);
+      await deps.resolver.onWindowClosed(windowId);
+      return { closed: true, window_id: windowId };
+    }
+    default:
+      throw new Error(`windows has no sub-op '${sub}'`);
+  }
+}
+
+// --- per-op target context (0.6.0) ---
+//
+// Every op result is wrapped with {window_id, tab_id, url} (additive; no proto
+// bump), so the agent always sees WHICH tab it just acted on — a surprise
+// chrome://newtab is visible immediately, not inferred two ops later. Only
+// object results carry it (a bare string from read_text is passed through); a
+// result that already has `target` is left untouched.
+export type TargetProvider = () =>
+  | Promise<{ window_id: number; tab_id: number; url: string } | null>
+  | { window_id: number; tab_id: number; url: string }
+  | null;
+
+export function wrapWithTarget(
+  handler: (p: Params) => unknown | Promise<unknown>,
+  provider: TargetProvider,
+): (p: Params) => Promise<unknown> {
+  return async (p: Params) => {
+    const result = await handler(p);
+    if (
+      result == null ||
+      typeof result !== "object" ||
+      Array.isArray(result) ||
+      "target" in (result as Record<string, unknown>)
+    ) {
+      return result;
+    }
+    const ctx = await provider();
+    if (!ctx) return result;
+    return { ...(result as Record<string, unknown>), target: ctx };
+  };
+}
+
+// The live target-context provider: the in-memory `current` (never resolve() —
+// wrapping must not itself open a window) plus the tab's real url.
+async function currentTargetContext(): Promise<
+  { window_id: number; tab_id: number; url: string } | null
+> {
+  const cur = sharedResolver().current();
+  if (!cur) return null;
+  let url = "";
+  try {
+    url = (await chrome.tabs.get(cur.tabId)).url ?? "";
+  } catch {
+    // best-effort — a target that vanished mid-op still reports its ids.
+  }
+  return { window_id: cur.windowId, tab_id: cur.tabId, url };
+}
+
 // --- registration ---
 
 export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   const r = new Router();
 
-  for (const op of TABS_OPS) r.register(op, (p) => tabsExecutor.execute(op, p));
+  // Every op result is wrapped with the resolved target context (additive).
+  const reg = (op: string, handler: (p: Params) => unknown | Promise<unknown>) =>
+    r.register(op, wrapWithTarget(handler, currentTargetContext));
+
+  for (const op of TABS_OPS) reg(op, (p) => tabsExecutor.execute(op, p));
 
   for (const op of DOM_OPS) {
     if (ESCALATING.has(op)) {
-      r.register(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
+      reg(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
     } else {
-      r.register(op, (p) => domExecutor.execute(op, p));
+      reg(op, (p) => domExecutor.execute(op, p));
     }
   }
 
-  if (cdp) for (const op of CDP_ONLY) r.register(op, (p) => cdp.execute(op, p));
+  if (cdp) for (const op of CDP_ONLY) reg(op, (p) => cdp.execute(op, p));
 
   // The session-target control op (SW-resolved; touches no page).
-  r.register("use_target", (p) => useTargetOp(p));
+  reg("use_target", (p) => useTargetOp(p));
+
+  // The 0.6.0 window/tab op-groups (sub-op routed via params.op).
+  const tabsMut: TabsMutApi = {
+    create: (o) => chrome.tabs.create(o) as Promise<any>,
+    update: (id, o) => chrome.tabs.update(id, o) as Promise<any>,
+    remove: (id) => chrome.tabs.remove(id),
+  };
+  const windowsMut: WindowsMutApi = {
+    create: (o) => chrome.windows.create(o) as Promise<any>,
+    update: (id, o) => chrome.windows.update(id, o) as Promise<any>,
+    remove: (id) => chrome.windows.remove(id),
+  };
+  reg("tabs", (p) => tabsGroupOp(p, { tabs: tabsMut, resolver: sharedResolver() }));
+  reg("windows", (p) =>
+    windowsGroupOp(p, { windows: windowsMut, resolver: sharedResolver() }),
+  );
 
   return r;
 }
