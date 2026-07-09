@@ -14,9 +14,11 @@ Target OSes: Linux, macOS, Windows (native), WSL (cua in WSL driving Windows Chr
 Builds on the 0.5.0 runbook (`../0.5.0/e2e.md`); the 0.5.0 Part T/A/B suites re-run
 here as the **regression** part, and Part W below is the new-in-0.6.0 gate.
 
-> **Status: NOT YET RUN.** This document is the runbook only. The per-OS live
-> runs are executed by the dedicated per-OS verification agents on real hardware
-> (the human verification round), exactly as the 0.5.0 runbook was filled in. No
+> **Status: WSL Part W green (2026-07-09).** The 0.6.0 gate (Part W, W1-W7 + the
+> motivating/negative tasks) is **live-verified on WSL** (cua-in-WSL driving
+> Windows Chrome) — see the WSL status note below. The regression suites
+> (Part T/A/B) on WSL and all parts on Linux / macOS / Windows-native remain for
+> the per-OS verification round, exactly as the 0.5.0 runbook was filled in; no
 > row below claims a live pass until that round records it. The automated gate
 > (`pytest`, `vitest`, `npm run build`, `npm run typecheck`) is green on the PR
 > branch — see *Automated gate* below — but a green unit suite is necessary, NOT
@@ -149,6 +151,11 @@ complete **without getting lost** (no blank-tab drift, no `chrome://` dead-end).
 Plus a **negative task**: "close one of my open tabs" with no `force` hint must
 **refuse**, never masquerade as success.
 
+> **Playback note (use a normal video, not a livestream).** Verify playback from
+> the `<video>` element's `paused:false` + advancing `currentTime` + `readyState:4`.
+> A YouTube **livestream** reports `readyState:0` and does not start via the play
+> control, so it can't demonstrate playback — pick a **normal** (non-live) video.
+
 ## Part T / A / B: 0.5.0 + 0.4.0 regression (run after Part W)
 
 Re-run the 0.5.0 runbook (`../0.5.0/e2e.md`) unchanged: **Part T** (T1-T11: owned
@@ -185,14 +192,55 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part W (W1-W7) | not run | not run | not run | not run |
+| Part W (W1-W7) | not run | not run | not run | **pass** |
 | Part T (T1-T11) | not run | not run | not run | not run |
 | Part A (A1-A9) | not run | not run | not run | not run |
 | Part B (B1-B7) | not run | not run | not run | not run |
-| Overall | not run | not run | not run | not run |
+| Overall | not run | not run | not run | Part W pass; T/A/B pending |
 
 Status notes:
-- **All OSes: not run (pending the per-OS verification round).** The window/tab/
+- **WSL (2026-07-09): Part W pass.** WSL2 Ubuntu 24.04.4 LTS (kernel
+  6.6.87.2-microsoft-standard-WSL2), cua-in-WSL driving **Windows Chrome 150.x**
+  over the bridge; the extension rebuilt on the **Windows side** (0.6.0 `dist`,
+  `C:\Work\...\vadgr-computer-use\extension`) and reloaded. First
+  `browser(op="status")` = `connected:true`; `tabs` and `windows` present in the
+  op surface. Driven op-by-op through the orchestrator's live cua connection,
+  judged from structured read-backs.
+  - **W1 awareness/list** — `tabs(list)` returned all **7** open windows: **6**
+    tagged `owned:false` (the user's real tabs — Gmail/YouTube/LinkedIn/Canva/
+    GitHub/Claude Code, each with `{tab_id,url,title,active}`) and **1** `owned:true`
+    window whose tab was `is_current:true`. `windows(list)` returned the thin
+    per-window summary (`tab_count`, `active_tab_id`). The agent saw every user tab
+    and acted on none.
+  - **W2 per-op target** — every op result carried `target:{window_id,tab_id,url}`;
+    `target.url` matched the actual page (`navigate` → `/login`).
+  - **W3 loud `target_lost`** — after `tabs(close, current)`, the next op raised a
+    terminal `target_lost` with remediation (NOT a silent blank window, NOT an op on
+    a fresh `chrome://newtab`); recovered via `use_target(mode="owned")` → fresh
+    owned window `created:true`, resumed with no `force`.
+  - **W4 fresh-nav self-heal** — `navigate /login` then immediate `fill(#username)`
+    / `fill(#password)` / `click(submit)` with no wait and no `force` → "You logged
+    into a secure area!"; no "Receiving end does not exist". Reads and writes both
+    land on the fresh page (the 0.5.0 asymmetry is gone).
+  - **W5 switch without focus steal** — two owned tabs; `tabs(switch)` moved
+    `current` (`is_current:true`, read "Welcome to the-internet" from the switched
+    tab) while `windows(list)` showed the owned window `focused:false` (switch did
+    NOT raise it); `windows(focus, owned)` → `focused:true` (the explicit raise is
+    the only op that brings a window forward).
+  - **W6 user-context safety** — `tabs(close, <user tab>)` without `force` refused
+    ("refusing to close user tab ... without force=true"); `windows(close, <user
+    window>)` without `force` refused ("refusing to close non-owned window ...
+    without force=true"). `force` was never used on a user context.
+  - **W7 WSL parity** — W1-W6 ran entirely over the WSL bridge (cua-in-WSL →
+    Windows Chrome); the tree and the new ops round-tripped intact across the
+    native-messaging pipe on real hardware.
+  - **Motivating task** — opened YouTube in the owned window and played a **normal**
+    video (`paused:false`, `currentTime` advancing, `readyState:4`); `target.url`
+    coherent throughout, no blank-tab drift, no `chrome://` dead-end. A *livestream*
+    (`readyState:0`) does not start via the play control — see the playback note in
+    Part W. **Negative task** covered by W6.
+  - Remaining on WSL: the **Part T/A/B regression** (0.5.0 + 0.4.0 suites).
+- **Linux / macOS / Windows-native: not run (pending the per-OS verification round).** The window/tab/
   registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
   APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
   expected to behave identically; WSL (W7) is the boundary that proves the bridge
