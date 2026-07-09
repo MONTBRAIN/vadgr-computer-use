@@ -46,7 +46,15 @@ export function receivesEvents(el: HTMLElement): boolean {
   if (!layoutIsLive(el.ownerDocument)) return true;
   const r = el.getBoundingClientRect();
   const hit = el.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-  return !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+  // A null hit means the hit-test couldn't resolve, NOT that a DOM element covers
+  // the target. A fully-occluded / throttled window (e.g. the agent-owned window,
+  // opened unfocused, while the user works elsewhere) is not composited, so
+  // elementFromPoint returns null — but the CDP action still lands there, and no
+  // DOM overlay is blocking it. Only a DIFFERENT, unrelated element at the centre
+  // (the hollow-mirror trap) is a real block; that always returns that element,
+  // never null. So don't gate on a null hit.
+  if (hit === null) return true;
+  return hit === el || el.contains(hit) || hit.contains(el);
 }
 
 // Gate a mutating op. Throws OpFailed (so the agent RETARGETS — it must not
