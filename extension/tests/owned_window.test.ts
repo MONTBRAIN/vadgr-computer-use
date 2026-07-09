@@ -28,6 +28,9 @@ describe("OwnedWindowManager", () => {
     expect(target).toEqual({ windowId: 42, tabId: 137 });
     // focused:false is the whole point — the user keeps working untouched.
     expect(calls[0].focused).toBe(false);
+    // ...but NOT minimized: a real, sized viewport so hit-testing works.
+    expect(calls[0].state).toBe("normal");
+    expect(calls[0].height).toBeGreaterThan(0);
   });
 
   it("throws if the created window returns no tab", async () => {
