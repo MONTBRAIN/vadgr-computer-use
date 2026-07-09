@@ -7,9 +7,20 @@
 
 import { fillContentEditable, fillField, setText } from "./fill";
 import { OpFailed } from "./errors";
-import { assertActionable } from "./actionable";
+import {
+  assertActionable,
+  isDisabled,
+  isVisible as isActionableVisible,
+  receivesEvents,
+} from "./actionable";
 
 export { OpFailed };
+
+// Caps for `query` output. A real-site `query` returned ~61k chars and blew the
+// token budget; capping the node count (per page) + per-node text degrades a
+// large page to pages instead of one budget-blowing blob.
+export const MAX_NODES = 50;
+export const MAX_NODE_TEXT = 2000;
 
 // Standard XPathResult constants. Referenced by value so the code does not
 // depend on a global `XPathResult` binding (absent in some DOM harnesses);
@@ -62,7 +73,9 @@ function summarize(el: Element): {
 } {
   const attrs: Record<string, string> = {};
   for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
-  const text = ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
+  let text = ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
+  // Per-node text cap — a single huge node must not blow the budget on its own.
+  if (text.length > MAX_NODE_TEXT) text = text.slice(0, MAX_NODE_TEXT) + "…";
   return { tag: el.tagName.toLowerCase(), text, attrs };
 }
 
@@ -94,12 +107,40 @@ export function opClick(p: { selector: string; by?: string; force?: boolean }) {
   return out;
 }
 
-export function opQuery(p: { selector: string; by?: string; all?: boolean }) {
-  const els = p.all ? resolveAll(p.selector, p.by) : (() => {
-    const one = resolve(p.selector, p.by);
-    return one ? [one] : [];
-  })();
-  return els.map(summarize);
+export function opQuery(p: {
+  selector: string;
+  by?: string;
+  all?: boolean;
+  limit?: number;
+  cursor?: number;
+}) {
+  const els = p.all
+    ? resolveAll(p.selector, p.by)
+    : (() => {
+        const one = resolve(p.selector, p.by);
+        return one ? [one] : [];
+      })();
+  const limit = typeof p.limit === "number" && p.limit > 0 ? p.limit : MAX_NODES;
+  const cursor = typeof p.cursor === "number" && p.cursor > 0 ? p.cursor : 0;
+  // A cursor past the current match set means the page changed under us (the
+  // frozen list is gone). Fail loud so the agent re-runs the query from the top,
+  // rather than silently skipping or repeating nodes.
+  if (cursor > 0 && cursor >= els.length) {
+    throw new OpFailed(
+      `cursor_stale: cursor ${cursor} is past the ${els.length} current matches — re-run the query`,
+    );
+  }
+  const page = els.slice(cursor, cursor + limit);
+  const out: {
+    nodes: ReturnType<typeof summarize>[];
+    next_cursor?: number;
+    truncated?: boolean;
+  } = { nodes: page.map(summarize) };
+  if (cursor + limit < els.length) {
+    out.next_cursor = cursor + limit;
+    out.truncated = true;
+  }
+  return out;
 }
 
 export function opReadText(p: { selector?: string | null }) {
@@ -187,6 +228,90 @@ export function opSelect(p: { selector: string; value: string; force?: boolean }
   // Self-verify: read back the live <select> value so the result proves the
   // option stuck (the page's change handler can't have reverted it unseen).
   return { selected: match.value, value: el.value, ok: el.value === match.value };
+}
+
+// The explicit actionability read — the same visible / receives-events / enabled
+// signals the mutating-op precondition asserts internally, exposed so the agent
+// can CHECK before acting and pick the authoritative (visible) element instead of
+// discovering a non-actionable target only on a thrown op_failed.
+export function opElementState(p: { selector: string; by?: string }) {
+  const el = require(p.selector, p.by) as HTMLElement;
+  const editable =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement ||
+    isContentEditableEl(el);
+  const r = el.getBoundingClientRect?.() ?? { x: 0, y: 0, width: 0, height: 0 };
+  const out: {
+    visible: boolean;
+    receives_events: boolean;
+    enabled: boolean;
+    focused: boolean;
+    editable: boolean;
+    checked?: boolean;
+    value?: unknown;
+    bbox: { x: number; y: number; width: number; height: number };
+  } = {
+    visible: isActionableVisible(el),
+    receives_events: receivesEvents(el),
+    enabled: !isDisabled(el),
+    focused: el.ownerDocument.activeElement === el,
+    editable,
+    bbox: { x: r.x, y: r.y, width: r.width, height: r.height },
+  };
+  if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
+    out.checked = el.checked;
+  }
+  const v = liveValue(el);
+  if (v !== null) out.value = v;
+  return out;
+}
+
+// The live value of a standard value-bearing control (input/textarea/select) or
+// a contenteditable's text. null for anything else (→ the SW escalates get_value
+// to the CDP path for custom widgets).
+function liveValue(el: Element): string | null {
+  if (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  ) {
+    return el.value;
+  }
+  if (isContentEditableEl(el)) {
+    return ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
+  }
+  return null;
+}
+
+export function opGetValue(p: { selector: string; by?: string }) {
+  const el = require(p.selector, p.by);
+  const value = liveValue(el);
+  // ok:false (value===null) is the escalation trigger — a custom/non-DOM widget
+  // has no live DOM value, so the SW re-runs get_value on the CDP path.
+  return { value, ok: value !== null };
+}
+
+export function opClear(p: { selector: string; by?: string; force?: boolean }) {
+  const el = require(p.selector, p.by);
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    assertActionable(el, p.selector, { force: p.force });
+    setText(el, "");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+    return { value: el.value, ok: el.value === "" };
+  }
+  if (isContentEditableEl(el)) {
+    assertActionable(el as HTMLElement, p.selector, { force: p.force });
+    (el as HTMLElement).textContent = "";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    const value = ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
+    return { value, ok: value === "" };
+  }
+  // Not a clearable DOM control — ok:false so the SW escalates to the CDP path
+  // (select-all + Delete), rather than masking a no-op as success.
+  return { value: null, ok: false };
 }
 
 export function opScroll(p: { selector?: string | null; by?: { x?: number; y?: number } }) {

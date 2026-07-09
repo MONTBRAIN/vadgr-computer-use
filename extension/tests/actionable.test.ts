@@ -5,7 +5,7 @@
 // a hidden non-authoritative mirror, e.g. Gmail's compose textarea).
 
 import { describe, it, expect, vi } from "vitest";
-import { isVisible, isDisabled, assertActionable } from "../src/content/actionable";
+import { isVisible, isDisabled, assertActionable, receivesEvents } from "../src/content/actionable";
 
 describe("isVisible", () => {
   it("true for a plain attached element", () => {
@@ -65,5 +65,44 @@ describe("assertActionable", () => {
     expect(() =>
       assertActionable(document.querySelector("#m") as HTMLElement, "#m", { force: true }),
     ).not.toThrow();
+  });
+});
+
+describe("receivesEvents", () => {
+  function liveLayout(el: HTMLElement) {
+    vi.spyOn(document.documentElement, "getBoundingClientRect").mockReturnValue(
+      { height: 800, width: 1200 } as DOMRect,
+    );
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+      { width: 100, height: 20, left: 10, top: 10 } as DOMRect,
+    );
+  }
+
+  it("true when the element is the hit target at its centre", () => {
+    document.body.innerHTML = `<input id="a">`;
+    const el = document.querySelector("#a") as HTMLElement;
+    liveLayout(el);
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(el);
+    expect(receivesEvents(el)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("false when a DIFFERENT element covers the target (the overlay/mirror trap)", () => {
+    document.body.innerHTML = `<input id="a"><div id="cover"></div>`;
+    const el = document.querySelector("#a") as HTMLElement;
+    const cover = document.querySelector("#cover") as HTMLElement;
+    liveLayout(el);
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(cover);
+    expect(receivesEvents(el)).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it("true when the hit-test can't resolve (null) — occluded/throttled owned window, not a DOM overlay", () => {
+    document.body.innerHTML = `<input id="a">`;
+    const el = document.querySelector("#a") as HTMLElement;
+    liveLayout(el);
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
+    expect(receivesEvents(el)).toBe(true);
+    vi.restoreAllMocks();
   });
 });

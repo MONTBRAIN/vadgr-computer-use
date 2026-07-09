@@ -248,3 +248,48 @@ class TestWSLRegistration:
         )
         assert result["platform"] == "linux"
         assert chrome.exists()
+
+
+class TestWslAutoDetection:
+    def test_ensure_registered_auto_selects_wsl_on_wsl2(self, tmp_path, monkeypatch):
+        # Issue #19: sys.platform is "linux" on WSL2, so ensure_registered must
+        # resolve the platform via detect_platform() and take the WSL branch
+        # WITHOUT an explicit platform= argument.
+        from computer_use.platform.detect import Platform
+
+        monkeypatch.setattr(
+            "computer_use.platform.detect.detect_platform",
+            lambda: Platform.WSL2,
+        )
+        chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
+        reg_calls: list[tuple[str, str]] = []
+        result = S.ensure_registered(
+            paths={"chrome": chrome},
+            host_path="C:\\Users\\alice\\relay.exe",
+            registry_writer=lambda k, v: reg_calls.append((k, v)),
+            relay_installer=lambda windows_user=None: None,
+            # no platform= : must auto-detect WSL2
+        )
+        assert result["platform"] == "wsl"
+        assert chrome.exists()
+        assert reg_calls  # WSL branch wrote the Windows registry key
+
+    def test_reg_exe_writer_does_not_inherit_stdin(self, monkeypatch):
+        # Issue #18 (broadened): the reg.exe registration runs at startup on WSL
+        # (the #19 auto-register path), so it must not inherit fd 0 — the stdio
+        # MCP JSON-RPC pipe — or `initialize` hangs. Must pass DEVNULL.
+        import subprocess
+
+        captured: dict = {}
+
+        def fake_run(argv, **kwargs):
+            captured["kwargs"] = kwargs
+
+            class _R:
+                returncode = 0
+
+            return _R()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        S.reg_exe_writer("Software\\Google\\Chrome\\X", "C:\\path\\m.json")
+        assert captured["kwargs"].get("stdin") is subprocess.DEVNULL

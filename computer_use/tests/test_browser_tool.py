@@ -112,6 +112,126 @@ class TestErrorMapping:
         assert "no element matches #x" in str(ei.value)
 
 
+class TestTargetingOps:
+    def test_use_target_owned_default(self):
+        fake = FakeBridge(
+            responses={"use_target": {"browser": "chrome", "window_id": 42,
+                                      "tab_id": 137, "created": True}}
+        )
+        out = T.browser(op="use_target", bridge=fake)
+        assert out["created"] is True
+        params = fake.calls[0][1]
+        assert params == {"window_id": None, "tab_id": None, "mode": "owned"}
+
+    def test_use_target_by_id(self):
+        fake = FakeBridge(responses={"use_target": {"window_id": 3, "tab_id": 9}})
+        T.browser(op="use_target", bridge=fake, window_id=3, tab_id=9,
+                  mode="attach")
+        params = fake.calls[0][1]
+        assert params["window_id"] == 3
+        assert params["tab_id"] == 9
+        assert params["mode"] == "attach"
+
+    def test_target_lost_surfaces_as_terminal_tool_error(self):
+        # A closed pinned tab/window is terminal + non-retryable, with remediation.
+        err = BrowserError(
+            BrowserErrorCode.TARGET_LOST,
+            "the pinned tab/window was closed",
+            remediation="re-run use_target",
+        )
+        assert err.retryable is False
+        fake = FakeBridge(responses={"hover": err})
+        with pytest.raises(ToolError) as ei:
+            T.browser(op="hover", bridge=fake, selector=".menu")
+        assert "closed" in str(ei.value)
+
+
+class TestInteractionOps:
+    def test_hover_forwards_reveals(self):
+        fake = FakeBridge(responses={"hover": {"hovered": True, "revealed": True}})
+        out = T.browser(op="hover", bridge=fake, selector=".menu",
+                        reveals=".submenu")
+        assert out == {"hovered": True, "revealed": True}
+        params = fake.calls[0][1]
+        assert params["selector"] == ".menu"
+        assert params["reveals"] == ".submenu"
+
+    def test_dialog_arms_by_default(self):
+        fake = FakeBridge(responses={"dialog": {"armed": True}})
+        T.browser(op="dialog", bridge=fake, action="accept", text="hi")
+        params = fake.calls[0][1]
+        assert params == {"action": "accept", "text": "hi", "arm": True}
+
+    def test_element_state_forwards(self):
+        fake = FakeBridge(responses={"element_state": {"visible": True}})
+        out = T.browser(op="element_state", bridge=fake, selector="#x")
+        assert out == {"visible": True}
+        assert fake.calls[0][0] == "element_state"
+
+    def test_focus_and_blur(self):
+        fake = FakeBridge(responses={"focus": {"focused": True},
+                                     "blur": {"focused": False}})
+        assert T.browser(op="focus", bridge=fake, selector="#x")["focused"] is True
+        assert T.browser(op="blur", bridge=fake, selector="#x")["focused"] is False
+
+    def test_clear_self_verifies(self):
+        fake = FakeBridge(responses={"clear": {"value": "", "ok": True}})
+        out = T.browser(op="clear", bridge=fake, selector="#x")
+        assert out == {"value": "", "ok": True}
+
+    def test_get_value_forwards(self):
+        fake = FakeBridge(responses={"get_value": {"value": "hello"}})
+        out = T.browser(op="get_value", bridge=fake, selector="#x")
+        assert out == {"value": "hello"}
+
+    def test_snapshot_paginates(self):
+        fake = FakeBridge(
+            responses={"snapshot": {"nodes": [], "next_cursor": 50}}
+        )
+        T.browser(op="snapshot", bridge=fake, roles=["button"], limit=50)
+        params = fake.calls[0][1]
+        assert params["roles"] == ["button"]
+        assert params["limit"] == 50
+
+    def test_query_forwards_limit_and_cursor(self):
+        fake = FakeBridge(responses={"query": {"nodes": []}})
+        T.browser(op="query", bridge=fake, selector=".x", limit=25, cursor=25)
+        params = fake.calls[0][1]
+        assert params["limit"] == 25
+        assert params["cursor"] == 25
+
+
+class TestUploadPathTranslation:
+    def test_native_paths_pass_through(self, monkeypatch):
+        monkeypatch.setattr(T, "_upload_platform", lambda: "linux")
+        fake = FakeBridge(responses={"upload": {"uploaded": 1, "ok": True}})
+        T.browser(op="upload", bridge=fake, selector="input",
+                  files=["/home/u/cv.pdf"])
+        assert fake.calls[0][1]["files"] == ["/home/u/cv.pdf"]
+
+    def test_wsl_paths_rewritten_to_windows_before_the_wire(self, monkeypatch):
+        # The WSL boundary: Windows Chrome cannot read a cua-side WSL path.
+        monkeypatch.setattr(T, "_upload_platform", lambda: "wsl")
+        monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+        fake = FakeBridge(responses={"upload": {"uploaded": 2, "ok": True}})
+        T.browser(op="upload", bridge=fake, selector="input",
+                  files=["/mnt/c/Users/me/cv.pdf", "/home/u/photo.png"])
+        assert fake.calls[0][1]["files"] == [
+            "C:\\Users\\me\\cv.pdf",
+            "\\\\wsl.localhost\\Ubuntu\\home\\u\\photo.png",
+        ]
+
+
+class TestScreenshotIsAPixelTool:
+    def test_browser_screenshot_op_redirects_to_pixel_tool(self):
+        fake = FakeBridge()
+        with pytest.raises(ToolError) as ei:
+            T.browser(op="screenshot", bridge=fake)
+        assert "pixel" in str(ei.value).lower()
+        # It must not have gone through the bridge.
+        assert fake.calls == []
+
+
 class TestBrowserEval:
     def test_eval_routes_to_eval_op(self):
         fake = FakeBridge(responses={"eval": {"value": 2}})

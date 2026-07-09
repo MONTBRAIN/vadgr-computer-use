@@ -206,7 +206,13 @@ def reg_exe_writer(subkey: str, value: str, *, runner=None) -> None:
     if runner is None:  # pragma: no cover - real interop
         import subprocess
 
-        subprocess.run(argv, check=False, capture_output=True, timeout=10)
+        subprocess.run(
+            argv, check=False, capture_output=True, timeout=10,
+            # Never inherit fd 0: this reg.exe runs at startup on WSL (the #19
+            # auto-registration path), and a child holding fd 0 (the stdio MCP
+            # JSON-RPC pipe) stalls `initialize` — same class as #18.
+            stdin=subprocess.DEVNULL,
+        )
     else:
         runner(argv)
 
@@ -239,6 +245,21 @@ def _mnt_to_windows_path(p) -> str:
     return wsl_to_win_path(str(p))
 
 
+def _resolve_platform(platform: str | None) -> str:
+    """Effective platform string; WSL2 maps to the ``wsl`` branch.
+
+    ``sys.platform`` is ``linux`` on WSL2, so a raw ``sys.platform`` never selects
+    the WSL branch, and the Windows relay + registry (which the Windows Chrome
+    actually driven on WSL reads) are never set up (issue #19). Resolve via the
+    canonical detector instead.
+    """
+    if platform is not None:
+        return platform
+    from computer_use.platform.detect import Platform, detect_platform
+
+    return "wsl" if detect_platform() is Platform.WSL2 else sys.platform
+
+
 def ensure_registered(
     *,
     paths: dict | None = None,
@@ -255,7 +276,7 @@ def ensure_registered(
     drives: the manifest is written under ``/mnt/c`` and the registry key is set
     via ``reg.exe`` interop. Idempotent: safe to call on every startup.
     """
-    plat = platform or sys.platform
+    plat = _resolve_platform(platform)
     if plat == "wsl":
         targets = paths if paths is not None else manifest_paths(
             "wsl", windows_user=windows_user

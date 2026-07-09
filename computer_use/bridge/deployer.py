@@ -89,6 +89,7 @@ class DaemonDeployer:
                 capture_output=True,
                 text=True,
                 timeout=self._SUBPROCESS_TIMEOUT_SHORT,
+                stdin=subprocess.DEVNULL,  # never inherit the stdio MCP fd 0
             )
             if result.returncode == 0:
                 for line in result.stdout.strip().splitlines():
@@ -213,6 +214,7 @@ class DaemonDeployer:
                 capture_output=True,
                 text=True,
                 timeout=self._SUBPROCESS_TIMEOUT_PIP,
+                stdin=subprocess.DEVNULL,  # never inherit the stdio MCP fd 0
             )
             if result.returncode != 0:
                 logger.warning(
@@ -265,6 +267,7 @@ class DaemonDeployer:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                stdin=subprocess.DEVNULL,  # never inherit the stdio MCP fd 0
             )
             return result.returncode == 0
         except Exception:
@@ -278,6 +281,7 @@ class DaemonDeployer:
                 capture_output=True,
                 text=True,
                 timeout=self._SUBPROCESS_TIMEOUT_SHORT,
+                stdin=subprocess.DEVNULL,  # never inherit the stdio MCP fd 0
             )
             if result.returncode != 0:
                 return None

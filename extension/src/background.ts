@@ -10,7 +10,7 @@
 // wiring (native port, offscreen, handshake) is exercised in the manual spike
 // against a real Chrome — it touches chrome.* APIs that have no headless stand-in.
 
-import { buildRouter } from "./ops";
+import { buildRouter, sharedResolver } from "./ops";
 import {
   PROTOCOL_VERSION,
   ServerHello,
@@ -18,9 +18,10 @@ import {
   serverHello,
 } from "./protocol";
 import { ReconnectController } from "./reconnect";
+import { Lifecycle } from "./target/lifecycle";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.4.0";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.5.0";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();
@@ -92,6 +93,20 @@ async function ensureOffscreen(): Promise<void> {
     justification: "hold the native-messaging port alive across SW idle cycles",
   });
 }
+
+// --- session-target lifecycle: follow agent-spawned tabs, drop closed ones.
+// A tab spawned FROM the pinned tab (OAuth popup, target=_blank) re-pins so the
+// agent follows its own flow; a user-opened tab is left alone. Closing the pinned
+// tab clears it (the next resolve re-establishes in owned mode / raises in attach)
+// — we NEVER silently grab the user's active tab. Shares the resolver instance the
+// op router uses, so re-pins take effect for subsequent ops.
+const lifecycle = new Lifecycle(sharedResolver());
+chrome.tabs?.onCreated?.addListener((tab) => {
+  void lifecycle.onTabCreated(tab);
+});
+chrome.tabs?.onRemoved?.addListener((tabId) => {
+  void lifecycle.onTabRemoved(tabId);
+});
 
 chrome.runtime.onStartup?.addListener(() => {
   ensureOffscreen();

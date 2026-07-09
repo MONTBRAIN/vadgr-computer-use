@@ -43,7 +43,7 @@ describe("opClick", () => {
 describe("opQuery", () => {
   it("css single returns a light node summary", () => {
     document.body.innerHTML = `<a href="/x" class="lnk">Hello</a>`;
-    const r = opQuery({ selector: "a", by: "css", all: false }) as any[];
+    const r = opQuery({ selector: "a", by: "css", all: false }).nodes;
     expect(r).toHaveLength(1);
     expect(r[0].tag).toBe("a");
     expect(r[0].text).toBe("Hello");
@@ -53,7 +53,7 @@ describe("opQuery", () => {
 
   it("css all returns every match", () => {
     document.body.innerHTML = `<li>1</li><li>2</li><li>3</li>`;
-    const r = opQuery({ selector: "li", by: "css", all: true }) as any[];
+    const r = opQuery({ selector: "li", by: "css", all: true }).nodes;
     expect(r).toHaveLength(3);
     expect(r.map((n) => n.text)).toEqual(["1", "2", "3"]);
   });
@@ -69,14 +69,14 @@ describe("opQuery", () => {
       selector: "//p[@class='t']",
       by: "xpath",
       all: false,
-    }) as any[];
+    }).nodes;
     expect(r).toHaveLength(1);
     expect(r[0].text).toBe("findme");
   });
 
   it("returns empty list when nothing matches", () => {
-    const r = opQuery({ selector: ".nope", by: "css", all: true }) as any[];
-    expect(r).toEqual([]);
+    const r = opQuery({ selector: ".nope", by: "css", all: true });
+    expect(r.nodes).toEqual([]);
   });
 });
 

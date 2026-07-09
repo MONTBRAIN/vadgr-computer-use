@@ -75,6 +75,32 @@ class _FakeShim:
                  "error": {"code": "op_failed", "message": str(e)}},
             )
 
+    def serve_one_op_prefixed_with_stray(self):
+        """Read one op, then emit stray frames BEFORE the real result.
+
+        Simulates the two ways the op stream stops being 1:1: a reconnect
+        ``hello`` re-announced mid-stream, and a late result carrying a PRIOR
+        op's id. ``request`` must discard both and return the id-matched reply.
+        """
+        msg = read_message(self._file)
+        if msg is None or msg.get("type") != "op":
+            return
+        write_message(
+            self._file,
+            {"type": "hello", "proto": 1, "ext_version": "0.5.0",
+             "browser": "chrome", "supported_ops": []},
+        )
+        write_message(
+            self._file,
+            {"type": "result", "id": msg["id"] - 1, "ok": True,
+             "result": {"stale": True}},
+        )
+        result = self.handler(msg["op"], msg.get("params", {}))
+        write_message(
+            self._file,
+            {"type": "result", "id": msg["id"], "ok": True, "result": result},
+        )
+
     def close(self):
         try:
             self._file.close()
@@ -155,6 +181,34 @@ class TestListener:
             result = session.request("query", {"selector": "a"})
             t.join(timeout=2)
             assert result == [{"tag": "a", "text": "hi", "attrs": {}}]
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_request_matches_reply_by_id_skipping_stray_frames(self, tmp_path):
+        # Regression: a reconnect `hello` or a late/stale result must NOT be
+        # consumed as this op's reply. Before the id-match, one stray frame
+        # desynced every subsequent reply by one (permanent off-by-one).
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.handler = lambda op, params: {"ok": "real"}
+            shim.hello(["query"])
+            session = _wait_for_session(srv)
+
+            t = threading.Thread(
+                target=shim.serve_one_op_prefixed_with_stray, daemon=True
+            )
+            t.start()
+            result = session.request("query", {"selector": "a"})
+            t.join(timeout=2)
+
+            # The stray hello and the stale-id result are dropped; only the
+            # id-matched reply is returned.
+            assert result == {"ok": "real"}
             shim.close()
         finally:
             srv.stop()

@@ -196,3 +196,29 @@ class TestNativeMessagingBridgeSend:
 def B_SUPPORTED():
     from computer_use.browser.protocol import SUPPORTED_OPS
     return SUPPORTED_OPS
+
+
+class TestDetectWindowsUser:
+    def test_probe_does_not_inherit_stdin(self, monkeypatch):
+        # Issue #18: the cmd.exe interop probe must not inherit fd 0 (the MCP
+        # server's JSON-RPC stdin), or `initialize` hangs. It must pass
+        # stdin=subprocess.DEVNULL.
+        import subprocess
+
+        monkeypatch.delenv("WIN_USER", raising=False)
+        monkeypatch.delenv("USERNAME", raising=False)
+        captured: dict = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            captured["kwargs"] = kwargs
+
+            class _R:
+                stdout = "alice\n"
+
+            return _R()
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        name = B._detect_windows_user()
+        assert name == "alice"
+        assert captured["kwargs"].get("stdin") is subprocess.DEVNULL

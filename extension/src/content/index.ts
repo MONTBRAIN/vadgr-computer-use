@@ -7,8 +7,11 @@
 
 import { Router } from "../router";
 import {
+  opClear,
   opClick,
+  opElementState,
   opGetAttribute,
+  opGetValue,
   opQuery,
   opReadText,
   opScroll,
@@ -28,6 +31,9 @@ export function buildContentRouter(): Router {
   r.register("select", (p) => opSelect(p as any));
   r.register("scroll", (p) => opScroll(p as any));
   r.register("wait_for", (p) => opWaitFor(p as any));
+  r.register("element_state", (p) => opElementState(p as any));
+  r.register("clear", (p) => opClear(p as any));
+  r.register("get_value", (p) => opGetValue(p as any));
   // `eval` is handled in the service worker (main-world injection): the
   // content-script isolated world is CSP-blocked from eval under MV3.
   return r;

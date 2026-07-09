@@ -114,6 +114,9 @@ def _detect_windows_user() -> str:  # pragma: no cover - interop, mocked in test
         out = subprocess.run(
             ["cmd.exe", "/c", "echo %USERNAME%"],
             capture_output=True, text=True, timeout=5,
+            # Never inherit fd 0: under a stdio MCP server, fd 0 is the JSON-RPC
+            # pipe, and a cmd.exe interop child that holds it stalls `initialize`.
+            stdin=subprocess.DEVNULL,
         )
         name = out.stdout.strip()
         if name:
