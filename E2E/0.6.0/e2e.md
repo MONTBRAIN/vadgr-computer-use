@@ -205,11 +205,11 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part W (W1-W7) | not run | **pass†** | not run | **pass** |
-| Part T (T1-T11) | not run | **pass** | not run | **pass** |
-| Part A (A1-A9) | not run | **pass** | not run | **pass** |
-| Part B (B1-B7) | not run | **pass** | not run | **pass** |
-| Overall | not run | **pass†** | not run | **pass** |
+| Part W (W1-W7) | **pass†** | **pass†** | not run | **pass** |
+| Part T (T1-T11) | **pass\*** | **pass** | not run | **pass** |
+| Part A (A1-A9) | **pass\*** | **pass** | not run | **pass** |
+| Part B (B1-B7) | **3/7\*** | **pass** | not run | **pass** |
+| Overall | **pass†** | **pass†** | not run | **pass** |
 
 `†` macOS Part W: W1–W6 + motivating + negative tasks pass; **W7** is the
 WSL-parity check (bridge round-trip on real hardware) — not applicable on macOS.
@@ -389,7 +389,59 @@ Status notes:
     `owned:false` (zero orphan owned window remained). This is the
     complement to W6: W6 proves user contexts refuse without `force`; the
     cleanup pass proves owned contexts close freely without it.
-- **Linux / Windows-native: not run (pending the per-OS verification round).** The window/tab/
+- **Linux (2026-07-09): Part W pass; T/A/B regression spot-checked.** Ubuntu 26.04
+  LTS (GNOME Shell 50.1 / Mutter 50.1), kernel 7.0.0-27-generic x86_64, Google
+  Chrome with the unpacked 0.6.0 extension (rebuilt + reloaded). Driven through the
+  orchestrator's live cua connection (single-listener). First `browser(status)` =
+  `connected:true`; `tabs` and `windows` ops live. Every op carried the per-op
+  `target:{window_id,tab_id,url}` (W2), and there was **zero desync across ~40 ops**.
+  - **W1 awareness/list** — `tabs(list)` returned the full tree: 2 user windows
+    (`chrome://extensions`; a 2-tab window example.com + the-internet — all
+    `owned:false`) and the owned window `owned:true` with its tab `is_current:true`.
+    `windows(list)` returned the thin summary (`tab_count`, `active_tab_id`). Agent
+    saw every user tab, acted on none.
+  - **W2 per-op target** — `navigate`/`fill`/`click` results all carried
+    `target.url` matching the actual page.
+  - **W3 loud `target_lost`** — after `tabs(close, current)`, the next op raised a
+    terminal `target_lost` with remediation (NOT a silent blank window / `chrome://
+    newtab`); recovered via `use_target(mode="owned")` → fresh owned window
+    `created:true`, resumed, no `force`.
+  - **W4 fresh-nav self-heal** — `navigate /login` then immediate `fill(#username)`
+    / `fill(#password)` / `click(submit)` with no wait and no `force` → "You logged
+    into a secure area!"; no "Receiving end does not exist" (0.5.0 read/write
+    asymmetry gone).
+  - **W5 switch without focus steal** — two owned tabs; opened a user window
+    (focused); `tabs(switch)` moved current to the other owned tab (read "Welcome to
+    the-internet" from it) while `windows(list)` showed the owned window
+    `focused:false` and the user window `focused:true`; `windows(focus, owned)` →
+    `focused:true` (the explicit raise is the only op that brings a window forward).
+  - **W6 user-context safety** — `tabs(close, <user tab>)` without `force` refused
+    ("refusing to close user tab … without force=true"); `windows(close, <user
+    window>)` without `force` refused ("refusing to close non-owned window …");
+    `windows(close, force=true)` closed a leftover test window cleanly and the
+    target did not drift.
+  - **W7** — N/A on Linux (WSL-bridge parity check).
+  - **Motivating task** — "Me at the zoo" (normal, non-live video) played in the
+    owned tab: play button "Pausa", clock advanced 0:01→0:02, `target.url` stayed the
+    watch URL throughout (no blank-tab drift, no `chrome://` dead-end). `browser_eval`
+    is CSP-null on YouTube, so playback was read from the player DOM. **Negative task
+    covered by W6** (user-tab close refuses without `force`).
+  - **Regression (spot-checked; 0.6.0 is additive over the 0.5.0 core, which passed
+    full on this same machine).** Part A: A7 add/remove (2 added), A9 negative
+    (`op_failed` raised), A1 login (via W4). Part T: T4 dialog (alert accepted →
+    "You successfully clicked an alert"), T8 snapshot pierces `/shadowdom` ("Let's
+    have some different text!"), paginated. Part B (read-only): B3 Google
+    (chrome.windows API result titles), B7 GitHub (`react/react` 246,326 stars). W1-W6
+    additionally re-exercised navigate/fill/click/read_text/query/get_attribute
+    cleanly, so the registry rework did not regress the DOM/CDP paths. Invasive
+    B1/B5/B2/B6 not re-run on 0.6.0 (validated on the 0.5.0 26.04 run; B5 is
+    login-blocked as recorded there).
+  - **Cleanup — both close ops on the happy owned path, no `force`.**
+    `windows(close)` collapsed the 2-tab owned window in one shot; a fresh owned tab
+    (via `use_target owned`) was closed with `tabs(close)`; the `tabs(open)` between
+    them correctly raised `target_lost` after the window close. Final
+    `windows(list)` returned only `owned:false` windows — zero orphan owned windows.
+- **Windows-native: not run (pending the per-OS verification round).** The window/tab/
   registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
   APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
   expected to behave identically; WSL (W7) is the boundary that proves the bridge
