@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [0.5.0] - 2026-07-03
+## [0.5.0] - 2026-07-08
 
 ### Added
 - Session-target model for the browser tier: the extension pins an explicit
@@ -42,6 +42,29 @@ All notable changes to this project are documented here. Format follows [Keep a 
   focus) can no longer move the target mid-task. When the pinned tab/window is
   closed the op fails with a terminal `target_lost` error and remediation; the
   tier never silently retargets the user's active tab.
+- WSL: the MCP server no longer hangs on `initialize`. The startup subprocess
+  probes (the `reg.exe` native-host registration and the `cmd.exe`/`powershell.exe`
+  interop probes) inherited the JSON-RPC stdio pipe on fd 0; they now run with a
+  null stdin, so `initialize` returns immediately instead of blocking. (#18)
+- WSL: the native messaging host now auto-registers against the Windows registry
+  on first run. Platform detection resolves WSL2 through `detect_platform()`
+  instead of `sys.platform` (which reports `linux` under WSL), so registration
+  targets Windows Chrome and the extension bonds with no manual step. (#19)
+- The owned automation window opens at a real, hit-testable size (`state:"normal"`,
+  1200x900, still unfocused) instead of minimized. On WSL driving Windows Chrome a
+  `focused:false` window could open minimized (about 0px viewport), which made the
+  actionability hit-test fail and forced `force` on every mutation. A null
+  `elementFromPoint` result (a throttled or occluded window that is not composited)
+  is also no longer treated as covered, so a CDP-driven owned window is never
+  falsely gated.
+- Native replies are correlated by request id instead of arrival order, and
+  navigation/read ops are time-bounded. A stray frame (a reconnect `hello`, or a
+  late reply from a timed-out op) can no longer shift every following reply by one,
+  and a page that never reports load-complete can no longer hang the pipe.
+- The browser session tears down on an op timeout so the extension can reconnect.
+  A socket read-timeout previously left the buffered reader unrecoverable and
+  wedged the session; cua now closes the connection on timeout, the native-host
+  relay hits EOF, and the extension reconnects with a fresh session.
 
 ### Notes
 - No `PROTOCOL_VERSION` bump — every new op is additive and gated on the
