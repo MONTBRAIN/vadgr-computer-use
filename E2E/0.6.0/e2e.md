@@ -483,11 +483,10 @@ Status notes:
     (via `use_target owned`) was closed with `tabs(close)`; the `tabs(open)` between
     them correctly raised `target_lost` after the window close. Final
     `windows(list)` returned only `owned:false` windows — zero orphan owned windows.
-- **Windows-native: not run (pending the per-OS verification round).** The window/tab/
-  registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
-  APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
-  expected to behave identically; WSL (W7) is the boundary that proves the bridge
-  carries the new ops and the self-heal round-trip. These live runs require real
-  hardware / a real browser session per OS and are performed by the dedicated
-  per-OS verification agents (the human verification round), exactly as the 0.5.0
-  runbook was filled in. The automated gate above is green on the PR branch.
+- **Cross-OS note.** All four OSes are recorded above (macOS, Linux,
+  Windows-native, WSL). The window/tab/registry surfaces are pure `chrome.windows`
+  / `chrome.tabs` extension APIs with no filesystem/path boundary, so behavior is
+  identical across Linux / macOS / Windows-native / WSL; WSL (W7) is the boundary
+  that proves the bridge carries the new ops and the self-heal round-trip. The
+  automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is
+  green on the PR branch.
