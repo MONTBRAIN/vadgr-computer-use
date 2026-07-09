@@ -167,6 +167,20 @@ Note: 0.5.0's **T10 (`target_lost`)** was deferred to 0.6.0 for lack of a `close
 op — it is now covered by **W3** with the real `tabs(op="close")` / `windows(op=
 "close")`, so T10 is superseded here.
 
+## Cleanup: close every owned window and tab via the new close ops
+
+After Part B finishes, close **every** owned window/tab the run opened using
+`windows(op="close", window_id=<owned>)` and `tabs(op="close", tab_id=<owned>)`.
+**No `force`** — owned targets close without it. This exercises the new close
+ops on the deliberate happy path (owned = closable freely), and complements W6
+which covers the safety-focused refuse-without-`force` on user contexts. Aim to
+exercise **both** surfaces: at least one `windows.close` on a multi-tab owned
+window, and at least one `tabs.close` on an individual owned tab. Finish with
+`windows(op="list")` and assert that no `owned:true` window remains — that is
+the read-back proof the cleanup ran end-to-end and the user's session is left
+clean. A run that ends with orphan owned windows/tabs is a **fail** of this
+step (it means the new close ops were not exercised through the pipe).
+
 ## Automated gate (green on the PR branch — necessary, not sufficient)
 
 Run before any live e2e; this is what the PR branch was validated against:
@@ -361,6 +375,20 @@ Status notes:
     stars "246k" (title 246,326), JavaScript 49.4%. **Zero desync across
     ~50 orchestrator ops + each subagent's ops; the id-correlation and
     self-heal fixes from earlier rounds hold on macOS 0.6.0.**
+  - **Cleanup pass — new close ops exercised end-to-end.** After Part B the
+    run held 5 owned windows / 8 owned tabs (herokuapp login+secure, Gmail
+    Sent, saucedemo cart, Google search, Amazon cart, Flights results, and
+    YouTube-Music "Africa" still playing). Cleared with 4 × `windows.close`
+    + 3 × `tabs.close` — **no `force`** on any of them — mixing both
+    surfaces on the happy owned path: `windows.close(2049579514)` collapsed
+    a 2-tab owned window in one shot, `tabs.close` closed the 3 individual
+    tabs of another owned window (the last one made Chrome auto-close the
+    empty window), then `windows.close` on the remaining 3 single-tab
+    owned windows including the still-playing YouTube-Music target as the
+    last op. Verified via `windows.list` → 4 windows returned, ALL
+    `owned:false` (zero orphan owned window remained). This is the
+    complement to W6: W6 proves user contexts refuse without `force`; the
+    cleanup pass proves owned contexts close freely without it.
 - **Linux / Windows-native: not run (pending the per-OS verification round).** The window/tab/
   registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
   APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
