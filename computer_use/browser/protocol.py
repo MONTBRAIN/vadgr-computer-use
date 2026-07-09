@@ -66,6 +66,9 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "clear",
     "get_value",
     "snapshot",
+    # 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
+    "tabs",
+    "windows",
 )
 
 
@@ -170,7 +173,9 @@ _WIRE_CODES: dict[str, BrowserErrorCode] = {
 # Per-code remediation for terminal errors surfaced from the extension.
 _WIRE_REMEDIATION: dict[BrowserErrorCode, str] = {
     BrowserErrorCode.TARGET_LOST: (
-        "re-run `use_target` to pin a tab, or it will re-open in owned mode"
+        "run `tabs(op='list')` to see the open windows/tabs, then "
+        "`use_target(window_id, tab_id)` to re-pin the real tab; or "
+        "`use_target(mode='owned')` to open a fresh owned window"
     ),
 }
 

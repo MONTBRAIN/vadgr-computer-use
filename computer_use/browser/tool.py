@@ -338,3 +338,82 @@ def browser_eval(expression: str, bridge: BrowserBridge | None = None) -> Any:
         return b.send("eval", expression=expression)
     except BrowserError as err:
         _raise_tool_error(err)
+
+
+# --- 0.6.0: window/tab management op-groups ---
+#
+# `tabs` and `windows` are op-routed the same way the Tier-0 `fs`/`shell` tools
+# are: one tool, a sub-op `op`, and only the params that sub-op needs. The SW
+# owns the registry — no windowId/tabId selection crosses to cua; these tools
+# just map params/returns and surface `target_lost` like every other op. The
+# per-op `target` context the extension adds to each result is passed through
+# verbatim (an additive field an older cua tolerates).
+
+def tabs(
+    op: str,
+    bridge: BrowserBridge | None = None,
+    url: str | None = None,
+    window_id: int | None = None,
+    tab_id: int | None = None,
+    background: bool = True,
+    force: bool = False,
+) -> Any:
+    """Enumerate + manage tabs (op-group). Sub-ops:
+
+    - list -> {windows:[{window_id, focused, owned, tabs:[{tab_id, url, title,
+      active, owned, is_current}]}]}  (READ_ONLY; the agent's owned window AND
+      the user's — the awareness + recovery map)
+    - open(url=None, window_id=None, background=True)
+      -> {window_id, tab_id, url, created}  (a new OWNED tab; sets current)
+    - switch(tab_id, window_id=None) -> {window_id, tab_id, url, is_current}
+      (sets current + activates the tab in its window; does NOT raise the window)
+    - close(tab_id, force=False) -> {closed, tab_id}  (refuses a USER tab unless
+      force; closing current makes the next op raise target_lost)
+    """
+    b = bridge if bridge is not None else _default_bridge()
+    params: dict[str, Any] = {"op": op}
+    if op == "open":
+        params.update(url=url, window_id=window_id, background=background)
+    elif op == "switch":
+        params.update(tab_id=tab_id, window_id=window_id)
+    elif op == "close":
+        params.update(tab_id=tab_id, force=force)
+    params = {k: v for k, v in params.items() if v is not None}
+    try:
+        return b.send("tabs", **params)
+    except BrowserError as err:
+        _raise_tool_error(err)
+
+
+def windows(
+    op: str,
+    bridge: BrowserBridge | None = None,
+    url: str | None = None,
+    window_id: int | None = None,
+    focused: bool = False,
+    force: bool = False,
+) -> Any:
+    """Enumerate + manage windows (op-group). Sub-ops:
+
+    - list -> {windows:[{window_id, focused, owned, tab_count, active_tab_id}]}
+      (READ_ONLY; the thin variant of tabs.list)
+    - open(url=None, focused=False) -> {window_id, tab_id, created}  (a new OWNED
+      window; unfocused by default; sets current)
+    - focus(window_id) -> {focused, window_id}  (the EXPLICIT, agent-intended
+      raise — routing attention never steals the user's screen automatically)
+    - close(window_id, force=False) -> {closed, window_id}  (owned only unless
+      force)
+    """
+    b = bridge if bridge is not None else _default_bridge()
+    params: dict[str, Any] = {"op": op}
+    if op == "open":
+        params.update(url=url, focused=focused)
+    elif op == "focus":
+        params.update(window_id=window_id)
+    elif op == "close":
+        params.update(window_id=window_id, force=force)
+    params = {k: v for k, v in params.items() if v is not None}
+    try:
+        return b.send("windows", **params)
+    except BrowserError as err:
+        _raise_tool_error(err)

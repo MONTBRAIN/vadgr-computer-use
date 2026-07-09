@@ -592,9 +592,13 @@ def browser(
 
     TARGETING: by default the agent acts on its own dedicated window (opened in
     your real profile), pinned by id, so focus changes never move the target. Use
-    `use_target(mode="attach")` to act on the tab you are currently looking at. If
-    the pinned tab/window is closed the op fails with `target_lost` (terminal) —
-    it never silently grabs your active tab.
+    `use_target(mode="attach")` to act on the tab you are currently looking at.
+    Every result carries `target: {window_id, tab_id, url}` so you always see
+    which tab you acted on. Use the `tabs` / `windows` tools to enumerate what is
+    open (`tabs(op="list")`) and to open / switch / close windows and tabs. If the
+    pinned tab/window is closed mid-task the op fails with `target_lost`
+    (terminal) — it never silently grabs your active tab; run `tabs(op="list")`
+    then `use_target` to recover.
 
     VERIFY EVERY MUTATING OP — the DOM is the ground truth; never assume an
     action worked (this is the web equivalent of screenshot-before/after):
@@ -651,6 +655,70 @@ def browser_eval(expression: str):
     first-class op.
     """
     return _browser_impl.browser_eval(expression=expression)
+
+
+@mcp.tool()
+@tool(name="tabs", tier=Tier.ONE, risk=Risk.MEDIUM)
+def tabs(
+    op: str,
+    url: str = None,
+    window_id: int = None,
+    tab_id: int = None,
+    background: bool = True,
+    force: bool = False,
+):
+    """Enumerate and manage browser tabs, through the MV3 extension (Tier 1).
+
+    The agent SEES every window/tab (its own and yours) but ACTS only on the
+    pinned target; a tab becomes the target only when you open or switch to it.
+
+    Sub-ops:
+    - list -> {windows:[{window_id, focused, owned, tabs:[{tab_id, url, title,
+      active, owned, is_current}]}]}  (READ_ONLY; the awareness + recovery map:
+      after any drift, list -> use_target the real tab -> resume)
+    - open(url=None, window_id=None, background=True)
+      -> {window_id, tab_id, url, created}  (a new OWNED tab; sets the target)
+    - switch(tab_id, window_id=None) -> {window_id, tab_id, url, is_current}
+      (moves the target + activates the tab in its window; does NOT raise the
+      window over your foreground)
+    - close(tab_id, force=False) -> {closed, tab_id}  (refuses one of YOUR tabs
+      unless force=True; closing the current tab makes the next op raise
+      target_lost — run list then use_target to recover)
+
+    Every result also carries `target: {window_id, tab_id, url}` so you always
+    see which tab you are on.
+    """
+    return _browser_impl.tabs(
+        op=op, url=url, window_id=window_id, tab_id=tab_id,
+        background=background, force=force,
+    )
+
+
+@mcp.tool()
+@tool(name="windows", tier=Tier.ONE, risk=Risk.MEDIUM)
+def windows(
+    op: str,
+    url: str = None,
+    window_id: int = None,
+    focused: bool = False,
+    force: bool = False,
+):
+    """Enumerate and manage browser windows, through the MV3 extension (Tier 1).
+
+    Sub-ops:
+    - list -> {windows:[{window_id, focused, owned, tab_count, active_tab_id}]}
+      (READ_ONLY; the thin variant of tabs.list)
+    - open(url=None, focused=False) -> {window_id, tab_id, created}  (a new OWNED
+      window, unfocused by default; sets the target)
+    - focus(window_id) -> {focused, window_id}  (the EXPLICIT raise — the agent
+      never brings a window forward automatically, so it never steals your
+      screen)
+    - close(window_id, force=False) -> {closed, window_id}  (owned only unless
+      force=True)
+    """
+    return _browser_impl.windows(
+        op=op, url=url, window_id=window_id, focused=focused, force=force,
+    )
 
 
 # --- CLI: management subcommands ---

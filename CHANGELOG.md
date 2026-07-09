@@ -2,6 +2,60 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.0] - 2026-07-09
+
+Browser round 3: window/tab management (the multi-context session model). The
+0.5.0 single pinned target becomes an enumerable, switchable registry, and the
+three ways the agent used to get lost in the browser are closed. No protocol
+version bump: the new ops grow the capability list only.
+
+### Added
+- `tabs(op, ...)` op-group: `list` returns the full `window -> tabs ->
+  {tab_id, url, title, active, owned, is_current}` map across the agent's own
+  window and yours (tagged by provenance); `open` / `switch` / `close` manage
+  tabs. The agent sees every tab but acts only on the pinned target. `switch`
+  moves the target and activates the tab within its window without raising that
+  window over your foreground; closing one of your tabs requires `force=True`.
+- `windows(op, ...)` op-group: `list` (the thin, per-window variant), `open` (a
+  new owned window, unfocused by default), `focus` (the explicit, agent-intended
+  raise), and `close` (owned only unless `force=True`).
+- Every browser op result now carries a `target: {window_id, tab_id, url}`
+  field, so the agent always sees which tab it just acted on and a surprise
+  `chrome://newtab` is visible immediately (additive; older clients tolerate it).
+- `use_target` now also reports the resolved `url` and `provenance`
+  (owned / attached / user) and switches the registry's current target.
+
+### Changed
+- The target model generalizes from a single pin to a registry of known contexts
+  plus a `current` pointer and an `established` flag, all persisted in
+  `chrome.storage.session`. Every op still resolves and acts by id (focus-proof,
+  unchanged).
+- The `target_lost` remediation now points at `tabs(op='list')` then
+  `use_target` to re-pin, or `use_target(mode='owned')` to open a fresh window.
+
+### Fixed
+- Loud loss: a mid-task target loss (the pinned tab/window closed after a target
+  was established) now raises `target_lost` instead of silently re-opening a
+  blank `chrome://newtab` window under the agent. A cold start (no target ever
+  set this session) still auto-opens the owned window. The split rides on the
+  persisted `established` flag, so it survives service-worker idle-termination.
+- Content-script self-heal now covers mutating ops (`click` / `fill` / `type`):
+  an "unreachable" reply means the message never arrived and the op never ran, so
+  re-injecting the content script and delivering once is a safe first delivery,
+  not a retry. This closes the "reads self-heal, writes fail on a fresh
+  navigation" split. A channel torn down mid-message is still reported as a
+  navigation, never redelivered.
+
+### Notes
+- Extension version and package version bump to 0.6.0 in lockstep; the
+  `PROTOCOL_VERSION` stays 1 (the new ops are additive via `supported_ops`).
+- The window/tab/registry/storage surfaces are pure `chrome.windows` /
+  `chrome.tabs` extension APIs with no path boundary, so Linux / Windows / macOS /
+  WSL behave identically (unlike `upload`). Validated on the Linux + xvfb gating
+  harness; per-OS live runs on Windows native / macOS / WSL are done in the
+  hardware verification round. This entry is re-checked against the final diff at
+  release.
+
 ## [0.5.0] - 2026-07-08
 
 ### Added

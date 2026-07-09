@@ -61,9 +61,14 @@ class BridgeStatus:
 
 @runtime_checkable
 class BrowserBridge(Protocol):
-    """Send an op, await its result. Raises ``BrowserError`` on failure."""
+    """Send an op, await its result. Raises ``BrowserError`` on failure.
 
-    def send(self, op: str, **params) -> Any: ...
+    ``op`` is positional-only so an op-group can carry a wire param literally
+    named ``op`` (the sub-op) without a keyword collision — e.g.
+    ``send("tabs", op="list")`` routes wire op ``tabs`` with ``params={"op":"list"}``.
+    """
+
+    def send(self, op: str, /, **params) -> Any: ...
 
     def status(self) -> BridgeStatus: ...
 
@@ -192,7 +197,7 @@ class FakeBridge:
         self._status = status
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def send(self, op: str, **params) -> Any:
+    def send(self, op: str, /, **params) -> Any:
         self.calls.append((op, params))
         if not self._connected:
             raise BrowserError(
@@ -279,7 +284,7 @@ class NativeMessagingBridge:
             connected=False, browsers=browsers, setup=True, reason="not_connected"
         )
 
-    def send(self, op: str, **params) -> Any:
+    def send(self, op: str, /, **params) -> Any:
         session = self._active_session()
         if session is None:
             if not self._probe_setup():

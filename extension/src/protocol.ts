@@ -42,6 +42,9 @@ export const SUPPORTED_OPS = [
   "clear",
   "get_value",
   "snapshot",
+  // 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
+  "tabs",
+  "windows",
 ] as const;
 
 export type OpName = (typeof SUPPORTED_OPS)[number];

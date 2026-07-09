@@ -232,6 +232,115 @@ class TestScreenshotIsAPixelTool:
         assert fake.calls == []
 
 
+class TestTabsOpGroup:
+    def test_list_sends_only_the_sub_op(self):
+        tree = {"windows": [{"window_id": 42, "owned": True, "tabs": []}]}
+        fake = FakeBridge(responses={"tabs": tree})
+        out = T.tabs(op="list", bridge=fake)
+        assert out is tree
+        # Wire op is "tabs"; the sub-op rides in params.op (no keyword collision).
+        assert fake.calls == [("tabs", {"op": "list"})]
+
+    def test_open_maps_params_and_returns_target(self):
+        result = {
+            "window_id": 42, "tab_id": 200, "url": "https://x", "created": True,
+            "target": {"window_id": 42, "tab_id": 200, "url": "https://x"},
+        }
+        fake = FakeBridge(responses={"tabs": result})
+        out = T.tabs(op="open", bridge=fake, url="https://x")
+        # The per-op target context is threaded through onto the tool result.
+        assert out["target"] == {"window_id": 42, "tab_id": 200, "url": "https://x"}
+        params = fake.calls[0][1]
+        assert params["op"] == "open"
+        assert params["url"] == "https://x"
+        assert params["background"] is True
+
+    def test_switch_forwards_tab_id(self):
+        fake = FakeBridge(responses={"tabs": {"tab_id": 90, "is_current": True}})
+        T.tabs(op="switch", bridge=fake, tab_id=90)
+        assert fake.calls[0][1] == {"op": "switch", "tab_id": 90}
+
+    def test_close_defaults_force_false(self):
+        fake = FakeBridge(responses={"tabs": {"closed": True, "tab_id": 88}})
+        T.tabs(op="close", bridge=fake, tab_id=88)
+        assert fake.calls[0][1] == {"op": "close", "tab_id": 88, "force": False}
+
+    def test_close_user_tab_refusal_surfaces_as_tool_error(self):
+        err = BrowserError(BrowserErrorCode.OP_FAILED,
+                           "refusing to close user tab 88 without force=true")
+        fake = FakeBridge(responses={"tabs": err})
+        with pytest.raises(ToolError) as ei:
+            T.tabs(op="close", bridge=fake, tab_id=88)
+        assert "without force" in str(ei.value)
+
+    def test_target_lost_from_a_tabs_op_is_terminal(self):
+        err = BrowserError(
+            BrowserErrorCode.TARGET_LOST, "the pinned tab was closed",
+            remediation="run tabs(op='list') then use_target",
+        )
+        assert err.retryable is False
+        fake = FakeBridge(responses={"tabs": err})
+        with pytest.raises(ToolError) as ei:
+            T.tabs(op="switch", bridge=fake, tab_id=1)
+        assert "closed" in str(ei.value)
+
+
+class TestWindowsOpGroup:
+    def test_list_sends_only_the_sub_op(self):
+        out = {"windows": [{"window_id": 42, "owned": True, "tab_count": 1}]}
+        fake = FakeBridge(responses={"windows": out})
+        assert T.windows(op="list", bridge=fake) is out
+        assert fake.calls == [("windows", {"op": "list"})]
+
+    def test_open_defaults_unfocused(self):
+        fake = FakeBridge(responses={"windows": {"window_id": 77, "created": True}})
+        T.windows(op="open", bridge=fake, url="https://x")
+        assert fake.calls[0][1] == {"op": "open", "url": "https://x", "focused": False}
+
+    def test_focus_forwards_window_id(self):
+        fake = FakeBridge(responses={"windows": {"focused": True, "window_id": 61}})
+        T.windows(op="focus", bridge=fake, window_id=61)
+        assert fake.calls[0][1] == {"op": "focus", "window_id": 61}
+
+    def test_close_defaults_force_false(self):
+        fake = FakeBridge(responses={"windows": {"closed": True, "window_id": 42}})
+        T.windows(op="close", bridge=fake, window_id=42)
+        assert fake.calls[0][1] == {"op": "close", "window_id": 42, "force": False}
+
+
+class TestPerOpTargetContext:
+    def test_a_normal_op_result_threads_the_target_context_through(self):
+        # The extension adds `target` to every result; cua passes it through so
+        # the agent sees which tab it just acted on.
+        result = {
+            "typed": 4, "value": "lofi", "ok": True,
+            "target": {"window_id": 42, "tab_id": 137, "url": "https://www.youtube.com/"},
+        }
+        fake = FakeBridge(responses={"fill": result})
+        out = T.browser(op="fill", bridge=fake, selector="#q", text="lofi")
+        assert out["target"] == {
+            "window_id": 42, "tab_id": 137, "url": "https://www.youtube.com/",
+        }
+
+
+class TestOpUnsupportedForOldExtension:
+    def test_tabs_op_unsupported_on_an_extension_lacking_it(self):
+        # An older extension whose supported_ops has no `tabs` -> op_unsupported.
+        from computer_use.browser.bridge import (
+            NativeMessagingBridge,
+            BrowserSession,
+        )
+
+        bridge = NativeMessagingBridge(auto_register=False)
+        bridge.register_session(
+            BrowserSession(browser="chrome", ext_version="0.5.0",
+                           supported_ops=["navigate", "click"])
+        )
+        with pytest.raises(BrowserError) as ei:
+            bridge.send("tabs", op="list")
+        assert ei.value.code is BrowserErrorCode.OP_UNSUPPORTED
+
+
 class TestBrowserEval:
     def test_eval_routes_to_eval_op(self):
         fake = FakeBridge(responses={"eval": {"value": 2}})

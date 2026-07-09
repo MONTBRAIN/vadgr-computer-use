@@ -82,11 +82,11 @@ class TestTier0Registration:
                 f"{tool_name}: expected risk={risk_value}, got {entry.risk.value}"
             )
 
-    def test_total_tool_count_is_twenty_three(self):
-        # 21 after 0.3.0 + the 0.4.0 browser tier (browser, browser_eval).
+    def test_total_tool_count_is_twenty_five(self):
+        # 23 after 0.4.0 + the 0.6.0 window/tab op-groups (tabs, windows).
         registry = _load_registry()
-        assert registry.count() == 23, (
-            f"expected 23 tools after 0.4.0, got {registry.count()}: "
+        assert registry.count() == 25, (
+            f"expected 25 tools after 0.6.0, got {registry.count()}: "
             f"{[t.name for t in registry.all()]}"
         )
 
@@ -97,8 +97,9 @@ class TestTier0Registration:
         breakdown = registry.tier_breakdown()
         assert breakdown.get(Tier.ZERO, 0) == 8
         assert breakdown.get(Tier.HALF, 0) == 0
-        # 0.4.0 adds the two Tier ONE browser tools.
-        assert breakdown.get(Tier.ONE, 0) == 2
+        # 0.4.0 added browser + browser_eval; 0.6.0 adds the tabs + windows
+        # op-groups -> four Tier ONE browser tools.
+        assert breakdown.get(Tier.ONE, 0) == 4
         assert breakdown.get(Tier.TWO, 0) == 13
 
 
