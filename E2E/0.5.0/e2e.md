@@ -160,10 +160,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part T (T1-T11) | pass* | not run | pass* | pass* |
-| Part A (A1-A9) | pass | not run | pass | A1 pass† |
-| Part B (B1-B7) | 6/7 pass* | not run | pass | not run† |
-| Overall | pass* | not run | pass* | pass* |
+| Part T (T1-T11) | pass* | pass* | pass* | pass* |
+| Part A (A1-A9) | pass | pass | pass | A1 pass† |
+| Part B (B1-B7) | 6/7 pass* | pass | pass | not run† |
+| Overall | pass* | pass* | pass* | pass* |
 
 `*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
 (needs the `close` op). Two bugs were found during this run and fixed on the
@@ -281,6 +281,55 @@ Status notes:
   op errors with *its own* selector (no off-by-one); the earlier `get_value ->
   {url,title}` anomaly is gone (it was a desync artifact). Unit test alone was NOT
   treated as proof — see the fix-and-verify methodology above.
+- macOS 26.5.1 (build 25F80, Darwin 25.5.0, arm64) on 2026-07-08: Google Chrome
+  (unpacked 0.5.0 extension rebuilt + reloaded, `storage` permission accepted),
+  Python 3.12 in `.venv`, Node v26.4.0 (Homebrew). Driven through the
+  orchestrator's live cua `browser` tool (single-listener): Part T ops directly
+  in-session; Parts A/B via naive goal-level subagents one at a time.
+  **Part T:** T1 owned-window-by-id ✅ (`use_target owned` →
+  `{window_id, tab_id, created:false}` because the setup smoke test had already
+  established the owned window, then nav+read_text confirmed ops resolve by id
+  — not `currentWindow`); **T2 focus-decouple ✅ — the headline: opened a
+  separate Chrome window on example.com and activated it, then read
+  `h2` = "Login Page" and filled `#username` on the *owned* herokuapp login
+  page (a selector that does not exist on example.com), so ops landed on the
+  owned window despite a different Chrome window holding focus — the 0.4.0
+  hijack bug is gone**; T3 hover ✅ (avatar hover on /hovers → caption went
+  `visible:false, bbox 0×0` → `visible:true, bbox 160×50.2`, `revealed:true`
+  via CDP); T4 dialog alert/confirm/prompt ✅ (accept alert → "You successfully
+  clicked an alert"; dismiss confirm → "You clicked: Cancel"; prompt accept
+  with text → "You entered: vadgr-05-macos"); T5 upload ✅ (CDP
+  `setFileInputFiles` on /upload → server echoed `t5-upload.txt`, page
+  read back "File Uploaded!"); T6 element_state ✅ (`#username` → visible /
+  receives_events / enabled / editable=true, focused=false, bbox 470×32.375,
+  value=""); T7 clear+get_value ✅ (fill "t7-first-value" → clear → "" →
+  fill "t7-second-value" → get_value matches; plus a top-level
+  `role=combobox` case on Google's search textarea round-tripped cleanly);
+  T8 snapshot pierces the shadow root ✅ (nodes include "Let's have some
+  different text!" and "In a list!" from inside the shadow root on /shadowdom
+  — the raw HTML reads "My default text"); T9 `/large` query capped at 50 +
+  `next_cursor:50` + `truncated:true` ✅, plus a `cursor:50, limit:5`
+  continuation returned `2.1`–`2.5` with `next_cursor:55` (the 0.4.0 token
+  blowout is gone); T11 screenshot-guidance ✅ (op returned the guidance
+  error "`screenshot` is not a `browser` op — it is a separate pixel tool"
+  cleanly, no crash). **T10 deferred to 0.6.0** (needs the `close` op).
+  **Part A** A1–A9 ✅ (0.4.0 acceptance re-run, no regression; A9 raised
+  `op_failed` on `#definitely-does-not-exist-12345`; saucedemo add exercised
+  over persisted cart state). **Part B** B1 Gmail ✅ live send verified by
+  "Mensaje enviado" toast + Sent row + inbox unread 8.909→8.911, recipient
+  chip confirmed with `data-hovercard-id="santiagoe4333@gmail.com"` before
+  Send; B3 Google (10 organic `h3.LC20lb` inside `#rso`); B4 Wikipedia (Turing
+  "23 June 1912" from infobox + `.bday` = 1912-06-23); B5 Amazon ✅ (Logitech
+  M510 wireless mouse, ASIN B087Z5WDJ2, cart item title matches
+  `#productTitle` character-for-character — first non-`AdHolder` result, guest
+  cart accepted the add); B6 Flights **hardened** (one-way Bogotá BOG →
+  Cali CLO on 2026-08-08 set entirely via on-screen trip-type / origin /
+  destination / date widgets, no route in the URL; real fares, cheapest
+  89.979 COP Wingo direct); B7 GitHub (microsoft/vscode 187,216 stars,
+  TypeScript 96.0%); B2 YouTube Music ✅ (player time advanced 0:05→0:16 across
+  ~3.5 s, play-toggle title="Pausar"). **Zero desync across ~30 ops on the
+  orchestrator side plus each subagent's ops; the id-correlation fix (finding
+  1 from Windows native) holds on macOS as well.**
 - Linux (2026-07-08): Ubuntu 26.04 LTS (GNOME Shell 50.1 / Mutter 50.1), kernel
   7.0.0-27-generic x86_64, Google Chrome with the unpacked 0.5.0 extension (rebuilt
   + reloaded, `storage` permission accepted). Driven through the orchestrator's
