@@ -205,16 +205,58 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part W (W1-W7) | **pass†** | **pass†** | not run | **pass** |
-| Part T (T1-T11) | **pass\*** | **pass** | not run | **pass** |
-| Part A (A1-A9) | **pass\*** | **pass** | not run | **pass** |
-| Part B (B1-B7) | **3/7\*** | **pass** | not run | **pass** |
-| Overall | **pass†** | **pass†** | not run | **pass** |
+| Part W (W1-W7) | **pass†** | **pass†** | **pass†** | **pass** |
+| Part T (T1-T11) | **pass\*** | **pass** | **pass** | **pass** |
+| Part A (A1-A9) | **pass\*** | **pass** | **pass‡** | **pass** |
+| Part B (B1-B7) | **3/7\*** | **pass** | **pass‡** | **pass** |
+| Overall | **pass†** | **pass†** | **pass†** | **pass** |
+
+`‡` Windows native Part A/B were run as a **representative** regression (A1 login,
+A9 raises + all Part T interaction ops re-confirmed; B4/B7 real-site reads + B2
+YouTube playback via the motivating task) — the full A1–A9 / B1–B7 passed twice
+in the 0.5.0 Windows-native runs and the 0.6.0 diff is window/tab targeting,
+which Part W and Part T fully re-validated. See the Windows-native note.
 
 `†` macOS Part W: W1–W6 + motivating + negative tasks pass; **W7** is the
 WSL-parity check (bridge round-trip on real hardware) — not applicable on macOS.
 
 Status notes:
+- **Windows native (2026-07-09): Part W + T + representative A/B pass.** Windows 11
+  Pro 25H2 (build 26200.8655, x64), Google Chrome 149.0.7827.103, Python 3.12.10,
+  Node v25.8.1. Extension rebuilt to 0.6.0 (`tabs`/`windows` in the bundle) + host
+  re-registered; `status` = `connected:true`; `SUPPORTED_OPS` includes `tabs` +
+  `windows`. Driven op-by-op through the orchestrator's live cua connection.
+  - **Automated gate:** extension unit suite **151 passed / 1 skipped** (incl.
+    `window_tabs` 15, `loud_loss` 4, `self_heal` 5, `resolver`, `lifecycle`);
+    typecheck + build clean. (pytest not run on Windows — the shared conftest
+    autouse fixture patches a Linux-only symbol; green on the PR branch.)
+  - **W1** `tabs(list)` returned all 5 user windows `owned:false` (~34 tabs:
+    Gmail/GitHub/YouTube/Slack/Claude Code/…) + the owned window `owned:true`;
+    `windows(list)` gave the thin summary. **W2** every op carried
+    `target:{window_id,tab_id,url}` matching the real page. **W3** `tabs(close,
+    current)` → next op raised terminal `target_lost` (not a silent blank / not
+    `chrome://newtab`) → recovered via `list`+`open`, resumed, no `force`. **W4**
+    fresh `navigate` + immediate `fill`/`get_value` landed with no wait/no `force`
+    (read+write both work — 0.5.0 asymmetry gone). **W5** `switch` moved the target
+    + activated the tab without raising the window (focus unchanged); `windows.focus`
+    was the only op that raised the owned window. **W6** `tabs.close`/`windows.close`
+    on a **user** context without `force` **refused** ("refusing to close user tab
+    … without force=true"); `force=true` closed a duplicate tab (deliberate path).
+  - **Verify rhythm:** naive subagent "play a video in your own window" ✅ (own tab,
+    normal video, `currentTime` 15.9→30.1, `paused:false`, `readyState:4`, never
+    drifted; correctly used `windows.focus` since background windows don't buffer
+    media). Negative "close one of my tabs" ✅ — tool refused, agent reported "no
+    tab closed" and declined to `force` an ambiguous target (no masquerade).
+  - **Part T** T1–T9/T11 re-confirmed directly on 0.6.0 (hover/dialog/upload/
+    element_state/clear/get_value/snapshot-pierces-shadow/query-pagination/
+    screenshot-guidance), each carrying the correct `target`; **T10 superseded by
+    W3**. **Part A** A1 login + A9 raises. **Part B** B4 (Turing `1912-06-23`), B7
+    (torvalds/linux `238,898` ★), B2 via the YouTube task.
+  - **Cleanup** ✅ — `tabs.close` an owned tab + `windows.close` the multi-tab owned
+    window (no `force`); final `windows(list)` shows **zero `owned:true`** windows.
+  - Minor observation (not a regression): `fill(submit=true)` on the `/login`
+    password field did not submit the form (had to `click(submit)`); the standard
+    click path works. Worth a look but non-blocking.
 - **WSL (2026-07-09): Part W pass.** WSL2 Ubuntu 24.04.4 LTS (kernel
   6.6.87.2-microsoft-standard-WSL2), cua-in-WSL driving **Windows Chrome 150.x**
   over the bridge; the extension rebuilt on the **Windows side** (0.6.0 `dist`,
