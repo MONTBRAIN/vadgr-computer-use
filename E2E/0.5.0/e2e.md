@@ -161,18 +161,13 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
 | Part T (T1-T11) | pass* | pass* | pass* | pass* |
-| Part A (A1-A9) | pass | pass | pass | A1 pass† |
-| Part B (B1-B7) | 6/7 pass* | pass | pass | not run† |
+| Part A (A1-A9) | pass | pass | pass | pass |
+| Part B (B1-B7) | 6/7 pass* | pass | pass | pass |
 | Overall | pass* | pass* | pass* | pass* |
 
 `*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
 (needs the `close` op). Two bugs were found during this run and fixed on the
 branch before `pass` was recorded — see the finding + fix below.
-
-`†` WSL: A2-A9 + Part B not re-run — they exercise the same navigate/click/fill/
-read/query ops proven in Part T, and the full acceptance + real-site suites are
-green on Windows-native and Linux; the WSL-specific additions (the cua-in-WSL
-bridge + the upload path translation) are validated in Part T. See the WSL note.
 
 Status notes:
 - WSL (2026-07-08): WSL2 Ubuntu 24.04.4 LTS (kernel
@@ -216,6 +211,26 @@ Status notes:
   opened normal-sized, `element_state` → `receives_events:true`, and `fill`/`click`
   landed **without `force`** (A1 login clean: "You logged into a secure area!").
   Windows-native/Linux never hit this because their owned window wasn't minimized.
+  **Part A (A1-A9) pass** — full 0.4.0 acceptance re-run on WSL through a fresh
+  normal-sized owned window, driven op-by-op from the orchestrator's live cua
+  connection and judged from structured read-backs, **every op clean without
+  `force`** (the occlusion fix holds end-to-end): A1 login, A2 async
+  ("Hello World!"), A3 dropdown/checkboxes/inputs, A4 infinite-scroll (page grew,
+  `.jscroll-added` appended), A5 tables (4 rows extracted), A6 history
+  back/forward, A7 add/remove (added 3, deleted 1 → 2 remain), A8 saucedemo
+  checkout ("Thank you for your order!"), A9 negative selector raises `op_failed`.
+  **Part B (B1-B7) pass** — real sites on the user's logged-in Windows Chrome:
+  **B1 Gmail live send** (compose body filled on the *authoritative* editor
+  through the actionability gate, not the hollow aria-mirror; the gate also
+  refused a hidden Send-button match before the visible one; delivery confirmed by
+  "Mensaje enviado" to the user's own address); B2 YouTube Music (played
+  "Understand" → player-bar title + `#play-pause-button` title "Pausar" i.e.
+  playing → paused back to "Reproducir", run last); B3 Google (SERP titles); B4
+  Wikipedia (lead paragraph, skipping the empty `.mw-empty-elt`); B5 Amazon
+  (obfuscated SERP product titles read from the isolated world); B6 Google Flights
+  (deep-nested SPA — trip-type/cabin/origin comboboxes extracted); B7 GitHub (repo
+  name via `strong[itemprop=name] a`; note its first `h1` is the a11y search
+  label, so a specific selector is needed — real-site quirk, not a bug).
 - Windows native (2026-07-08): Windows 11 Pro 25H2 (build 26200.8655, x64),
   Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through the
   orchestrator's live cua connection (single-listener methodology): Part T op
