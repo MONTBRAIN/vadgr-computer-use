@@ -195,18 +195,27 @@ Status notes:
   T9 `/large` query capped at 20 + `next_cursor` + `truncated:true` (the 0.4.0
   token blowout is gone); T11 screenshot-guidance. **T10 deferred to 0.6.0.** A1
   login also passed.
-  **Finding (WSL-specific — filed):** the machine was actively in use (a second
-  Claude session + the user's browser in the foreground), so the owned window
-  opened `focused:false` **fully occluded** behind them. The actionability
-  hit-test then reported `receives_events:false` and the gate refused non-`force`
-  mutations; `force=true` bypassed it and every op landed correctly on the owned
-  window (read-backs verified). Windows-native/Linux didn't hit this (the owned
-  window wasn't occluded). This is a real tension with the owned-window's purpose
-  (act while the user works elsewhere): the actionability check is occlusion-
-  sensitive. **Fix candidate:** relax the occlusion-based `receives_events` check
-  for the agent-owned window (it is driven via CDP, so OS-window occlusion should
-  not gate it), or foreground the owned window before acting (0.6.0 window
-  controls). Because of the occlusion, all Part-T mutations here used `force`.
+  **Finding — root-caused and FIXED on this branch.** The first WSL Part-T pass
+  needed `force` for every mutation: the actionability gate reported
+  `receives_events:false`. Root cause (`browser_eval` on the owned page): the owned
+  window opened `focused:false` **minimized** on WSL→Windows Chrome
+  (`innerHeight:2`, `document.hidden:true`), so `elementFromPoint` at the target's
+  centre fell outside the ~0px viewport and returned `null` — which `receivesEvents`
+  (`actionable.ts`) treated as "covered by another element." Two fixes:
+  (1) **`owned_window.ts`** opens the owned window `state:"normal"` at 1200×900
+  (still `focused:false`), so it has a real, hit-testable viewport — the actual
+  root cause; (2) **`actionable.ts`** treats a `null` hit as receiving events (null
+  means the hit-test couldn't resolve on a throttled/occluded window — NOT a DOM
+  overlay; the hollow-mirror trap always returns a *different* element, never
+  null), so a CDP-driven owned window is never falsely gated. Commits `73cd76e` /
+  `dee0345`; unit tests in `owned_window.test.ts` + `actionable.test.ts`.
+  **Verified end-to-end** (per § *When a test surfaces a bug*): rebuilt the
+  extension **on the Windows-side clone** (see the ENGINEERING §4 WSL gotcha — a
+  WSL-side `npm build` never reaches the Windows Chrome that loads unpacked from
+  its own clone), reloaded, and re-drove the exact scenario — a fresh owned window
+  opened normal-sized, `element_state` → `receives_events:true`, and `fill`/`click`
+  landed **without `force`** (A1 login clean: "You logged into a secure area!").
+  Windows-native/Linux never hit this because their owned window wasn't minimized.
 - Windows native (2026-07-08): Windows 11 Pro 25H2 (build 26200.8655, x64),
   Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through the
   orchestrator's live cua connection (single-listener methodology): Part T op
