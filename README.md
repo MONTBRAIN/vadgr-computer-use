@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local MCP server for desktop automation. 13 tools for capture, mouse, keyboard, and platform introspection. The calling agent takes a screenshot, reasons over the pixels, and drives mouse/keyboard through the server.
+Local MCP server for computer use. 23 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** a browser tier that drives your real Chrome through an MV3 extension with direct DOM ops, and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
@@ -23,7 +23,7 @@ vadgr-cua install-deps        # prints the plan; add --yes to run it
 
 It provisions the clipboard backend (`wl-clipboard`) and `/dev/uinput` access via a
 single graphical auth prompt (`pkexec`, falling back to `sudo`). pip can't install
-those — they are OS packages — so this command bridges the gap. See
+those (they are OS packages), so this command bridges the gap. See
 [First run on Linux](#first-run-on-linux).
 
 Verify:
@@ -257,8 +257,22 @@ If you later revoke either permission in System Settings, the next MCP tool call
 
 If the WSL2 daemon can't start (e.g. no Windows Python available), the server falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
-## MCP tools (13)
+## MCP tools (23)
 
+Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
+
+### Tier 0: system (8)
+- `fs(op, ...)`: read / write / list / stat / mkdir / remove on the filesystem.
+- `shell(op, ...)`: run a command, capture stdout / stderr / exit code.
+- `http(op, ...)`: make an HTTP request.
+- `clipboard(op, ...)`: read / write the OS clipboard.
+- `env(op, ...)` / `time(op, ...)` / `tempfile(op, ...)` / `data(op, ...)`: environment variables, time, temp files, and structured-data helpers.
+
+### Tier 1: browser (2)
+- `browser(op, ...)`: drive your real Chrome through the MV3 extension with direct DOM ops (`navigate`, `click`, `fill`, `query`, `read_text`, `wait_for`, `hover`, `dialog`, `upload`, `element_state`, `snapshot`, `use_target`, `back`/`forward`, and more). The DOM is the ground truth, so a mutating op is confirmed by a structured read-back rather than a screenshot. Requires the companion extension (see the release assets: `vadgr-cua-extension-<ver>.zip`, loaded unpacked).
+- `browser_eval(expression)`: evaluate an expression in the page, for verification and debugging.
+
+### Tier 2: desktop (13)
 Capture (2)
 - `screenshot()`: full screen, downscaled to `CU_MAX_WIDTH` (auto-picks 1024 / 1280 / 1366).
 - `screenshot_region(x, y, w, h)`: cropped region.
@@ -320,5 +334,5 @@ Apache 2.0. See `LICENSE`.
 ## Part of Vadgr
 
 - [vadgr](https://github.com/MONTBRAIN/vadgr): workflow engine (brain)
-- **[vadgr-computer-use](https://github.com/MONTBRAIN/vadgr-computer-use)**: desktop automation MCP (eyes)
+- **[vadgr-computer-use](https://github.com/MONTBRAIN/vadgr-computer-use)**: computer-use MCP with system, browser, and desktop tiers (hands and eyes)
 - [vadgr-agent-os](https://github.com/MONTBRAIN/vadgr-agent-os): containerized agent runtime
