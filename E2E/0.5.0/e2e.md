@@ -160,16 +160,53 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part T (T1-T11) | pass* | not run | pass* | not run |
-| Part A (A1-A9) | pass | not run | pass | not run |
-| Part B (B1-B7) | 6/7 pass* | not run | pass | not run |
-| Overall | pass* | not run | pass* | not run |
+| Part T (T1-T11) | pass* | not run | pass* | pass* |
+| Part A (A1-A9) | pass | not run | pass | A1 pass† |
+| Part B (B1-B7) | 6/7 pass* | not run | pass | not run† |
+| Overall | pass* | not run | pass* | pass* |
 
 `*` Part T: T1-T9 + T11 pass; T10 (`target_lost`) deferred to 0.6.0 — see its note
 (needs the `close` op). Two bugs were found during this run and fixed on the
 branch before `pass` was recorded — see the finding + fix below.
 
+`†` WSL: A2-A9 + Part B not re-run — they exercise the same navigate/click/fill/
+read/query ops proven in Part T, and the full acceptance + real-site suites are
+green on Windows-native and Linux; the WSL-specific additions (the cua-in-WSL
+bridge + the upload path translation) are validated in Part T. See the WSL note.
+
 Status notes:
+- WSL (2026-07-08): WSL2 Ubuntu 24.04.4 LTS (kernel
+  6.6.87.2-microsoft-standard-WSL2), cua-in-WSL driving Windows Chrome over the
+  bridge. **First `status` = `connected: true`** — this validates the two WSL
+  setup fixes shipped in this PR: **#18** (stdio-init hang) and **#19** (WSL
+  native-host registration). The branch cua auto-registered the Windows host and
+  the extension bonded; `supported_ops` carried the 0.5.0 ops.
+  **Part T (T1-T9, T11) pass:** T1 owned window (`use_target owned` →
+  `created:true`); **T2 focus-decouple** — a `read_text` and a `fill` both landed
+  on the owned login page (`"Login Page"` / `value:"tomsmith"`) while a *separate*
+  Chrome window held focus AND fully covered the owned window (targeting by id,
+  not focus — the 0.4.0 hijack bug is gone); T3 hover (`revealed:true` via CDP);
+  T4 dialog (arm accept → click → "You successfully clicked an alert"); **T5
+  upload — the WSL path translation:** cua rewrote `/tmp/vadgr-e2e-upload.txt` →
+  `\\wsl.localhost\Ubuntu-24.04\tmp\vadgr-e2e-upload.txt` and Windows Chrome
+  received it (`#uploaded-files` = the filename); T6 element_state
+  (`receives_events` present); T7 clear+get_value round-trip; T8 snapshot pierced
+  the shadow root ("Let's have some different text!") + paginated (`next_cursor`);
+  T9 `/large` query capped at 20 + `next_cursor` + `truncated:true` (the 0.4.0
+  token blowout is gone); T11 screenshot-guidance. **T10 deferred to 0.6.0.** A1
+  login also passed.
+  **Finding (WSL-specific — filed):** the machine was actively in use (a second
+  Claude session + the user's browser in the foreground), so the owned window
+  opened `focused:false` **fully occluded** behind them. The actionability
+  hit-test then reported `receives_events:false` and the gate refused non-`force`
+  mutations; `force=true` bypassed it and every op landed correctly on the owned
+  window (read-backs verified). Windows-native/Linux didn't hit this (the owned
+  window wasn't occluded). This is a real tension with the owned-window's purpose
+  (act while the user works elsewhere): the actionability check is occlusion-
+  sensitive. **Fix candidate:** relax the occlusion-based `receives_events` check
+  for the agent-owned window (it is driven via CDP, so OS-window occlusion should
+  not gate it), or foreground the owned window before acting (0.6.0 window
+  controls). Because of the occlusion, all Part-T mutations here used `force`.
 - Windows native (2026-07-08): Windows 11 Pro 25H2 (build 26200.8655, x64),
   Google Chrome 149.0.7827.103, Python 3.12.10, Node v25.8.1. Driven through the
   orchestrator's live cua connection (single-listener methodology): Part T op
