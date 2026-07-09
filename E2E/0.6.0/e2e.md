@@ -14,12 +14,11 @@ Target OSes: Linux, macOS, Windows (native), WSL (cua in WSL driving Windows Chr
 Builds on the 0.5.0 runbook (`../0.5.0/e2e.md`); the 0.5.0 Part T/A/B suites re-run
 here as the **regression** part, and Part W below is the new-in-0.6.0 gate.
 
-> **Status: WSL Part W green (2026-07-09).** The 0.6.0 gate (Part W, W1-W7 + the
-> motivating/negative tasks) is **live-verified on WSL** (cua-in-WSL driving
-> Windows Chrome) — see the WSL status note below. The regression suites
-> (Part T/A/B) on WSL and all parts on Linux / macOS / Windows-native remain for
-> the per-OS verification round, exactly as the 0.5.0 runbook was filled in; no
-> row below claims a live pass until that round records it. The automated gate
+> **Status: WSL full e2e green (2026-07-09).** The 0.6.0 gate (Part W) **and** the
+> full regression (Part T/A/B) are **live-verified on WSL** (cua-in-WSL driving
+> Windows Chrome) — see the WSL status note below. Linux / macOS / Windows-native
+> remain for the per-OS verification round, exactly as the 0.5.0 runbook was filled
+> in; no row for those OSes claims a live pass until that round records it. The automated gate
 > (`pytest`, `vitest`, `npm run build`, `npm run typecheck`) is green on the PR
 > branch — see *Automated gate* below — but a green unit suite is necessary, NOT
 > sufficient; Part W is the milestone gate.
@@ -193,10 +192,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
 | Part W (W1-W7) | not run | not run | not run | **pass** |
-| Part T (T1-T11) | not run | not run | not run | not run |
-| Part A (A1-A9) | not run | not run | not run | not run |
-| Part B (B1-B7) | not run | not run | not run | not run |
-| Overall | not run | not run | not run | Part W pass; T/A/B pending |
+| Part T (T1-T11) | not run | not run | not run | **pass** |
+| Part A (A1-A9) | not run | not run | not run | **pass** |
+| Part B (B1-B7) | not run | not run | not run | **pass** |
+| Overall | not run | not run | not run | **pass** |
 
 Status notes:
 - **WSL (2026-07-09): Part W pass.** WSL2 Ubuntu 24.04.4 LTS (kernel
@@ -239,7 +238,27 @@ Status notes:
     coherent throughout, no blank-tab drift, no `chrome://` dead-end. A *livestream*
     (`readyState:0`) does not start via the play control — see the playback note in
     Part W. **Negative task** covered by W6.
-  - Remaining on WSL: the **Part T/A/B regression** (0.5.0 + 0.4.0 suites).
+  - **Part T (0.5.0 gate) pass** — all on the owned window, every op clean, no
+    `force`: T1 owned window + by-id (from W1), T2 focus-decoupled (ops land on the
+    unfocused owned window, W5), T3 hover (`revealed:true`), T4 dialog (arm+accept →
+    "You successfully clicked an alert"), **T5 upload with WSL path translation**
+    (`/tmp/vadgr-e2e-06-upload.txt` → `\\wsl.localhost\Ubuntu-24.04\tmp\...`,
+    `#uploaded-files` confirmed), T6 element_state (`receives_events:true`), T7
+    clear+get_value (`""` round-trip), T8 snapshot pierces `/shadowdom` +
+    paginates (`next_cursor`), T9 `/large` query capped at 50 + `next_cursor` +
+    `truncated`, T11 screenshot-guidance. **T10 superseded by W3** (real `close` op
+    now exists → loud `target_lost`).
+  - **Part A (0.4.0 acceptance) pass** — A1 login (W4), A2 async ("Hello World!"),
+    A3 dropdown/checkboxes/inputs, A4 infinite-scroll (`.jscroll-added` grew), A5
+    tables (4 rows), A6 history back/forward, A7 add/remove (3→2), A8 saucedemo
+    checkout ("Thank you for your order!"), A9 negative selector raises `op_failed`.
+    No regression from the registry rework.
+  - **Part B (real sites) pass** — B1 Gmail **live send** ("Mensaje enviado" to the
+    user's own address; body on the authoritative editor through the actionability
+    gate), B2 YouTube Music (played "Understand", `#play-pause-button` "Pausar" →
+    paused to "Reproducir"), B3 Google (SERP titles), B4 Wikipedia (lead paragraph),
+    B5 Amazon (obfuscated SERP titles), B6 Google Flights (SPA comboboxes), B7
+    GitHub (repo name). Every op carried the per-op `target` context.
 - **Linux / macOS / Windows-native: not run (pending the per-OS verification round).** The window/tab/
   registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
   APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
