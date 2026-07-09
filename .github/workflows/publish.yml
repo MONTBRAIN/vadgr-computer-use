@@ -84,8 +84,27 @@ jobs:
           name: dist
           path: dist/
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build and package the extension (load-unpacked zip)
+        run: |
+          cd extension
+          npm ci
+          npm run build
+          ext_ver=$(node -p "require('./manifest.json').version")
+          # Zip the dist/ contents flat at the zip root, so unzipping yields the
+          # exact folder to "Load unpacked" in chrome://extensions.
+          ( cd dist && zip -r -X "$GITHUB_WORKSPACE/vadgr-cua-extension-${ext_ver}.zip" . )
+          echo "Packaged vadgr-cua-extension-${ext_ver}.zip:"
+          unzip -l "$GITHUB_WORKSPACE/vadgr-cua-extension-${ext_ver}.zip"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: dist/*
+          files: |
+            dist/*
+            vadgr-cua-extension-*.zip
