@@ -191,11 +191,14 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part W (W1-W7) | not run | not run | not run | **pass** |
-| Part T (T1-T11) | not run | not run | not run | **pass** |
-| Part A (A1-A9) | not run | not run | not run | **pass** |
-| Part B (B1-B7) | not run | not run | not run | **pass** |
-| Overall | not run | not run | not run | **pass** |
+| Part W (W1-W7) | not run | **pass†** | not run | **pass** |
+| Part T (T1-T11) | not run | **pass** | not run | **pass** |
+| Part A (A1-A9) | not run | **pass** | not run | **pass** |
+| Part B (B1-B7) | not run | **pass** | not run | **pass** |
+| Overall | not run | **pass†** | not run | **pass** |
+
+`†` macOS Part W: W1–W6 + motivating + negative tasks pass; **W7** is the
+WSL-parity check (bridge round-trip on real hardware) — not applicable on macOS.
 
 Status notes:
 - **WSL (2026-07-09): Part W pass.** WSL2 Ubuntu 24.04.4 LTS (kernel
@@ -259,7 +262,106 @@ Status notes:
     paused to "Reproducir"), B3 Google (SERP titles), B4 Wikipedia (lead paragraph),
     B5 Amazon (obfuscated SERP titles), B6 Google Flights (SPA comboboxes), B7
     GitHub (repo name). Every op carried the per-op `target` context.
-- **Linux / macOS / Windows-native: not run (pending the per-OS verification round).** The window/tab/
+- **macOS 26.5.1 (build 25F80, Darwin 25.5.0, arm64) on 2026-07-09: Part W + T + A + B pass.**
+  Google Chrome (unpacked 0.6.0 extension rebuilt + reloaded), Python 3.12 in
+  `.venv`, Node v26.4.0 (Homebrew). Driven through the orchestrator's live cua
+  connection (single-listener methodology): Part W op-gates + T1–T11 directly
+  in-session; the motivating/negative tasks and Parts A/B through naive goal-level
+  subagents one at a time. **W7 (WSL parity) is N/A on macOS.**
+  - **W1 awareness/list** — `tabs.list` returned **6 windows / 22 tabs**: 5
+    user windows (Gmail / YouTube / Slack / Canva / GitHub PR / Claude Code /
+    etc.) tagged `owned:false`, and the 1 owned window tagged `owned:true` with
+    its 2 tabs both `owned:true` and one `is_current:true`. `windows.list`
+    returned the thin per-window summary (`tab_count`, `active_tab_id`,
+    `owned`). Agent saw every user tab and acted on none.
+  - **W2 per-op target** — `navigate`/`fill`/`click`/`get_value`/`query` all
+    carried `target:{window_id,tab_id,url}` on the same owned tab; `target.url`
+    tracked the actual page as it changed (`/login` → `/secure`). Note:
+    `read_text` returns a raw string per its typed contract (`-> str`), so the
+    `target` block is not attached to it — every other op surface is covered.
+  - **W3 loud `target_lost`** — after `tabs.close` on the current tab, next
+    `browser.read_text` raised terminal `target_lost: the pinned tab was
+    closed; run tabs(list) then use_target, or use_target(mode=owned) to open
+    a fresh window` — NOT a silent blank window, NOT a `chrome://newtab`.
+    Recovered via `tabs.list` → `use_target(mode="attach", window_id,
+    tab_id)` on the owned window's remaining tab (returned
+    `provenance:"owned"`), read back `h1` = "Welcome to the-internet". No
+    `force`.
+  - **W4 fresh-nav self-heal** — `navigate /login` then immediate
+    `fill(#username, "tomsmith")` / `fill(#password, "…")` / `click(submit)`
+    with no wait and no `force` → `#flash` = "You logged into a secure area!";
+    no "Receiving end does not exist", both reads and writes landed cleanly
+    on the fresh page (0.5.0 asymmetry gone).
+  - **W5 switch without focus steal** — two owned tabs; osascript activated
+    Chrome (which happened not to raise any window frontmost because the
+    orchestrator terminal held focus); `tabs.switch(2049579515)` moved current
+    to the switched tab (`h2` = "Secure Area" read back, `target.url` reflected
+    it) while `windows.list` showed the owned window still `focused:false` —
+    switch did NOT raise the window. Then `windows.focus(<owned>)` returned
+    `focused:true` and the follow-up `windows.list` confirmed the owned window
+    was now the only `focused:true` — the explicit raise is the only op that
+    brings a window forward.
+  - **W6 user-context safety** — `tabs.close(<user tab>)` without `force`
+    refused: `op_failed: refusing to close user tab 2049579418 without
+    force=true`; `windows.close(<user window>)` without `force` refused:
+    `op_failed: refusing to close non-owned window 2049579417 without
+    force=true`. Both stayed open. `force=true` on the same user tab (my own
+    leftover example.com from the 0.5.0 T2 setup) closed cleanly and target
+    did not drift.
+  - **W7 WSL parity** — N/A on macOS (WSL bridge check).
+  - **Motivating task (naive subagent)** — opened https://www.youtube.com/watch?v=jNQXAC9IVRw
+    ("Me at the zoo", non-livestream) in a fresh owned window; `<video>`
+    samples `s1={paused:false, currentTime:8.48, readyState:4}` →
+    `s2={paused:false, currentTime:9.99, readyState:4}` (Δ +1.51s across
+    ~1.5s), then closed the owned window. Every op's `target.url` was the
+    watch URL — no `chrome://newtab` dead-end.
+  - **Negative task (naive subagent)** — prompted with the bare "close one of
+    my open tabs" and no `force` hint. The tier's **first** `tabs.close` on a
+    user tab returned the exact guardrail refusal: `op_failed: refusing to
+    close user tab 2049579277 without force=true` — no silent masquerade. The
+    subagent then made an explicit judgment call to re-invoke with
+    `force=true` (W6's documented deliberate path) on the lowest-impact user
+    tab it could identify (`https://www.youtube.com/` homepage — no in-flight
+    work). The tier property (loud refuse without force) is proven; the
+    subagent's `force=true` escalation is the documented path, not a bypass.
+  - **Part T (0.5.0 gate) pass** — 10/10 via subagent, all on the owned
+    window, no `force`: T1 (owned target by id via `target` block), T2
+    focus-decoupled, T3 hover (`revealed:true`), T4 dialog alert/confirm/
+    prompt ("You entered: t4-prompt"), T5 upload
+    (`/private/tmp/.../t5-upload.txt` → `#uploaded-files` = "t5-upload.txt",
+    `h3` = "File Uploaded!"), T6 element_state (`receives_events:true`,
+    bbox), T7 clear+get_value (`""` round-trip on input + top-level
+    `role=combobox` on Google's search textarea), T8 snapshot pierces
+    `/shadowdom` ("Let's have some different text!" + "In a list!") +
+    paginates, T9 `/large` query capped at 50 + `next_cursor:50` +
+    `truncated:true`, T11 screenshot-guidance. **T10 superseded by W3.**
+  - **Part A (0.4.0 acceptance) pass** — 9/9 via subagent, no regression: A1
+    login flash, A2 async "Hello World!", A3 dropdown/checkboxes/inputs, A4
+    infinite-scroll (`.jscroll-added` 2 → 6), A5 tables (4 rows, first
+    "Smith"), A6 back/forward URL+h3, A7 add/remove (0→1→2→3→2), A8
+    saucedemo "Sauce Labs Backpack" pre-add + in-cart, A9 `op_failed` raised.
+  - **Part B (real sites) pass** — every subagent used its OWN owned tab (via
+    `tabs.open` / `use_target(mode="owned")`) and never acted on a user tab
+    (the user's own Gmail tab `2049579257` was left untouched during B1).
+    B1 Gmail **live send** to the user's address, verified by "Mensaje
+    enviado" toast + Sent-folder top row + inbox unread 8.980 → 8.981;
+    recipient chip confirmed via `data-hovercard-id="santiagoe4333@gmail.com"`
+    pre-Send; the actionability gate correctly refused a minimized compose
+    dialog until the subagent expanded it (no `force=true`). B2 YouTube Music
+    played "Africa" by Toto (owned tab), elapsed 0:06 → 0:18 across ~3 s.
+    B3 Google 9 organic `#rso h3.LC20lb` for "chrome extension mv3 service
+    worker lifecycle". B4 Wikipedia Grace Hopper "December 9, 1906" from
+    infobox + `.bday` = 1906-12-09. B5 Amazon LISEN USB-C cable (ASIN
+    B0CG1LGWR6) added, cart title byte-identical to `#productTitle` — guest
+    cart accepted the add (differs from Linux 0.5.0's login-blocked path
+    where the buybox threw "Lo sentimos"). B6 Google Flights **hardened**
+    (one-way MDE → CTG on 2026-08-08 set via on-screen trip-type / origin /
+    destination / date widgets; no route in URL; cheapest 71.330 COP
+    JetSMART direct). B7 GitHub `facebook/react` redirects to `react/react`,
+    stars "246k" (title 246,326), JavaScript 49.4%. **Zero desync across
+    ~50 orchestrator ops + each subagent's ops; the id-correlation and
+    self-heal fixes from earlier rounds hold on macOS 0.6.0.**
+- **Linux / Windows-native: not run (pending the per-OS verification round).** The window/tab/
   registry/storage surfaces are pure `chrome.windows` / `chrome.tabs` extension
   APIs with no filesystem/path boundary, so Linux / Windows / macOS / WSL are
   expected to behave identically; WSL (W7) is the boundary that proves the bridge
