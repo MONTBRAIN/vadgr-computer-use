@@ -80,7 +80,17 @@ class TestStatusOp:
         fake = FakeBridge(status=st)
         out = T.browser(op="status", bridge=fake)
         assert out == {"connected": True, "browsers": ["chrome"],
-                       "setup": True, "reason": None}
+                       "setup": True, "reason": None, "profiles": []}
+
+    def test_status_carries_profiles(self):
+        st = BridgeStatus(
+            connected=True, browsers=["chrome"], setup=True, reason=None,
+            profiles=[{"profile_id": "work", "browser": "chrome",
+                       "is_current": True, "sample_tab_titles": ["Gmail"]}],
+        )
+        fake = FakeBridge(status=st)
+        out = T.browser(op="status", bridge=fake)
+        assert out["profiles"][0]["profile_id"] == "work"
 
     def test_status_never_touches_a_page(self):
         fake = FakeBridge(connected=False)
@@ -144,6 +154,56 @@ class TestTargetingOps:
         with pytest.raises(ToolError) as ei:
             T.browser(op="hover", bridge=fake, selector=".menu")
         assert "closed" in str(ei.value)
+
+
+class TestProfilesOpGroup:
+    def test_list_sends_only_the_sub_op(self):
+        payload = {"profiles": [{"profile_id": "work", "browser": "chrome",
+                                 "is_current": True, "sample_tab_titles": ["Gmail"]}]}
+        fake = FakeBridge(responses={"profiles": payload})
+        out = T.profiles(op="list", bridge=fake)
+        assert out is payload
+        assert fake.calls == [("profiles", {"op": "list"})]
+
+    def test_use_forwards_profile_id(self):
+        fake = FakeBridge(
+            responses={"profiles": {"profile_id": "work", "browser": "chrome",
+                                    "is_current": True}}
+        )
+        out = T.profiles(op="use", bridge=fake, profile_id="work")
+        assert out["is_current"] is True
+        assert fake.calls == [("profiles", {"op": "use", "profile_id": "work"})]
+
+    def test_profile_ambiguous_surfaces_as_terminal_tool_error(self):
+        err = BrowserError(
+            BrowserErrorCode.PROFILE_AMBIGUOUS,
+            "multiple browser profiles are connected and none is selected. "
+            "Connected profiles: work (...); home (...)",
+            remediation="choose one with profiles(op='use', profile_id=...)",
+        )
+        assert err.retryable is False
+        fake = FakeBridge(responses={"navigate": err})
+        with pytest.raises(ToolError) as ei:
+            T.browser(op="navigate", bridge=fake, url="https://e.com")
+        text = str(ei.value)
+        assert "profile_ambiguous" in text
+        assert "work" in text and "home" in text
+
+
+class TestUseTargetProfile:
+    def test_use_target_without_profile_id_omits_it(self):
+        # Back-compat: a use_target call with no profile_id sends no profile_id
+        # key (an old single-profile setup is unchanged).
+        fake = FakeBridge(responses={"use_target": {"window_id": 1, "tab_id": 2}})
+        T.browser(op="use_target", bridge=fake)
+        assert "profile_id" not in fake.calls[0][1]
+
+    def test_use_target_forwards_profile_id_when_given(self):
+        fake = FakeBridge(responses={"use_target": {"window_id": 1, "tab_id": 2}})
+        T.browser(op="use_target", bridge=fake, profile_id="work", tab_id=9)
+        params = fake.calls[0][1]
+        assert params["profile_id"] == "work"
+        assert params["tab_id"] == 9
 
 
 class TestInteractionOps:

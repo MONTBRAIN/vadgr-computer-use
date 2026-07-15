@@ -23,6 +23,7 @@ fully unit-tested.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,12 +44,18 @@ _MANIFEST_NAME = "com.vadgr.cua.json"
 
 @dataclass
 class BridgeStatus:
-    """The pre-flight report: is a browser usable right now?"""
+    """The pre-flight report: is a browser usable right now?
+
+    ``profiles`` (0.6.1) lists every connected browser profile with its
+    recognition context, so the pre-flight shows the choices when more than one
+    profile is connected (and which one, if any, is current).
+    """
 
     connected: bool
     browsers: list[str]
     setup: bool
     reason: str | None
+    profiles: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +63,7 @@ class BridgeStatus:
             "browsers": self.browsers,
             "setup": self.setup,
             "reason": self.reason,
+            "profiles": self.profiles,
         }
 
 
@@ -79,11 +87,19 @@ class BrowserSession:
 
     Subclass / override ``request`` with the live native-messaging round-trip;
     the base is a registry record carrying the negotiated capability list.
+
+    ``profile_id`` + ``profile_context`` (0.6.1) carry the connection's profile
+    identity: a stable per-profile UUID and its recognition context
+    (``window_count`` / ``tab_count`` / ``sample_tab_titles``). An older
+    extension sends none, so the default ``"default"`` keeps single-profile
+    setups unchanged.
     """
 
     browser: str
     ext_version: str
     supported_ops: list[str] = field(default_factory=list)
+    profile_id: str = "default"
+    profile_context: dict[str, Any] = field(default_factory=dict)
 
     def request(self, op: str, params: dict[str, Any]) -> Any:  # pragma: no cover
         # The live round-trip is wired in the spike (socket -> native host ->
@@ -232,8 +248,20 @@ class NativeMessagingBridge:
     logic on top of them is unit-tested via overrides.
     """
 
+    # The env var that pins a default profile when more than one is connected:
+    # matches a profile_id prefix, or a sample_tab_title substring.
+    _PROFILE_PIN_ENV = "CUA_BROWSER_PROFILE"
+
     def __init__(self, *, auto_register: bool = True) -> None:
-        self._sessions: dict[str, BrowserSession] = {}
+        # Keyed by (browser, profile_id): the accept loop keeps EVERY connection,
+        # not a single-listener bond. `_current` selects which one ops route to.
+        self._sessions: dict[tuple[str, str], BrowserSession] = {}
+        self._current: tuple[str, str] | None = None
+        # When an explicitly-selected profile disconnects, its id is remembered
+        # here so the next op is LOUD instead of silently falling to another
+        # profile (the "never silently wrong" doctrine). Cleared on a fresh
+        # selection or when all connections are gone.
+        self._dropped_selection: str | None = None
         self._auto_register = auto_register
         self._ensured = False
 
@@ -257,24 +285,172 @@ class NativeMessagingBridge:
         return probe_manifests(manifest_paths())
 
     def _active_session(self) -> BrowserSession | None:
-        # First registered session wins (single-session in 0.4.0; multi-target
-        # routing matures in 0.6.0).
-        for sess in self._sessions.values():
-            return sess
+        # The session the resolution ladder points at, or None when it cannot
+        # decide (zero connections, or multiple with no selection). Never raises
+        # — `send`/`status` translate a None into the right loud error / report.
+        key = self._current_key()
+        return self._sessions.get(key) if key is not None else None
+
+    # --- 0.6.1: the profile-connection registry + resolution ladder ---
+
+    def _current_key(self) -> tuple[str, str] | None:
+        """Resolve which connection ops route to, WITHOUT raising:
+
+        1. an explicit selection (``profiles(use)`` / ``use_target(profile_id)``);
+        2. the ``CUA_BROWSER_PROFILE`` env pin (profile_id prefix or a
+           sample_tab_title substring), if it matches exactly one;
+        3. the sole connection when there is exactly one;
+        4. otherwise ``None`` (ambiguous — the caller raises ``profile_ambiguous``).
+        """
+        if not self._sessions:
+            return None
+        if self._current is not None and self._current in self._sessions:
+            return self._current
+        pin = os.environ.get(self._PROFILE_PIN_ENV)
+        if pin:
+            matches = [k for k, s in self._sessions.items()
+                       if self._pin_matches(s, pin)]
+            if len(matches) == 1:
+                return matches[0]
+        # The sole-connection convenience is suppressed while a selection is
+        # lost, so a dropped explicit choice never silently lands on another.
+        if len(self._sessions) == 1 and self._dropped_selection is None:
+            return next(iter(self._sessions))
         return None
 
+    @staticmethod
+    def _pin_matches(session: BrowserSession, pin: str) -> bool:
+        if session.profile_id.startswith(pin):
+            return True
+        titles = (session.profile_context or {}).get("sample_tab_titles", [])
+        return any(pin.lower() in str(t).lower() for t in titles)
+
+    def _profile_list(self) -> list[dict[str, Any]]:
+        cur = self._current_key()
+        out: list[dict[str, Any]] = []
+        for key, s in self._sessions.items():
+            ctx = s.profile_context or {}
+            out.append({
+                "profile_id": s.profile_id,
+                "browser": s.browser,
+                "is_current": key == cur,
+                "window_count": ctx.get("window_count"),
+                "tab_count": ctx.get("tab_count"),
+                "sample_tab_titles": list(ctx.get("sample_tab_titles", [])),
+            })
+        return out
+
+    def _ambiguous_error(self, reason: str | None = None) -> BrowserError:
+        """Build the terminal ``profile_ambiguous`` error, listing the choices.
+
+        The same "never silently wrong" doctrine as 0.6.0 ``target_lost``: with
+        more than one profile connected and none selected, cua refuses to guess.
+        """
+        listing = "; ".join(
+            f"{p['profile_id']} (browser={p['browser']}, "
+            f"tabs={p['tab_count']}"
+            + (f", open: {', '.join(map(str, p['sample_tab_titles'][:3]))}"
+               if p["sample_tab_titles"] else "")
+            + ")"
+            for p in self._profile_list()
+        )
+        message = reason or (
+            "more than one browser profile is connected and none is selected"
+        )
+        return BrowserError(
+            BrowserErrorCode.PROFILE_AMBIGUOUS,
+            f"{message}. Connected profiles: {listing or '(none)'}",
+            remediation=(
+                "pick one with profiles(op='use', profile_id=...) or "
+                "use_target(profile_id=...), or set CUA_BROWSER_PROFILE to a "
+                "profile_id prefix or a tab-title substring"
+            ),
+            fallback=PIXEL_FALLBACK,
+        )
+
+    def _select_profile(self, profile_id: str | None) -> tuple[str, str]:
+        """Point ``current`` at the profile matching ``profile_id`` (exact or a
+        unique prefix). Raises ``profile_ambiguous`` on zero or many matches."""
+        if profile_id:
+            matches = [k for k, s in self._sessions.items()
+                       if s.profile_id == profile_id
+                       or s.profile_id.startswith(profile_id)]
+            if len(matches) == 1:
+                self._current = matches[0]
+                self._dropped_selection = None
+                return matches[0]
+        raise self._ambiguous_error(
+            f"no connected profile matches {profile_id!r}"
+        )
+
+    def _profiles_op(self, params: dict[str, Any]) -> Any:
+        """Answer the ``profiles`` op from cua's connection registry (the only
+        place that knows every connection). ``list`` enumerates, ``use`` pins."""
+        sub = str(params.get("op", "list"))
+        if sub == "list":
+            ref = self._active_session()
+            if ref is not None and "profiles" not in ref.supported_ops:
+                raise self._op_unsupported("profiles")
+            return {"profiles": self._profile_list()}
+        if sub == "use":
+            key = self._select_profile(params.get("profile_id"))
+            session = self._sessions[key]
+            if "profiles" not in session.supported_ops:
+                raise self._op_unsupported("profiles")
+            return {
+                "profile_id": session.profile_id,
+                "browser": session.browser,
+                "is_current": True,
+            }
+        raise BrowserError(
+            BrowserErrorCode.OP_FAILED, f"unknown profiles sub-op {sub!r}"
+        )
+
+    @staticmethod
+    def _op_unsupported(op: str) -> BrowserError:
+        return BrowserError(
+            BrowserErrorCode.OP_UNSUPPORTED,
+            f"the connected extension does not support op {op!r}",
+            remediation="update the vadgr-cua extension",
+            fallback=PIXEL_FALLBACK,
+        )
+
     def register_session(self, session: BrowserSession) -> None:
-        self._sessions[session.browser] = session
+        key = (session.browser, session.profile_id or "default")
+        self._sessions[key] = session
+
+    def unregister_session(self, session: BrowserSession) -> None:
+        """Drop a connection that closed. If it was ``current``, the pointer is
+        cleared so the next op re-resolves (loud when still ambiguous)."""
+        for key, s in list(self._sessions.items()):
+            if s is session:
+                del self._sessions[key]
+                if self._current == key:
+                    self._current = None
+                    self._dropped_selection = s.profile_id
+        # A full disconnect resets the loud-loss latch: a lone profile that
+        # later reconnects gets the cold-start convenience again.
+        if not self._sessions:
+            self._dropped_selection = None
 
     # --- public API ---
 
     def status(self) -> BridgeStatus:
         browsers = self._probe_setup()
+        profiles = self._profile_list()
         session = self._active_session()
         if session is not None:
             return BridgeStatus(
                 connected=True, browsers=browsers or [session.browser],
-                setup=True, reason=None,
+                setup=True, reason=None, profiles=profiles,
+            )
+        if self._sessions:
+            # Connected, but the ladder can't pick one (more than one profile,
+            # none selected). Connected is true; the profiles array shows the
+            # choices and the reason flags the ambiguity.
+            return BridgeStatus(
+                connected=True, browsers=browsers or [], setup=True,
+                reason="profile_ambiguous", profiles=profiles,
             )
         if not browsers:
             return BridgeStatus(
@@ -285,26 +461,40 @@ class NativeMessagingBridge:
         )
 
     def send(self, op: str, /, **params) -> Any:
+        # `profiles` is resolved cua-side (the connection registry is the only
+        # place that knows every connection); it never round-trips to a session.
+        if op == "profiles":
+            return self._profiles_op(params)
+        # A profile carried inline (use_target(profile_id=...)) pins `current`
+        # first, then is consumed here — the extension never sees profile_id.
+        profile_id = params.pop("profile_id", None)
+        if profile_id is not None:
+            self._select_profile(profile_id)
         session = self._active_session()
         if session is None:
-            if not self._probe_setup():
-                raise BrowserError(
-                    BrowserErrorCode.NOT_SET_UP,
-                    "no native-host manifest registered for any browser",
-                    remediation="run extension setup (`vadgr-cua browser-setup`)",
-                    fallback=PIXEL_FALLBACK,
-                )
-            raise BrowserError(
-                BrowserErrorCode.NOT_CONNECTED,
-                "the native host is registered but no browser session is live",
-                remediation="open Chrome/Edge and enable the vadgr-cua extension",
-                fallback=PIXEL_FALLBACK,
-            )
+            self._raise_no_session()
         if op not in session.supported_ops:
+            raise self._op_unsupported(op)
+        return session.request(op, params)
+
+    def _raise_no_session(self) -> None:
+        if self._dropped_selection is not None and self._sessions:
+            raise self._ambiguous_error(
+                f"the selected profile {self._dropped_selection!r} disconnected; "
+                "choose a connected profile"
+            )
+        if len(self._sessions) > 1:
+            raise self._ambiguous_error()
+        if not self._probe_setup():
             raise BrowserError(
-                BrowserErrorCode.OP_UNSUPPORTED,
-                f"the connected extension does not support op {op!r}",
-                remediation="update the vadgr-cua extension",
+                BrowserErrorCode.NOT_SET_UP,
+                "no native-host manifest registered for any browser",
+                remediation="run extension setup (`vadgr-cua browser-setup`)",
                 fallback=PIXEL_FALLBACK,
             )
-        return session.request(op, params)
+        raise BrowserError(
+            BrowserErrorCode.NOT_CONNECTED,
+            "the native host is registered but no browser session is live",
+            remediation="open Chrome/Edge and enable the vadgr-cua extension",
+            fallback=PIXEL_FALLBACK,
+        )

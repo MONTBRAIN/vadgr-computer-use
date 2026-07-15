@@ -554,6 +554,7 @@ def browser(
     cursor: int = None,
     limit: int = None,
     arm: bool = True,
+    profile_id: str = None,
 ):
     """Drive the browser by selector, through the MV3 extension (Tier 1).
 
@@ -582,10 +583,12 @@ def browser(
     - snapshot(selector=None, roles=None, cursor=None, limit=50)
       -> {nodes:[{role, name, state, value, ref}], next_cursor?}  (paginated AX,
       pierces shadow DOM + frames; supersedes accessibility_tree)
-    - use_target(mode="owned"|"attach", window_id=None, tab_id=None)
-      -> {browser, window_id, tab_id, created}  (pin the session target)
+    - use_target(mode="owned"|"attach", window_id=None, tab_id=None,
+      profile_id=None) -> {browser, window_id, tab_id, created}  (pin the session
+      target; profile_id also selects which connected browser profile to act in)
     - cookies(action="get"|"set"|"clear", url, name, value)
-    - status() -> {connected, browsers, setup, reason}  (pre-flight; no page)
+    - status() -> {connected, browsers, setup, reason, profiles}  (pre-flight; no
+      page; `profiles` lists every connected browser profile)
 
     `screenshot` is NOT a browser op — it is a separate pixel tool. Call the
     top-level `screenshot` tool to see the page.
@@ -628,7 +631,7 @@ def browser(
         "all": all, "clear": clear, "submit": submit, "timeout": timeout,
         "key": key, "force": force, "mode": mode, "window_id": window_id,
         "tab_id": tab_id, "reveals": reveals, "files": files, "roles": roles,
-        "cursor": cursor, "limit": limit,
+        "cursor": cursor, "limit": limit, "profile_id": profile_id,
     }
     # `arm` defaults True and is only meaningful for `dialog`; pass it there.
     if op == "dialog":
@@ -719,6 +722,31 @@ def windows(
     return _browser_impl.windows(
         op=op, url=url, window_id=window_id, focused=focused, force=force,
     )
+
+
+@mcp.tool()
+@tool(name="profiles", tier=Tier.ONE, risk=Risk.MEDIUM)
+def profiles(op: str, profile_id: str = None):
+    """Enumerate and select the connected browser profile (Tier 1).
+
+    When the extension is installed in more than one Chrome profile (personal,
+    work, several Google accounts), each connects separately; this tool tells
+    them apart and picks which one to drive.
+
+    Sub-ops:
+    - list -> {profiles:[{profile_id, browser, is_current, window_count,
+      tab_count, sample_tab_titles}]}  (READ_ONLY; recognize a profile by what is
+      open in it, e.g. "the one with work Gmail and Figma")
+    - use(profile_id) -> {profile_id, browser, is_current:true}  (pin which
+      profile the browser / tabs / windows ops act within)
+
+    With more than one profile connected and none selected, the next page op
+    raises a terminal `profile_ambiguous` error listing the choices (never a
+    silent guess). A single connected profile is used automatically, so
+    single-profile setups need no extra step. You can also pin a default with the
+    CUA_BROWSER_PROFILE env var (a profile_id prefix or a tab-title substring).
+    """
+    return _browser_impl.profiles(op=op, profile_id=profile_id)
 
 
 # --- CLI: management subcommands ---

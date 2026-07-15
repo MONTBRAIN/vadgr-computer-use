@@ -63,7 +63,7 @@ class TestBridgeStatus:
                             reason="not_set_up")
         assert st.as_dict() == {
             "connected": False, "browsers": [], "setup": False,
-            "reason": "not_set_up",
+            "reason": "not_set_up", "profiles": [],
         }
 
 
@@ -196,6 +196,202 @@ class TestNativeMessagingBridgeSend:
 def B_SUPPORTED():
     from computer_use.browser.protocol import SUPPORTED_OPS
     return SUPPORTED_OPS
+
+
+def _profile_session(profile_id, *, browser="chrome", titles=None, ops=None):
+    """A registry record session carrying a profile identity + recognition context."""
+    sess = B.BrowserSession(
+        browser=browser,
+        ext_version="0.6.1",
+        supported_ops=list(ops if ops is not None else ["navigate", "click", "profiles"]),
+        profile_id=profile_id,
+        profile_context={
+            "window_count": 1,
+            "tab_count": len(titles or []),
+            "sample_tab_titles": list(titles or []),
+        },
+    )
+    return sess
+
+
+class _RoutedSession(B.BrowserSession):
+    """A session that records the op routed to it (so we can prove `current`)."""
+
+    def request(self, op, params):
+        self.last = (op, params)
+        return {"routed_to": self.profile_id, "op": op}
+
+
+class TestMultiConnectionRegistry:
+    def test_keeps_multiple_connections_keyed_by_browser_and_profile(self):
+        b = B.NativeMessagingBridge(auto_register=False)
+        b.register_session(_profile_session("work"))
+        b.register_session(_profile_session("home"))
+        # Both connections are retained (not a single-listener bond).
+        assert len(b._sessions) == 2
+        assert {s.profile_id for s in b._sessions.values()} == {"work", "home"}
+
+    def test_missing_profile_id_registers_as_default(self):
+        b = B.NativeMessagingBridge(auto_register=False)
+        # A 0.6.0 extension: BrowserSession with no profile_id.
+        b.register_session(
+            B.BrowserSession(browser="chrome", ext_version="0.6.0",
+                             supported_ops=["navigate"])
+        )
+        assert ("chrome", "default") in b._sessions
+
+    def test_single_connection_auto_uses_it(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        sess = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate"], profile_id="only")
+        b.register_session(sess)
+        out = b.send("navigate", url="https://e.com")
+        assert out == {"routed_to": "only", "op": "navigate"}
+
+    def test_two_connections_none_selected_raises_profile_ambiguous(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(_profile_session("work", titles=["Work Gmail"]))
+        b.register_session(_profile_session("home", titles=["Personal Gmail"]))
+        with pytest.raises(BrowserError) as ei:
+            b.send("navigate", url="https://e.com")
+        assert ei.value.code is BrowserErrorCode.PROFILE_AMBIGUOUS
+        # The terminal error lists the choices (never a silent guess).
+        assert "work" in str(ei.value) and "home" in str(ei.value)
+        assert ei.value.retryable is False
+
+    def test_explicit_selection_routes_current(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate", "profiles"],
+                              profile_id="work-uuid")
+        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate", "profiles"],
+                              profile_id="home-uuid")
+        b.register_session(work)
+        b.register_session(home)
+        b.send("profiles", op="use", profile_id="work-uuid")
+        out = b.send("navigate", url="https://e.com")
+        assert out["routed_to"] == "work-uuid"
+
+    def test_env_pin_selects_by_profile_id_prefix(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.setenv("CUA_BROWSER_PROFILE", "home")
+        b.register_session(_RoutedSession(
+            browser="chrome", ext_version="0.6.1", supported_ops=["navigate"],
+            profile_id="work-9f2c"))
+        b.register_session(_RoutedSession(
+            browser="chrome", ext_version="0.6.1", supported_ops=["navigate"],
+            profile_id="home-1a2b"))
+        out = b.send("navigate", url="https://e.com")
+        assert out["routed_to"] == "home-1a2b"
+
+    def test_env_pin_selects_by_sample_tab_title_substring(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.setenv("CUA_BROWSER_PROFILE", "figma")
+        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate"], profile_id="w",
+                              profile_context={"sample_tab_titles": ["Work Gmail", "Figma"]})
+        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate"], profile_id="h",
+                              profile_context={"sample_tab_titles": ["Personal Gmail"]})
+        b.register_session(work)
+        b.register_session(home)
+        out = b.send("navigate", url="https://e.com")
+        assert out["routed_to"] == "w"
+
+    def test_dropped_current_makes_next_op_loud(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate", "profiles"], profile_id="work")
+        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["navigate", "profiles"], profile_id="home")
+        b.register_session(work)
+        b.register_session(home)
+        b.send("profiles", op="use", profile_id="work")
+        b.unregister_session(work)  # the current connection drops
+        with pytest.raises(BrowserError) as ei:
+            b.send("navigate", url="https://e.com")
+        assert ei.value.code is BrowserErrorCode.PROFILE_AMBIGUOUS
+
+
+class TestProfilesOp:
+    def test_list_enumerates_every_connected_profile(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(_profile_session("work-uuid", titles=["Work Gmail", "Figma"]))
+        b.register_session(_profile_session("home-uuid", titles=["Personal Gmail"]))
+        out = b.send("profiles", op="list")
+        ids = {p["profile_id"] for p in out["profiles"]}
+        assert ids == {"work-uuid", "home-uuid"}
+        work = next(p for p in out["profiles"] if p["profile_id"] == "work-uuid")
+        assert work["sample_tab_titles"] == ["Work Gmail", "Figma"]
+        assert work["browser"] == "chrome"
+
+    def test_use_selects_and_reports_is_current(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(_profile_session("work-uuid"))
+        b.register_session(_profile_session("home-uuid"))
+        out = b.send("profiles", op="use", profile_id="work-uuid")
+        assert out == {"profile_id": "work-uuid", "browser": "chrome",
+                       "is_current": True}
+        # And the list now marks it current.
+        listed = b.send("profiles", op="list")
+        current = [p for p in listed["profiles"] if p["is_current"]]
+        assert len(current) == 1 and current[0]["profile_id"] == "work-uuid"
+
+    def test_use_unknown_profile_is_loud(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(_profile_session("work-uuid"))
+        b.register_session(_profile_session("home-uuid"))
+        with pytest.raises(BrowserError) as ei:
+            b.send("profiles", op="use", profile_id="nope")
+        assert ei.value.code is BrowserErrorCode.PROFILE_AMBIGUOUS
+
+    def test_profiles_op_unsupported_on_old_extension(self, monkeypatch):
+        # A single, old (pre-0.6.1) extension: `profiles` not advertised.
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(
+            B.BrowserSession(browser="chrome", ext_version="0.6.0",
+                             supported_ops=["navigate", "click"], profile_id="default")
+        )
+        with pytest.raises(BrowserError) as ei:
+            b.send("profiles", op="list")
+        assert ei.value.code is BrowserErrorCode.OP_UNSUPPORTED
+
+    def test_use_target_profile_id_selects_before_routing(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["use_target"], profile_id="work")
+        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
+                              supported_ops=["use_target"], profile_id="home")
+        b.register_session(work)
+        b.register_session(home)
+        out = b.send("use_target", profile_id="home", window_id=None, tab_id=None,
+                     mode="owned")
+        assert out["routed_to"] == "home"
+        # profile_id is consumed by cua (selection), never forwarded to the extension.
+        assert "profile_id" not in home.last[1]
+
+
+class TestStatusProfiles:
+    def test_status_grows_a_profiles_array(self, monkeypatch):
+        b = B.NativeMessagingBridge(auto_register=False)
+        monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
+        monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
+        b.register_session(_profile_session("work-uuid", titles=["Work Gmail"]))
+        b.register_session(_profile_session("home-uuid", titles=["Personal Gmail"]))
+        st = b.status()
+        assert st.connected is True
+        ids = {p["profile_id"] for p in st.as_dict()["profiles"]}
+        assert ids == {"work-uuid", "home-uuid"}
 
 
 class TestDetectWindowsUser:

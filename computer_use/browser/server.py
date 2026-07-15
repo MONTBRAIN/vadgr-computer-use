@@ -50,7 +50,7 @@ from computer_use.browser.protocol import (
     parse_server_hello,
 )
 
-CUA_VERSION = "0.6.0"
+CUA_VERSION = "0.6.1"
 
 
 def discovery_path() -> Path:
@@ -139,14 +139,21 @@ class TcpBrowserSession(BrowserSession):
 
     def __init__(self, conn_file, *, browser: str, ext_version: str,
                  supported_ops: list[str],
+                 profile_id: str = "default",
+                 profile_context: dict[str, Any] | None = None,
                  sock: socket.socket | None = None) -> None:
         super().__init__(browser=browser, ext_version=ext_version,
-                         supported_ops=supported_ops)
+                         supported_ops=supported_ops,
+                         profile_id=profile_id,
+                         profile_context=profile_context or {})
         self._file = conn_file
         self._sock = sock
         self._lock = threading.Lock()
         self._next_id = 0
         self._alive = True
+        # Set by the server after registration: drops this connection from the
+        # bridge registry when it tears down, so a closed profile is removed.
+        self.on_teardown: Any = None
         # Bound each op read so a stuck/closed tab cannot hang the pipe forever.
         if sock is not None:
             sock.settimeout(self._OP_TIMEOUT_S)
@@ -206,6 +213,11 @@ class TcpBrowserSession(BrowserSession):
                 if closer is not None:
                     closer.close()
             except OSError:
+                pass
+        if self.on_teardown is not None:
+            try:
+                self.on_teardown()
+            except Exception:  # pragma: no cover - best-effort deregistration
                 pass
 
     def _read_reply(self, msg_id: int) -> dict[str, Any] | None:
@@ -323,9 +335,18 @@ class BrowserServer:
             browser=hello.browser or "chrome",
             ext_version=hello.ext_version,
             supported_ops=hello.supported_ops,
+            # A build with no profile_id -> the synthetic `default` profile,
+            # so single-profile setups are unchanged (back-compat).
+            profile_id=hello.profile_id or "default",
+            profile_context=hello.profile,
             sock=conn,
         )
         self.bridge.register_session(session)
+        # Drop this connection from the registry when it closes, so a profile
+        # that goes away is removed (and the next op re-resolves loudly).
+        register = getattr(self.bridge, "unregister_session", None)
+        if register is not None:
+            session.on_teardown = lambda: register(session)
 
     def stop(self) -> None:
         self._stop.set()

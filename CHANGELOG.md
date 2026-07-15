@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.1] - 2026-07-13
+
+Browser round 3.1: multi-profile targeting. When the extension is installed in
+more than one Chrome profile (personal, work, several Google accounts), cua now
+knows which profile each connection is and the agent can choose one, instead of
+binding to whichever connected first. No protocol version bump: the handshake
+gains additive profile fields and the capability list grows one op.
+
+### Added
+- `profiles(op, ...)` op-group (a new Tier 1 tool): `list` returns every
+  connected browser profile with recognition context (`profile_id`, `browser`,
+  `is_current`, `window_count`, `tab_count`, `sample_tab_titles`) so you can tell
+  them apart by what is open in each ("the one with work Gmail and Figma");
+  `use(profile_id)` pins which profile the browser / tabs / windows / DOM ops act
+  within.
+- `use_target` gains an optional `profile_id` that selects the connected profile
+  and (optionally) a target within it in one call.
+- The extension mints a stable per-profile id (a UUID in `chrome.storage.local`,
+  which is isolated per profile) once and reports it plus the recognition context
+  in the `hello` handshake. No new permission (storage was already granted).
+- `CUA_BROWSER_PROFILE` env var pins a default profile when more than one is
+  connected: it matches a `profile_id` prefix or a `sample_tab_title` substring.
+- `browser(op="status")` grows a `profiles` array listing every connected
+  profile, so the pre-flight shows the choices.
+
+### Changed
+- The browser transport keeps every accepted connection concurrently, keyed by
+  `(browser, profile_id)`, with a `current` pointer selecting which one ops route
+  to. This replaces the single-listener bond (one connection owned the pipe).
+  Selection follows a ladder: an explicit `profiles(use)` / `use_target` choice,
+  then the `CUA_BROWSER_PROFILE` pin, then the sole connection if there is exactly
+  one.
+
+### Fixed
+- Never silently wrong on multiple profiles: with more than one connected and none
+  selected, the next op raises a terminal `profile_ambiguous` error that lists the
+  choices, rather than guessing (the same doctrine as 0.6.0 `target_lost`). If an
+  explicitly-selected profile disconnects, the next op is loud too, instead of
+  silently falling through to another profile.
+
+### Notes
+- Back-compat: a connection whose `hello` carries no `profile_id` (an older
+  extension) is registered under a synthetic `default` profile, so single-profile
+  setups are unchanged and need no new step.
+- Extension version and package version bump to 0.6.1 in lockstep; the
+  `PROTOCOL_VERSION` stays 1 (the hello profile fields and the `profiles` op are
+  additive).
+- The multi-connection registry and the profile handshake are pure Python + a
+  pure extension handshake with no path boundary, so Linux / Windows / macOS / WSL
+  behave identically; WSL is the parity boundary that proves the multiplexed
+  connections round-trip over the bridge. Validated on the automated gate
+  (`pytest` / `vitest` / `npm run build` / `npm run typecheck`); the live
+  two-profile run is the hardware verification round. This entry is re-checked
+  against the final diff at release.
+
 ## [0.6.0] - 2026-07-09
 
 Browser round 3: window/tab management (the multi-context session model). The
