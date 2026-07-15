@@ -229,10 +229,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part P (P1-P6) | not run | not run | not run | not run |
-| Part I (I1-I2 multi-instance) | not run | not run | not run | not run |
-| Part W (W1-W7 regression) | not run | not run | not run | not run |
-| Overall | not run | not run | not run | not run |
+| Part P (P1-P6) | not run | not run | not run | **pass** |
+| Part I (I1-I2 multi-instance) | not run | not run | not run | unit-covered |
+| Part W (W1-W7 regression) | not run | not run | not run | **pass (spot-check)** |
+| Overall | not run | not run | not run | **pass** |
 
 **Live e2e for 0.6.1 is run on WSL only.** 0.6.1 is purely browser-tier — the
 multi-connection registry, the profile handshake, and the discovery-file env
@@ -247,4 +247,37 @@ automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is 
 on the PR branch — that is the bar this change was held to before the hardware round.
 
 Status notes:
-- _(pending the per-OS verification round — no live run recorded yet.)_
+- **WSL (2026-07-15): Part P + Part W pass.** WSL2 Ubuntu 24.04.4 LTS, cua-in-WSL
+  driving Windows Chrome over the bridge; the extension rebuilt on the Windows side
+  (0.6.1 `dist`) and loaded in **two** Chrome profiles. Driven op-by-op through the
+  orchestrator's live cua connection.
+  - **P1 awareness/list** — `profiles(list)` returned both connected profiles with
+    recognizable context: `cd17…` (chrome, 5 windows / 28 tabs — Slack/Zoom/Annotation/
+    Claude Code) and `7abc…` (chrome, 1 window / 3 tabs — Outlier/Extensions).
+  - **P2 loud ambiguity** — with both connected and none selected, `status.reason` =
+    `profile_ambiguous` (the tier refuses to guess; the same doctrine as `target_lost`).
+  - **P3 select and isolate** — `profiles(use 7abc…)` -> `is_current:true`; `tabs(list)`
+    then showed ONLY that profile's single window (profile `cd17…`'s 5 windows were not
+    visible). Opened an owned window + `navigate /login` + `fill` there; switching to
+    `cd17…` and `windows(list)` showed its 5 original windows and **not** the owned
+    window created in `7abc…` — the other profile was provably untouched. Then drove
+    `cd17…` (the work profile): owned window -> GitHub -> repo name "vadgr-computer-use"
+    (the motivating task). Bidirectional selection, each profile isolated.
+  - **P6 WSL parity** — the entire run was cua-in-WSL -> Windows Chrome over the bridge;
+    both profile connections and every op round-tripped intact on real hardware.
+  - **P4 (`CUA_BROWSER_PROFILE` env pin) / P5 (single-profile back-compat)** — not run
+    live (need a cua restart with the env / a single-profile config); covered by the
+    unit suite.
+  - **Part W regression (spot-check)** — inside a selected profile, navigate / query /
+    fill / use_target / tabs / windows all clean; **W4 self-heal** (immediate `fill` on a
+    fresh `navigate`, no `force`) and **W3 loud `target_lost`** (close current -> terminal
+    `target_lost` + remediation) both held. The multi-connection registry rework did not
+    regress 0.6.0 single-profile targeting.
+  - **Part I (multi-instance #26)** — not run live: it needs two separate Chrome
+    *instances* (distinct `--user-data-dir`, each with its own `VADGR_CUA_BROWSER_DISCOVERY`)
+    and two cua servers, since profiles of one Chrome share the browser process and bond
+    to one cua. Covered by the unit suite (`resolve_discovery_path` honors the env,
+    `ensure_server` writes to it); the live two-instance run is an optional heavier setup.
+- Linux / macOS / Windows-native: not run — 0.6.1 is OS-agnostic browser-tier (pure
+  Python + a pure extension handshake, no path boundary), so WSL is the parity boundary;
+  the others rely on that argument plus the green automated gate.
