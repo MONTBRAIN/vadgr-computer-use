@@ -139,6 +139,36 @@ class TestDiscoveryFile:
         assert S.read_discovery(path=linux) == (7000, "tk")
         assert S.read_discovery(path=win) == (7000, "tk")
 
+    def test_resolve_discovery_path_honors_env(self, monkeypatch, tmp_path):
+        # issue #26: the server must honor the same env the native host reads, so
+        # concurrent cua instances get their own file instead of clobbering one.
+        custom = tmp_path / "session-a" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+        assert S.resolve_discovery_path() == custom
+
+    def test_resolve_discovery_path_defaults_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VADGR_CUA_BROWSER_DISCOVERY", raising=False)
+        assert S.resolve_discovery_path() == S.discovery_path()
+
+    def test_ensure_server_writes_to_env_path(self, monkeypatch, tmp_path):
+        # ensure_server must pass the env-resolved discovery path to BrowserServer
+        # (the read-side override was previously dead — the server ignored it).
+        custom = tmp_path / "session-b" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+        monkeypatch.setattr(S, "_SERVER", None)
+        captured = {}
+
+        class FakeServer:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def start(self):
+                return 12345
+
+        monkeypatch.setattr(S, "BrowserServer", FakeServer)
+        S.ensure_server()
+        assert captured["discovery_path"] == custom
+
 
 class TestListener:
     def test_full_hello_plus_navigate_roundtrip(self, tmp_path):

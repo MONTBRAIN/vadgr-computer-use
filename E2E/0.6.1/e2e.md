@@ -177,6 +177,27 @@ from the stream, `target_lost` terminal + recoverable, self-heal lands without
 sufficient if W1-W7 are clean, since 0.6.1 touches the transport/registry, not the
 DOM/CDP op paths.
 
+## Part I: multi-instance isolation (issue #26, run after Part W)
+
+Two cua processes on one machine must not clobber each other's browser tier. Give
+each cua instance AND the Chrome that hosts its extension a distinct
+`VADGR_CUA_BROWSER_DISCOVERY` (on WSL also `VADGR_CUA_BROWSER_DISCOVERY_WINDOWS` for
+the Windows-side copy).
+
+- **I1 Coexistence (no clobber).** Start instance A (discovery path A) and bond its
+  Chrome; `browser(op="status")` -> `connected: true`. Start instance B (discovery
+  path B) and bond a second Chrome; B `status` -> `connected: true`. Instance A's
+  browser ops must STILL work afterward (a `tabs(list)` / `navigate` on A succeeds) —
+  B starting no longer kills A's browser tier, because each wrote its own discovery
+  file instead of clobbering the one per-user path.
+- **I2 Default path unchanged (back-compat).** With no env set, a single instance uses
+  the per-user default discovery file exactly as before.
+
+Note: **pixel / desktop-tier (Tier 2) contention is OUT of scope here.** The shared
+screen + input cannot serve two agents at once; that single-owner-per-display lock is
+tracked separately (the desktop-lock issue) and is future work. #26 makes instances
+coexist; the browser tier is isolatable, so concurrent browser agents are safe.
+
 ## Automated gate (green on the PR branch — necessary, not sufficient)
 
 Run before any live e2e; this is what the PR branch was validated against:
@@ -187,7 +208,9 @@ Run before any live e2e; this is what the PR branch was validated against:
   `profiles(list/use)` params + returns; `use_target(profile_id)` selection;
   status grows the `profiles` array; back-compat missing `profile_id` -> `default`;
   NO `PROTOCOL_VERSION` change; `op_unsupported` for an extension lacking
-  `profiles`; the tool count is now 26). One pre-existing failure,
+  `profiles`; the tool count is now 26; and the #26 discovery-path env override
+  (`resolve_discovery_path` honors `VADGR_CUA_BROWSER_DISCOVERY`, `ensure_server`
+  writes to it) so concurrent instances get their own file). One pre-existing failure,
   `test_wlroots_uinput_when_writable`, also fails on clean `master` (desktop
   uinput, unrelated to the browser tier) and is ignored.
 - `cd extension && npm test` — extension unit suite (`profile.test.ts`,
@@ -207,15 +230,21 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
 | Part P (P1-P6) | not run | not run | not run | not run |
+| Part I (I1-I2 multi-instance) | not run | not run | not run | not run |
 | Part W (W1-W7 regression) | not run | not run | not run | not run |
 | Overall | not run | not run | not run | not run |
 
-Every row is **not run (pending the per-OS verification round)**: the live
-multi-profile run needs the extension loaded in two real Chrome profiles and is a
-human round. `P6` (WSL parity) is N/A on non-WSL OSes; `W7` likewise. The
-automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is
-green on the PR branch — that is the bar this change was held to before the
-hardware round.
+**Live e2e for 0.6.1 is run on WSL only.** 0.6.1 is purely browser-tier — the
+multi-connection registry, the profile handshake, and the discovery-file env
+override are pure Python + a pure extension handshake with no filesystem/path
+boundary, so Linux / macOS / Windows-native behave identically. WSL is the parity
+boundary that actually exercises the multiplexed connections and the discovery
+override across the bridge on real hardware, so the live round is WSL; the other OSes
+rely on the OS-agnostic argument plus the automated gate. The live run needs the
+extension loaded in two real Chrome profiles (Part P) and two cua instances (Part I),
+so it is a human round. `P6` / `W7` (WSL parity) are N/A on non-WSL OSes. The
+automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is green
+on the PR branch — that is the bar this change was held to before the hardware round.
 
 Status notes:
 - _(pending the per-OS verification round — no live run recorded yet.)_

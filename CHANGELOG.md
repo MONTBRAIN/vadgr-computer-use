@@ -41,6 +41,13 @@ gains additive profile fields and the capability list grows one op.
   choices, rather than guessing (the same doctrine as 0.6.0 `target_lost`). If an
   explicitly-selected profile disconnects, the next op is loud too, instead of
   silently falling through to another profile.
+- Concurrent cua instances can coexist (#26). The browser server now honors the
+  `VADGR_CUA_BROWSER_DISCOVERY` env when writing its discovery file, symmetric with
+  the native host that already reads it; previously the server always wrote the one
+  per-user path, so a second cua process clobbered the first and the extension bonded
+  only to whichever wrote last. Set the same value for a cua process and the Chrome
+  that hosts its extension to isolate that pair; on WSL, `VADGR_CUA_BROWSER_DISCOVERY_WINDOWS`
+  overrides the Windows-side copy. This unblocks running one cua per profile / per agent.
 
 ### Notes
 - Back-compat: a connection whose `hello` carries no `profile_id` (an older

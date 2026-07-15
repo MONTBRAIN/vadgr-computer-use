@@ -33,6 +33,7 @@ is written under ``/mnt/c/...`` so the Windows-side shim can find it too.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import socket
 import threading
@@ -56,6 +57,19 @@ CUA_VERSION = "0.6.1"
 def discovery_path() -> Path:
     """The well-known file the shim reads to find the listener (port + token)."""
     return Path.home() / ".vadgr-cua" / "browser.port"
+
+
+def resolve_discovery_path() -> Path:
+    """The discovery file cua writes, honoring the ``VADGR_CUA_BROWSER_DISCOVERY``
+    override so multiple cua instances on one machine can coexist, each with its
+    own file, instead of clobbering a single per-user path.
+
+    Symmetric with ``native_host.py``, which reads the same env: set the SAME value
+    for a cua process and for the Chrome that hosts its extension, and that pair is
+    isolated from any other cua/Chrome pair. Falls back to the per-user default.
+    """
+    env = os.environ.get("VADGR_CUA_BROWSER_DISCOVERY")
+    return Path(env) if env else discovery_path()
 
 
 def wsl_discovery_path(windows_user: str | None = None) -> Path:
@@ -373,15 +387,23 @@ def ensure_server(bridge: NativeMessagingBridge | None = None) -> BrowserServer:
     """
     global _SERVER
     if _SERVER is None:
+        discovery = resolve_discovery_path()
         win_copy = None
         try:
             from computer_use.platform.detect import detect_platform
             from computer_use.core.types import Platform
 
             if detect_platform() == Platform.WSL2:
-                win_copy = wsl_discovery_path()
+                # On WSL the Windows relay shim reads its copy from the Windows
+                # filesystem, so a per-instance run overrides it separately (the
+                # shim's own VADGR_CUA_BROWSER_DISCOVERY points at the matching
+                # /mnt/c path). Falls back to the shared default.
+                win_env = os.environ.get("VADGR_CUA_BROWSER_DISCOVERY_WINDOWS")
+                win_copy = Path(win_env) if win_env else wsl_discovery_path()
         except Exception:
             win_copy = None
-        _SERVER = BrowserServer(bridge=bridge, windows_copy=win_copy)
+        _SERVER = BrowserServer(
+            bridge=bridge, discovery_path=discovery, windows_copy=win_copy,
+        )
         _SERVER.start()
     return _SERVER
