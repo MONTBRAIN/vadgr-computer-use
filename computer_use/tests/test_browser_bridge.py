@@ -261,6 +261,51 @@ class TestMultiConnectionRegistry:
         assert "work" in str(ei.value) and "home" in str(ei.value)
         assert ei.value.retryable is False
 
+    def test_profiles_list_refreshes_stale_context_from_the_live_extension(self):
+        # e2e finding: the hello context is a snapshot from connect time, so a
+        # window opened/closed afterward left profiles(list) reporting stale counts
+        # (a closed profile still showed its old window + tabs). profiles(list) must
+        # re-query each extension for a LIVE buildProfileContext().
+        b = B.NativeMessagingBridge(auto_register=False)
+
+        class _LiveSession(B.BrowserSession):
+            def request(self, op, params):
+                assert (op, params) == ("profiles", {"op": "list"})
+                # the extension reports the CURRENT state: the window was closed -> 0
+                return {"profiles": [{"profile_id": self.profile_id,
+                                      "browser": "chrome", "window_count": 0,
+                                      "tab_count": 0, "sample_tab_titles": []}]}
+
+        sess = _LiveSession(
+            browser="chrome", ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"], profile_id="work",
+            profile_context={"window_count": 1, "tab_count": 4,
+                             "sample_tab_titles": ["Outlier", "Top topics"]},
+        )
+        b.register_session(sess)
+        entry = b._profiles_op({"op": "list"})["profiles"][0]
+        assert entry["window_count"] == 0 and entry["tab_count"] == 0
+        assert entry["sample_tab_titles"] == []
+        # the cached context was refreshed in place, not just the returned view
+        assert sess.profile_context["window_count"] == 0
+
+    def test_profiles_list_keeps_cached_context_when_a_session_is_unreachable(self):
+        b = B.NativeMessagingBridge(auto_register=False)
+
+        class _DeadSession(B.BrowserSession):
+            def request(self, op, params):
+                raise RuntimeError("unreachable")
+
+        sess = _DeadSession(
+            browser="chrome", ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"], profile_id="work",
+            profile_context={"window_count": 2, "tab_count": 5,
+                             "sample_tab_titles": ["A"]},
+        )
+        b.register_session(sess)
+        entry = b._profiles_op({"op": "list"})["profiles"][0]
+        assert entry["window_count"] == 2  # last-known kept; the list never fails
+
     def test_explicit_selection_routes_current(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)

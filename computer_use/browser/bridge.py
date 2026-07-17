@@ -391,6 +391,7 @@ class NativeMessagingBridge:
             ref = self._active_session()
             if ref is not None and "profiles" not in ref.supported_ops:
                 raise self._op_unsupported("profiles")
+            self._refresh_profile_contexts()
             return {"profiles": self._profile_list()}
         if sub == "use":
             key = self._select_profile(params.get("profile_id"))
@@ -405,6 +406,32 @@ class NativeMessagingBridge:
         raise BrowserError(
             BrowserErrorCode.OP_FAILED, f"unknown profiles sub-op {sub!r}"
         )
+
+    def _refresh_profile_contexts(self) -> None:
+        """Re-query each connected extension for its LIVE profile context.
+
+        The `hello` context is a snapshot from connection time: `window_count` /
+        `tab_count` / `sample_tab_titles` frozen at connect. Without this, a
+        `profiles(list)` after the user opened/closed windows returns stale counts
+        (an e2e finding: a closed profile still reported its old window + tabs). The
+        extension's `profiles(op="list")` reports a *live* `buildProfileContext()`,
+        so each `profiles(list)` refreshes the cache from the real browser. A session
+        that does not answer (a dropped/unreachable connection) keeps its last-known
+        context rather than failing the whole list.
+        """
+        for session in list(self._sessions.values()):
+            try:
+                reply = session.request("profiles", {"op": "list"})
+            except Exception:
+                continue
+            entries = reply.get("profiles") if isinstance(reply, dict) else None
+            entry = entries[0] if entries else None
+            if isinstance(entry, dict):
+                session.profile_context = {
+                    "window_count": entry.get("window_count"),
+                    "tab_count": entry.get("tab_count"),
+                    "sample_tab_titles": list(entry.get("sample_tab_titles") or []),
+                }
 
     @staticmethod
     def _op_unsupported(op: str) -> BrowserError:
