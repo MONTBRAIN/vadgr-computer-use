@@ -18,13 +18,13 @@ Builds on the 0.6.0 runbook (`../0.6.0/e2e.md`); **Part P** below is the
 new-in-0.6.1 gate, and **Part W** re-runs a 0.6.0 spot-check as the regression
 part (the registry rework must not regress single-profile targeting).
 
-> **Status: not yet run on hardware.** The automated gate (`pytest`, `vitest`,
-> `npm run build`, `npm run typecheck`) is green on the PR branch — see
-> *Automated gate* below — but a green unit suite is necessary, NOT sufficient.
-> The live multi-profile run needs the extension loaded in **two real Chrome
-> profiles** and is a **human verification round**; every per-OS row below is
-> marked **not run (pending the per-OS verification round)** until that round
-> records it, exactly as the 0.6.0 runbook was filled in.
+> **Status: WSL run complete (2026-07-17) — pass, one bug found and fixed.** The live
+> multi-profile round ran on WSL with the extension in **two real Chrome profiles**:
+> P1-P4/P6, the full Part W (W1-W7), and Part I (transport) all pass, and it surfaced
+> a real bug (a stale `profiles(list)` context) that was fixed on this branch
+> (`701ab92`) and re-confirmed live. Linux / macOS / Windows-native are **`Not-Needed`**
+> — 0.6.1 has no OS-specific surface, so a run there adds no signal (see the per-OS note).
+> The automated gate (`pytest`, `vitest`, `npm run build`, `npm run typecheck`) is green.
 
 ## The approach: a Claude subagent over `claude -p`
 
@@ -255,22 +255,25 @@ Run before any live e2e; this is what the PR branch was validated against:
 Fill these in by running the runbook on each OS. Record the specific OS + Chrome
 version in the status note so a future regression reproduces on the same build.
 
-Legend: pass / fail / blocked (login or anti-bot) / not run
+Legend: pass / fail / blocked (login or anti-bot) / not run / **Not-Needed**
+(OS-agnostic change — no per-OS surface, so a run there adds no signal; see the note).
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part P (P1-P6) | not run | not run | not run | **P1-P4, P6 pass; P5-fresh unit-covered** |
-| Part I (I1-I2 multi-instance) | not run | not run | not run | **pass (transport)** |
-| Part W (W1-W7 regression) | not run | not run | not run | **pass (full W1-W7)** |
-| Overall | not run | not run | not run | **pass (1 finding found + fixed + confirmed)** |
+| Part P (P1-P6) | Not-Needed | Not-Needed | Not-Needed | **P1-P4, P6 pass; P5-fresh unit-covered** |
+| Part I (I1-I2 multi-instance) | Not-Needed | Not-Needed | Not-Needed | **pass (transport)** |
+| Part W (W1-W7 regression) | Not-Needed | Not-Needed | Not-Needed | **pass (full W1-W7)** |
+| Overall | Not-Needed | Not-Needed | Not-Needed | **pass (1 finding found + fixed + confirmed)** |
 
-**Live e2e for 0.6.1 is run on WSL only.** 0.6.1 is purely browser-tier — the
-multi-connection registry, the profile handshake, and the discovery-file env
-override are pure Python + a pure extension handshake with no filesystem/path
-boundary, so Linux / macOS / Windows-native behave identically. WSL is the parity
-boundary that actually exercises the multiplexed connections and the discovery
-override across the bridge on real hardware, so the live round is WSL; the other OSes
-rely on the OS-agnostic argument plus the automated gate. The live run needs the
+**Live e2e for 0.6.1 is WSL-only; the other OSes are `Not-Needed`** (per
+`ENGINEERING.md` §1, the OS-agnostic clause). 0.6.1 has **no OS-specific surface** —
+the multi-connection registry, the profile handshake/context refresh, and the
+discovery-file env override are pure Python + a pure extension handshake with no
+socket/pipe/path/registry/process branching and no per-OS deps — so Linux / macOS /
+Windows-native **cannot behave differently**, and a run there adds no signal (that is
+`Not-Needed`, not `not run`). WSL is the parity boundary that actually exercises the
+multiplexed connections and the discovery override across the bridge on real hardware,
+so it is the one OS that carries live signal, backed by the green automated gate. The live run needs the
 extension loaded in two real Chrome profiles (Part P) and two cua instances (Part I),
 so it is a human round. `P6` / `W7` (WSL parity) are N/A on non-WSL OSes. The
 automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is green
