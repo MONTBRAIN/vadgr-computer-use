@@ -259,10 +259,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part P (P1-P6) | not run | not run | not run | **P1-P3/P6 pass; P4/P5 pending** |
+| Part P (P1-P6) | not run | not run | not run | **P1-P4, P6 pass; P5-fresh unit-covered** |
 | Part I (I1-I2 multi-instance) | not run | not run | not run | **pass (transport)** |
 | Part W (W1-W7 regression) | not run | not run | not run | **pass (full W1-W7)** |
-| Overall | not run | not run | not run | **in progress; 1 finding fixed (re-verify pending)** |
+| Overall | not run | not run | not run | **pass (1 finding found + fixed + confirmed)** |
 
 **Live e2e for 0.6.1 is run on WSL only.** 0.6.1 is purely browser-tier — the
 multi-connection registry, the profile handshake, and the discovery-file env
@@ -299,8 +299,21 @@ Status notes:
     `cd17…` showed 7 windows / 30 tabs (vs. the frozen 5/28) reflecting the user's
     current browsing, and `7abc…` tracked 1 → 2 → 1 windows (4 → 5 → 4 tabs) as an owned
     window was opened and closed. The stale-snapshot symptom is gone.
-  - **Remaining on WSL:** P4 (`CUA_BROWSER_PROFILE` env pin), P5 (single-profile
-    back-compat), and the finding's e2e re-verify.
+  - **P4 (`CUA_BROWSER_PROFILE` env pin) pass.** Set `CUA_BROWSER_PROFILE=Outlier` in
+    `.mcp.json` and restarted cua with **both** profiles connected and no manual
+    selection: cua auto-pinned the Outlier profile (`7abc…` `is_current:true`, the work
+    profile `false`) by the tab-title match, and a page op (`use_target owned`) ran with
+    no `profile_ambiguous`. Env reverted afterward.
+  - **P5 (single-profile back-compat):** the single-connected-profile enumeration was
+    shown live (disabling one profile's extension → `profiles(list)` dropped it to one),
+    and a dropped *selected* profile correctly stayed loud (`profile_ambiguous`, never a
+    silent fall-through). The *fresh-start auto-use of a sole profile* is unit-covered
+    (`test_single_connection_auto_uses_it`) — not re-run live (would need a restart with
+    a single profile).
+  - **Minor observation (not blocking):** during P4 cleanup a `use_target(owned)` window
+    reported `provenance:"owned"` but `windows.close` treated it as non-owned, and it then
+    vanished on its own — likely a restart+extension-reload artifact; worth a targeted
+    check but did not affect any result.
 - **WSL (2026-07-15): Part P + Part W pass.** WSL2 Ubuntu 24.04.4 LTS, cua-in-WSL
   driving Windows Chrome over the bridge; the extension rebuilt on the Windows side
   (0.6.1 `dist`) and loaded in **two** Chrome profiles. Driven op-by-op through the
