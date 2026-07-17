@@ -39,14 +39,48 @@ class TestConstants:
         # Window/tab management op-groups landed in 0.6.0 (additive).
         assert {"tabs", "windows"} <= set(P.SUPPORTED_OPS)
 
+    def test_supported_ops_covers_the_0_6_1_profiles_op(self):
+        # Multi-profile enumerate/select landed in 0.6.1 (additive).
+        assert "profiles" in set(P.SUPPORTED_OPS)
+
     def test_supported_ops_excludes_still_later_minor_ops(self):
-        # Ops deferred past 0.6.0 (capture / downloads / storage).
+        # Ops deferred past 0.6.1 (capture / downloads / storage).
         forbidden = {"storage", "screenshot", "downloads", "captureVisibleTab"}
         assert forbidden.isdisjoint(set(P.SUPPORTED_OPS))
 
-    def test_the_0_6_0_ops_do_not_bump_the_protocol_version(self):
-        # Growing supported_ops is additive — the envelope integer stays 1.
+    def test_the_profiles_op_does_not_bump_the_protocol_version(self):
+        # Growing supported_ops (and the additive hello profile fields) is
+        # additive — the envelope integer stays 1 in 0.6.1.
         assert P.PROTOCOL_VERSION == 1
+
+
+class TestProfileHandshake:
+    def test_parse_hello_reads_profile_id_and_context(self):
+        server = {
+            "type": "hello", "proto": 1, "ext_version": "0.6.1",
+            "browser": "chrome",
+            "profile_id": "9f2c-uuid",
+            "profile": {"window_count": 3, "tab_count": 21,
+                        "sample_tab_titles": ["Gmail - work", "GitHub"]},
+            "supported_ops": ["navigate", "profiles"],
+        }
+        info = P.parse_server_hello(server)
+        assert info.profile_id == "9f2c-uuid"
+        assert info.profile == {"window_count": 3, "tab_count": 21,
+                                "sample_tab_titles": ["Gmail - work", "GitHub"]}
+
+    def test_missing_profile_id_parses_empty_for_backcompat(self):
+        # An old (pre-0.6.1) extension sends no profile fields; cua treats it as
+        # the synthetic default profile downstream. Parsing must not fail.
+        server = {"type": "hello", "proto": 1, "ext_version": "0.6.0",
+                  "browser": "chrome", "supported_ops": ["navigate"]}
+        info = P.parse_server_hello(server)
+        assert info.profile_id == ""
+        assert info.profile is None
+
+    def test_profile_ambiguous_code_is_terminal(self):
+        err = P.BrowserError(P.BrowserErrorCode.PROFILE_AMBIGUOUS, "pick one")
+        assert err.retryable is False
 
 
 class TestHelloHandshake:

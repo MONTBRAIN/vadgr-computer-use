@@ -41,20 +41,22 @@ class _FakeShim:
         if self._token is not None:
             write_message(self._file, {"type": "auth", "token": self._token})
 
-    def hello(self, supported_ops):
+    def hello(self, supported_ops, *, profile_id=None, profile=None):
         # cua sends its hello first; read it, then reply with ours.
         cua_hello = read_message(self._file)
         assert cua_hello["type"] == "hello"
-        write_message(
-            self._file,
-            {
-                "type": "hello",
-                "proto": cua_hello["proto"],
-                "ext_version": "0.4.0",
-                "browser": "chrome",
-                "supported_ops": list(supported_ops),
-            },
-        )
+        msg = {
+            "type": "hello",
+            "proto": cua_hello["proto"],
+            "ext_version": "0.4.0",
+            "browser": "chrome",
+            "supported_ops": list(supported_ops),
+        }
+        if profile_id is not None:
+            msg["profile_id"] = profile_id
+        if profile is not None:
+            msg["profile"] = profile
+        write_message(self._file, msg)
         return cua_hello
 
     def serve_one_op(self):
@@ -136,6 +138,36 @@ class TestDiscoveryFile:
         S.write_discovery(7000, "tk", path=linux, windows_copy=win)
         assert S.read_discovery(path=linux) == (7000, "tk")
         assert S.read_discovery(path=win) == (7000, "tk")
+
+    def test_resolve_discovery_path_honors_env(self, monkeypatch, tmp_path):
+        # issue #26: the server must honor the same env the native host reads, so
+        # concurrent cua instances get their own file instead of clobbering one.
+        custom = tmp_path / "session-a" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+        assert S.resolve_discovery_path() == custom
+
+    def test_resolve_discovery_path_defaults_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VADGR_CUA_BROWSER_DISCOVERY", raising=False)
+        assert S.resolve_discovery_path() == S.discovery_path()
+
+    def test_ensure_server_writes_to_env_path(self, monkeypatch, tmp_path):
+        # ensure_server must pass the env-resolved discovery path to BrowserServer
+        # (the read-side override was previously dead — the server ignored it).
+        custom = tmp_path / "session-b" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+        monkeypatch.setattr(S, "_SERVER", None)
+        captured = {}
+
+        class FakeServer:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            def start(self):
+                return 12345
+
+        monkeypatch.setattr(S, "BrowserServer", FakeServer)
+        S.ensure_server()
+        assert captured["discovery_path"] == custom
 
 
 class TestListener:
@@ -245,6 +277,46 @@ class TestListener:
         finally:
             srv.stop()
 
+    def test_two_profile_connections_are_kept_and_keyed(self, tmp_path):
+        # 0.6.1: the accept loop keeps BOTH connections, keyed by profile_id,
+        # instead of a single-listener bond.
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            work = _FakeShim(port, token)
+            work.auth()
+            work.hello(["navigate", "profiles"], profile_id="work-uuid",
+                       profile={"window_count": 1, "tab_count": 2,
+                                "sample_tab_titles": ["Work Gmail"]})
+            home = _FakeShim(port, token)
+            home.auth()
+            home.hello(["navigate", "profiles"], profile_id="home-uuid",
+                       profile={"window_count": 1, "tab_count": 1,
+                                "sample_tab_titles": ["Personal Gmail"]})
+            _wait_for_count(srv, 2)
+            keys = set(srv.bridge._sessions.keys())
+            assert ("chrome", "work-uuid") in keys
+            assert ("chrome", "home-uuid") in keys
+            work.close()
+            home.close()
+        finally:
+            srv.stop()
+
+    def test_missing_profile_id_registers_as_default(self, tmp_path):
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["navigate"])  # a 0.6.0 extension: no profile_id
+            _wait_for_session(srv)
+            assert ("chrome", "default") in srv.bridge._sessions
+            shim.close()
+        finally:
+            srv.stop()
+
 
 # --- helpers ---
 
@@ -262,6 +334,17 @@ def _wait_for_session(srv, timeout=2.0):
             return sess
         time.sleep(0.01)
     raise AssertionError("no session registered in time")
+
+
+def _wait_for_count(srv, n, timeout=2.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(srv.bridge._sessions) >= n:
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"expected {n} sessions; got {len(srv.bridge._sessions)}")
 
 
 def _free_port() -> int:

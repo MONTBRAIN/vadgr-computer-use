@@ -33,6 +33,7 @@ is written under ``/mnt/c/...`` so the Windows-side shim can find it too.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import socket
 import threading
@@ -50,12 +51,25 @@ from computer_use.browser.protocol import (
     parse_server_hello,
 )
 
-CUA_VERSION = "0.6.0"
+CUA_VERSION = "0.6.1"
 
 
 def discovery_path() -> Path:
     """The well-known file the shim reads to find the listener (port + token)."""
     return Path.home() / ".vadgr-cua" / "browser.port"
+
+
+def resolve_discovery_path() -> Path:
+    """The discovery file cua writes, honoring the ``VADGR_CUA_BROWSER_DISCOVERY``
+    override so multiple cua instances on one machine can coexist, each with its
+    own file, instead of clobbering a single per-user path.
+
+    Symmetric with ``native_host.py``, which reads the same env: set the SAME value
+    for a cua process and for the Chrome that hosts its extension, and that pair is
+    isolated from any other cua/Chrome pair. Falls back to the per-user default.
+    """
+    env = os.environ.get("VADGR_CUA_BROWSER_DISCOVERY")
+    return Path(env) if env else discovery_path()
 
 
 def wsl_discovery_path(windows_user: str | None = None) -> Path:
@@ -139,14 +153,21 @@ class TcpBrowserSession(BrowserSession):
 
     def __init__(self, conn_file, *, browser: str, ext_version: str,
                  supported_ops: list[str],
+                 profile_id: str = "default",
+                 profile_context: dict[str, Any] | None = None,
                  sock: socket.socket | None = None) -> None:
         super().__init__(browser=browser, ext_version=ext_version,
-                         supported_ops=supported_ops)
+                         supported_ops=supported_ops,
+                         profile_id=profile_id,
+                         profile_context=profile_context or {})
         self._file = conn_file
         self._sock = sock
         self._lock = threading.Lock()
         self._next_id = 0
         self._alive = True
+        # Set by the server after registration: drops this connection from the
+        # bridge registry when it tears down, so a closed profile is removed.
+        self.on_teardown: Any = None
         # Bound each op read so a stuck/closed tab cannot hang the pipe forever.
         if sock is not None:
             sock.settimeout(self._OP_TIMEOUT_S)
@@ -206,6 +227,11 @@ class TcpBrowserSession(BrowserSession):
                 if closer is not None:
                     closer.close()
             except OSError:
+                pass
+        if self.on_teardown is not None:
+            try:
+                self.on_teardown()
+            except Exception:  # pragma: no cover - best-effort deregistration
                 pass
 
     def _read_reply(self, msg_id: int) -> dict[str, Any] | None:
@@ -323,9 +349,18 @@ class BrowserServer:
             browser=hello.browser or "chrome",
             ext_version=hello.ext_version,
             supported_ops=hello.supported_ops,
+            # A build with no profile_id -> the synthetic `default` profile,
+            # so single-profile setups are unchanged (back-compat).
+            profile_id=hello.profile_id or "default",
+            profile_context=hello.profile,
             sock=conn,
         )
         self.bridge.register_session(session)
+        # Drop this connection from the registry when it closes, so a profile
+        # that goes away is removed (and the next op re-resolves loudly).
+        register = getattr(self.bridge, "unregister_session", None)
+        if register is not None:
+            session.on_teardown = lambda: register(session)
 
     def stop(self) -> None:
         self._stop.set()
@@ -352,15 +387,23 @@ def ensure_server(bridge: NativeMessagingBridge | None = None) -> BrowserServer:
     """
     global _SERVER
     if _SERVER is None:
+        discovery = resolve_discovery_path()
         win_copy = None
         try:
             from computer_use.platform.detect import detect_platform
             from computer_use.core.types import Platform
 
             if detect_platform() == Platform.WSL2:
-                win_copy = wsl_discovery_path()
+                # On WSL the Windows relay shim reads its copy from the Windows
+                # filesystem, so a per-instance run overrides it separately (the
+                # shim's own VADGR_CUA_BROWSER_DISCOVERY points at the matching
+                # /mnt/c path). Falls back to the shared default.
+                win_env = os.environ.get("VADGR_CUA_BROWSER_DISCOVERY_WINDOWS")
+                win_copy = Path(win_env) if win_env else wsl_discovery_path()
         except Exception:
             win_copy = None
-        _SERVER = BrowserServer(bridge=bridge, windows_copy=win_copy)
+        _SERVER = BrowserServer(
+            bridge=bridge, discovery_path=discovery, windows_copy=win_copy,
+        )
         _SERVER.start()
     return _SERVER

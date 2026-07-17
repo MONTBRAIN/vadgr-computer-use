@@ -69,6 +69,8 @@ SUPPORTED_OPS: tuple[str, ...] = (
     # 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
     "tabs",
     "windows",
+    # 0.6.1 — multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
+    "profiles",
 )
 
 
@@ -86,6 +88,7 @@ class BrowserErrorCode(str, Enum):
     WAKING = "waking"                  # session existed; SW asleep (retryable)
     OP_FAILED = "op_failed"            # op ran in-page but failed
     TARGET_LOST = "target_lost"        # pinned tab/window closed (terminal)
+    PROFILE_AMBIGUOUS = "profile_ambiguous"  # >1 profile connected, none chosen (terminal)
 
 
 # Codes that are transient and worth an automatic retry. Everything else is
@@ -123,12 +126,21 @@ class BrowserError(Exception):
 
 @dataclass(frozen=True)
 class ServerHello:
-    """The extension's half of the handshake."""
+    """The extension's half of the handshake.
+
+    ``profile_id`` + ``profile`` are the additive 0.6.1 fields: a stable
+    per-profile UUID and the recognition context (window/tab counts + a few tab
+    titles) the extension mints from its own ``chrome.storage.local`` + tab
+    enumeration. An older extension omits them; ``profile_id`` parses to ``""``
+    and cua registers it under the synthetic ``default`` profile (back-compat).
+    """
 
     proto: int
     ext_version: str
     browser: str
     supported_ops: list[str]
+    profile_id: str = ""
+    profile: dict[str, Any] | None = None
 
 
 def client_hello(cua_version: str) -> dict[str, Any]:
@@ -150,11 +162,14 @@ def parse_server_hello(msg: dict[str, Any]) -> ServerHello:
             f"extension speaks protocol {proto}, cua speaks {PROTOCOL_VERSION}",
             remediation="update the extension or cua so the protocol versions match",
         )
+    profile = msg.get("profile")
     return ServerHello(
         proto=proto,
         ext_version=str(msg.get("ext_version", "")),
         browser=str(msg.get("browser", "")),
         supported_ops=list(msg.get("supported_ops", [])),
+        profile_id=str(msg.get("profile_id", "")),
+        profile=dict(profile) if isinstance(profile, dict) else None,
     )
 
 

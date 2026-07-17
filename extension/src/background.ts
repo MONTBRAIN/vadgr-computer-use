@@ -13,15 +13,16 @@
 import { buildRouter, sharedResolver } from "./ops";
 import {
   PROTOCOL_VERSION,
-  ServerHello,
   OpMessage,
   serverHello,
 } from "./protocol";
 import { ReconnectController } from "./reconnect";
 import { Lifecycle } from "./target/lifecycle";
+import { ensureProfileId, buildProfileContext } from "./target/profile";
+import type { WindowsEnumApi } from "./target/enumeration";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.6.0";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.6.1";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();
@@ -52,9 +53,39 @@ function connect(): void {
   // The port is connected; reset the backoff so the next drop starts at base.
   reconnect.onConnected();
   // cua sends its hello first; we reply with ours. Send ours proactively too,
-  // so a cua that listens-first still negotiates.
-  const hello: ServerHello = serverHello(EXT_VERSION, detectBrowser());
-  port.postMessage(hello);
+  // so a cua that listens-first still negotiates. The hello carries this
+  // profile's stable id + recognition context (0.6.1) so cua can tell profiles
+  // apart; building it is async (storage.local + tab enumeration).
+  void sendHello(port);
+}
+
+function profileStorage() {
+  return {
+    // @ts-ignore - chrome.storage.local is present at runtime (storage perm).
+    get: (keys: string) => chrome.storage.local.get(keys),
+    // @ts-ignore
+    set: (items: Record<string, unknown>) => chrome.storage.local.set(items),
+  };
+}
+
+async function sendHello(p: chrome.runtime.Port): Promise<void> {
+  const windowsApi: WindowsEnumApi = {
+    getAll: (opts) => chrome.windows.getAll(opts) as Promise<any>,
+  };
+  let profileId: string | undefined;
+  let profile;
+  try {
+    [profileId, profile] = await Promise.all([
+      ensureProfileId(profileStorage()),
+      buildProfileContext(windowsApi),
+    ]);
+  } catch {
+    // Identity is best-effort: if storage/enumeration is briefly unavailable,
+    // still send a valid hello (cua registers it under the `default` profile).
+  }
+  // The port may have dropped while we awaited; guard before posting.
+  if (port !== p) return;
+  p.postMessage(serverHello(EXT_VERSION, detectBrowser(), profileId, profile));
 }
 
 async function onMessage(msg: any): Promise<void> {

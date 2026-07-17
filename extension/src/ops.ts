@@ -13,6 +13,12 @@ import { CdpExecutor, chromeDebuggerAttach } from "./executors/cdp";
 import { TargetResolver, type TargetMode } from "./target/resolver";
 import { OwnedWindowManager } from "./target/owned_window";
 import { SessionTargetStore } from "./target/store";
+import {
+  ensureProfileId,
+  buildProfileContext,
+  type ProfileContext,
+  type ProfileStorageLike,
+} from "./target/profile";
 import type { Provenance } from "./target/registry";
 import type { PinnedTarget } from "./target/owned_window";
 import type {
@@ -58,6 +64,23 @@ function defaultResolver(): TargetResolver {
 export function sharedResolver(): TargetResolver {
   if (!_resolver) _resolver = defaultResolver();
   return _resolver;
+}
+
+// chrome.storage.local wrapper for the per-profile UUID (0.6.1). Distinct from
+// the session store (chrome.storage.session) the resolver uses: the profile id
+// must PERSIST across browser restarts, so it lives on disk in storage.local.
+function localProfileStorage(): ProfileStorageLike {
+  return {
+    // @ts-ignore - chrome.storage.local is present at runtime (storage perm).
+    get: (keys: string) => chrome.storage.local.get(keys),
+    // @ts-ignore
+    set: (items: Record<string, unknown>) => chrome.storage.local.set(items),
+  };
+}
+
+// The chrome.windows enumeration slice the profile context is built from.
+function windowsEnumApi(): WindowsEnumApi {
+  return { getAll: (opts) => chrome.windows.getAll(opts) as Promise<any> };
 }
 
 function detectBrowserName(): string {
@@ -524,6 +547,50 @@ export async function windowsGroupOp(
   }
 }
 
+// --- profiles op-group (0.6.1) ---
+//
+// `profiles` is SW-resolved (touches no page): it reports THIS connection's own
+// profile identity + recognition context. cua answers the authoritative
+// multi-connection enumeration from its own connection registry (the only place
+// that knows every connection); this handler serves its own profile and, by
+// advertising `profiles` in supported_ops, tells cua it is a profile-aware
+// build. The deps are injected so the routing is unit-testable with no browser.
+
+export interface ProfilesDeps {
+  profileId: () => Promise<string>;
+  context: () => Promise<ProfileContext>;
+  browser: string;
+}
+
+export async function profilesOp(
+  p: Params,
+  deps: ProfilesDeps,
+): Promise<unknown> {
+  const sub = String(p.op ?? "list");
+  const profileId = await deps.profileId();
+  if (sub === "list") {
+    const ctx = await deps.context();
+    return {
+      profiles: [
+        {
+          profile_id: profileId,
+          browser: deps.browser,
+          is_current: true,
+          window_count: ctx.window_count,
+          tab_count: ctx.tab_count,
+          sample_tab_titles: ctx.sample_tab_titles,
+        },
+      ],
+    };
+  }
+  if (sub === "use") {
+    // A single extension only has itself to select; the real cross-profile
+    // selection is cua-side (the `current` pointer over the connection registry).
+    return { profile_id: profileId, browser: deps.browser, is_current: true };
+  }
+  throw new Error(`profiles has no sub-op '${sub}'`);
+}
+
 // --- per-op target context (0.6.0) ---
 //
 // Every op result is wrapped with {window_id, tab_id, url} (additive; no proto
@@ -610,6 +677,16 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   reg("tabs", (p) => tabsGroupOp(p, { tabs: tabsMut, resolver: sharedResolver() }));
   reg("windows", (p) =>
     windowsGroupOp(p, { windows: windowsMut, resolver: sharedResolver() }),
+  );
+
+  // The 0.6.1 profiles op-group (SW-resolved; touches no page). Reports this
+  // connection's own profile identity from storage.local + the tab enumeration.
+  reg("profiles", (p) =>
+    profilesOp(p, {
+      profileId: () => ensureProfileId(localProfileStorage()),
+      context: () => buildProfileContext(windowsEnumApi()),
+      browser: detectBrowserName(),
+    }),
   );
 
   return r;

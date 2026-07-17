@@ -208,11 +208,16 @@ def _use_target(
     window_id: int | None = None,
     tab_id: int | None = None,
     mode: str = "owned",
+    profile_id: str | None = None,
 ) -> Any:
     # Explicitly pin the session target. Default owned mode opens a dedicated
     # window; attach mode snapshots the current active tab once; ids select an
     # existing window/tab. Every later op targets it BY ID (focus-proof).
-    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode)
+    # `profile_id` (0.6.1) also selects WHICH connected browser profile to act in
+    # (cua-side); omitted when unset so single-profile setups are unchanged.
+    extra = {"profile_id": profile_id} if profile_id is not None else {}
+    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode,
+                       **extra)
 
 
 # --- 0.5.0: the remaining interaction ops (CDP path) ---
@@ -381,6 +386,34 @@ def tabs(
     params = {k: v for k, v in params.items() if v is not None}
     try:
         return b.send("tabs", **params)
+    except BrowserError as err:
+        _raise_tool_error(err)
+
+
+def profiles(
+    op: str,
+    bridge: BrowserBridge | None = None,
+    profile_id: str | None = None,
+) -> Any:
+    """Enumerate + select the connected browser profile (op-group). Sub-ops:
+
+    - list -> {profiles:[{profile_id, browser, is_current, window_count,
+      tab_count, sample_tab_titles}]}  (READ_ONLY; every connected profile with
+      the recognition context to tell them apart, e.g. "the one with work Gmail")
+    - use(profile_id) -> {profile_id, browser, is_current:true}  (pins which
+      profile the tabs/windows/DOM ops act within)
+
+    With more than one profile connected and none selected, the next page op
+    raises a terminal `profile_ambiguous` listing the choices (never a silent
+    guess). `profiles` is resolved by cua from its connection registry.
+    """
+    b = bridge if bridge is not None else _default_bridge()
+    params: dict[str, Any] = {"op": op}
+    if op == "use":
+        params["profile_id"] = profile_id
+    params = {k: v for k, v in params.items() if v is not None}
+    try:
+        return b.send("profiles", **params)
     except BrowserError as err:
         _raise_tool_error(err)
 

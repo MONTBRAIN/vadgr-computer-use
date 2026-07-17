@@ -45,6 +45,8 @@ export const SUPPORTED_OPS = [
   // 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
   "tabs",
   "windows",
+  // 0.6.1 — multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
+  "profiles",
 ] as const;
 
 export type OpName = (typeof SUPPORTED_OPS)[number];
@@ -55,12 +57,25 @@ export interface ClientHello {
   cua_version: string;
 }
 
+// The per-profile recognition context reported in `hello` (0.6.1): what is open
+// in this profile, so a human/agent can tell profiles apart with no account
+// permission.
+export interface ProfileContext {
+  window_count: number;
+  tab_count: number;
+  sample_tab_titles: string[];
+}
+
 export interface ServerHello {
   type: "hello";
   proto: number;
   ext_version: string;
   browser: string;
   supported_ops: string[];
+  // 0.6.1 (additive): the per-profile UUID + recognition context. Omitted by an
+  // older build, which cua registers under the synthetic `default` profile.
+  profile_id?: string;
+  profile?: ProfileContext;
 }
 
 export interface OpMessage {
@@ -86,14 +101,23 @@ export interface ErrResult {
 
 export type ResultMessage = OkResult | ErrResult;
 
-export function serverHello(extVersion: string, browser: string): ServerHello {
-  return {
+export function serverHello(
+  extVersion: string,
+  browser: string,
+  profileId?: string,
+  profile?: ProfileContext,
+): ServerHello {
+  const hello: ServerHello = {
     type: "hello",
     proto: PROTOCOL_VERSION,
     ext_version: extVersion,
     browser,
     supported_ops: [...SUPPORTED_OPS],
   };
+  // Additive: only present them when the extension has an identity to report.
+  if (profileId) hello.profile_id = profileId;
+  if (profile) hello.profile = profile;
+  return hello;
 }
 
 export function okResult(id: number, result: unknown): OkResult {

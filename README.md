@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local MCP server for computer use. 25 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** a browser tier that drives your real Chrome through an MV3 extension with direct DOM ops plus window/tab management, and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
+Local MCP server for computer use. 26 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** a browser tier that drives your real Chrome through an MV3 extension with direct DOM ops plus window / tab / profile management, and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
@@ -257,7 +257,7 @@ If you later revoke either permission in System Settings, the next MCP tool call
 
 If the WSL2 daemon can't start (e.g. no Windows Python available), the server falls back to a slower PowerShell path. See [Daemon management](#daemon-management-wsl2) below.
 
-## MCP tools (25)
+## MCP tools (26)
 
 Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 
@@ -268,10 +268,11 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 - `clipboard(op, ...)`: read / write the OS clipboard.
 - `env(op, ...)` / `time(op, ...)` / `tempfile(op, ...)` / `data(op, ...)`: environment variables, time, temp files, and structured-data helpers.
 
-### Tier 1: browser (4)
+### Tier 1: browser (5)
 - `browser(op, ...)`: drive your real Chrome through the MV3 extension with direct DOM ops (`navigate`, `click`, `fill`, `query`, `read_text`, `wait_for`, `hover`, `dialog`, `upload`, `element_state`, `snapshot`, `use_target`, `back`/`forward`, and more). The DOM is the ground truth, so a mutating op is confirmed by a structured read-back rather than a screenshot. Every result also carries a `target: {window_id, tab_id, url}` so you always see which tab you acted on. Requires the companion extension (see the release assets: `vadgr-cua-extension-<ver>.zip`, loaded unpacked).
 - `tabs(op, ...)`: enumerate and manage tabs. `list` returns the full `window -> tabs -> {tab_id, url, title, active, owned, is_current}` map (the agent's own window and yours, tagged by provenance); `open` / `switch` / `close` manage them. The agent sees every tab but acts only on the pinned target; `switch` moves the target without raising the window over your foreground, and closing one of your tabs needs `force=True`.
 - `windows(op, ...)`: enumerate and manage windows: `list` (the thin variant), `open` (a new owned window, unfocused by default), `focus` (the explicit raise), `close` (owned only unless `force=True`).
+- `profiles(op, ...)`: enumerate and select the connected browser profile when the extension is installed in more than one Chrome profile (personal, work, several Google accounts). `list` shows each profile with recognition context (window / tab counts and a few open tab titles, e.g. "the one with work Gmail and Figma"); `use(profile_id)` pins which profile the browser / tabs / windows ops act within. A single connected profile is used automatically; with more than one connected and none selected, the next op raises a terminal `profile_ambiguous` listing the choices (never a silent guess). You can also pin a default with `CUA_BROWSER_PROFILE` (a profile_id prefix or a tab-title substring).
 - `browser_eval(expression)`: evaluate an expression in the page, for verification and debugging.
 
 ### Tier 2: desktop (13)
