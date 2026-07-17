@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [0.6.1] - 2026-07-13
+## [0.6.1] - 2026-07-17
 
 Browser round 3.1: multi-profile targeting. When the extension is installed in
 more than one Chrome profile (personal, work, several Google accounts), cua now
@@ -48,6 +48,12 @@ gains additive profile fields and the capability list grows one op.
   only to whichever wrote last. Set the same value for a cua process and the Chrome
   that hosts its extension to isolate that pair; on WSL, `VADGR_CUA_BROWSER_DISCOVERY_WINDOWS`
   overrides the Windows-side copy. This unblocks running one cua per profile / per agent.
+- `profiles(list)` reports live window/tab counts, not a stale snapshot. The recognition
+  context (`window_count` / `tab_count` / `sample_tab_titles`) was captured once in the
+  `hello` handshake, so it went stale as windows were opened or closed (a closed profile
+  still reported its old windows/tabs). `profiles(list)` now re-queries each connected
+  extension for a live context and refreshes the cache; an unreachable session keeps its
+  last-known value so the list never fails. Found and fixed in the 0.6.1 WSL e2e round.
 
 ### Notes
 - Back-compat: a connection whose `hello` carries no `profile_id` (an older
