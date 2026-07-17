@@ -97,6 +97,36 @@ end-to-end.
    `profile_id` + recognition context; `supported_ops` now includes `profiles`
    (alongside the 0.6.0 ops).
 
+## Setup for the complete WSL run (every part, precise)
+
+Goal: execute EVERY part on WSL (cua-in-WSL -> Windows Chrome), not a spot-check.
+Prereq: the 0.6.1 extension loaded in **two** Chrome profiles (both windows open), cua
+on the 0.6.1 branch, first `browser(op="status")` = `connected:true` with `profiles`
+listing both. Each part's exact setup:
+
+- **P1-P3, P6** — no extra setup; both profiles connected. Drive through the orchestrator
+  cua (`profiles(list/use)`, `use_target`, DOM ops). P6 (WSL parity) is inherent to the
+  bridge run.
+- **P4 (`CUA_BROWSER_PROFILE` env pin)** — set the env on the cua server, then restart so
+  cua re-reads it: in `Common/.mcp.json`, add to the `vadgr-computer-use` server
+  `"env": {"CUA_BROWSER_PROFILE": "<a sample_tab_title substring of the profile to pin,
+  e.g. Outlier>"}`, then **restart the session**. Expect: with both profiles connected,
+  the pinned one is auto-`current` and a page op runs WITHOUT `profile_ambiguous`. Remove
+  the env + restart afterward to return to normal.
+- **P5 (single-profile back-compat)** — **close one profile's Chrome window** so only one
+  profile stays connected (its extension disconnects). Expect: `profiles(list)` shows
+  one; a page op auto-uses it, no `profile_ambiguous`. Re-open the window afterward.
+- **Part W (W1-W7 regression)** — both profiles connected; `profiles(use)` one, then run
+  the full 0.6.0 gate W1-W7 inside it.
+- **Part I (multi-instance #26)** — the discovery-file coexistence (what #26's minimal fix
+  delivers) is tested at the **cua-process level**, no browser needed:
+  - **I2 (default):** the running cua (no env) writes the default `~/.vadgr-cua/browser.port`.
+  - **I1 (coexistence):** launch two throwaway cua processes with distinct
+    `VADGR_CUA_BROWSER_DISCOVERY=/tmp/cua-A/browser.port` and `.../cua-B/browser.port`;
+    assert each writes ITS OWN file and none clobbers the other or the default.
+  The full two-**browser** coexistence (each cua bonded to its own Chrome *instance*)
+  needs the 0.6.2 launch capability and is out of scope for 0.6.1's transport fix.
+
 ## Part P: the 0.6.1 gate (run first)
 
 Two Chrome profiles, each with the extension loaded and a recognizable set of
@@ -229,10 +259,10 @@ Legend: pass / fail / blocked (login or anti-bot) / not run
 
 | | Linux | macOS | Windows native | WSL |
 |---|---|---|---|---|
-| Part P (P1-P6) | not run | not run | not run | **pass** |
-| Part I (I1-I2 multi-instance) | not run | not run | not run | unit-covered |
-| Part W (W1-W7 regression) | not run | not run | not run | **pass (spot-check)** |
-| Overall | not run | not run | not run | **pass** |
+| Part P (P1-P6) | not run | not run | not run | **P1-P3/P6 pass; P4/P5 pending** |
+| Part I (I1-I2 multi-instance) | not run | not run | not run | **pass (transport)** |
+| Part W (W1-W7 regression) | not run | not run | not run | **pass (full W1-W7)** |
+| Overall | not run | not run | not run | **in progress; 1 finding fixed (re-verify pending)** |
 
 **Live e2e for 0.6.1 is run on WSL only.** 0.6.1 is purely browser-tier — the
 multi-connection registry, the profile handshake, and the discovery-file env
@@ -247,6 +277,28 @@ automated gate (`pytest` / `vitest` / `npm run build` / `npm run typecheck`) is 
 on the PR branch — that is the bar this change was held to before the hardware round.
 
 Status notes:
+- **WSL (2026-07-17): full Part W + Part I run; one finding fixed.**
+  - **Part I (multi-instance #26) pass (transport level).** I2: the running cua with no
+    env writes the default `~/.vadgr-cua/browser.port`; I1: two cua instances with
+    distinct `VADGR_CUA_BROWSER_DISCOVERY` write their own files with no clobber and the
+    default untouched (exercised against the real `resolve_discovery_path` /
+    `write_discovery`). The full two-*browser* coexistence is 0.6.2 (launch capability).
+  - **Part W (W1-W7) pass — full gate, not a spot-check.** In a selected profile: W1
+    awareness/list, W2 per-op target, W3 loud `target_lost`, W4 fresh-nav self-heal, W5
+    switch without focus steal, W6 user-context safety (refused to close a user tab
+    without `force`), W7 WSL parity (inherent). No regression from the registry rework.
+  - **FINDING (fixed) — `profiles(list)` returned a stale `hello` snapshot.** After
+    closing a profile's window, `profiles(list)` still reported its old `window_count` +
+    tabs. Root cause: the recognition context was captured once in the `hello` handshake
+    and cua returned it cached (`bridge.py` `_profile_list`); it never re-queried the live
+    browser. Fix (`701ab92`, cua-side only): `profiles(list)` now re-queries each
+    connected extension (its `profiles` op returns a live `buildProfileContext()`) and
+    refreshes the cache; an unreachable session keeps its last-known value so the list
+    never fails. Unit tests added (`test_browser_bridge.py`). **End-to-end re-verify
+    pending** a cua restart (Python change): after restart, close a window and confirm
+    `profiles(list)` reflects the new count.
+  - **Remaining on WSL:** P4 (`CUA_BROWSER_PROFILE` env pin), P5 (single-profile
+    back-compat), and the finding's e2e re-verify.
 - **WSL (2026-07-15): Part P + Part W pass.** WSL2 Ubuntu 24.04.4 LTS, cua-in-WSL
   driving Windows Chrome over the bridge; the extension rebuilt on the Windows side
   (0.6.1 `dist`) and loaded in **two** Chrome profiles. Driven op-by-op through the
