@@ -294,9 +294,11 @@ Status notes:
     browser. Fix (`701ab92`, cua-side only): `profiles(list)` now re-queries each
     connected extension (its `profiles` op returns a live `buildProfileContext()`) and
     refreshes the cache; an unreachable session keeps its last-known value so the list
-    never fails. Unit tests added (`test_browser_bridge.py`). **End-to-end re-verify
-    pending** a cua restart (Python change): after restart, close a window and confirm
-    `profiles(list)` reflects the new count.
+    never fails. Unit tests added (`test_browser_bridge.py`). **End-to-end CONFIRMED
+    (2026-07-17, after cua restart):** `profiles(list)` now reports live counts —
+    `cd17…` showed 7 windows / 30 tabs (vs. the frozen 5/28) reflecting the user's
+    current browsing, and `7abc…` tracked 1 → 2 → 1 windows (4 → 5 → 4 tabs) as an owned
+    window was opened and closed. The stale-snapshot symptom is gone.
   - **Remaining on WSL:** P4 (`CUA_BROWSER_PROFILE` env pin), P5 (single-profile
     back-compat), and the finding's e2e re-verify.
 - **WSL (2026-07-15): Part P + Part W pass.** WSL2 Ubuntu 24.04.4 LTS, cua-in-WSL
