@@ -118,6 +118,8 @@ export class CdpExecutor implements Executor {
         return this.getValue(send, params);
       case "dialog":
         return this.dialog(send, params);
+      case "eval":
+        return this.evalOp(send, params);
       default:
         throw new Error(`cdp path has no op '${op}'`);
     }
@@ -290,6 +292,25 @@ export class CdpExecutor implements Executor {
     };
     events.addListener(listener);
     return { armed: true, action: accept ? "accept" : "dismiss" };
+  }
+
+  // Page eval via the debugger's Runtime domain. CSP-exempt: a page policy of
+  // `script-src 'nonce-…'` (no `'unsafe-eval'`) blocks MAIN-world `eval()`, but
+  // the debugger backend is not governed by page CSP — which is exactly why
+  // press/snapshot keep working on such pages. Surfaces page exceptions instead
+  // of swallowing them; awaitPromise preserves the executeScript promise-await.
+  private async evalOp(send: CdpSend, p: Params) {
+    const r = await send("Runtime.evaluate", {
+      expression: String(p.expression ?? ""),
+      returnByValue: true,
+      awaitPromise: true,
+      userGesture: true,
+    });
+    if (r?.exceptionDetails) {
+      const d: any = r.exceptionDetails;
+      throw new Error(d.exception?.description ?? d.text ?? "evaluation threw");
+    }
+    return { value: r?.result?.value ?? null, via: "cdp" };
   }
 
   // --- low-level helpers (pure CDP sequencing) ---

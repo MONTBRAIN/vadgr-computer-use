@@ -357,7 +357,7 @@ function defaultCdp(): Executor | null {
   );
 }
 
-const TABS_OPS = ["navigate", "back", "forward", "reload", "cookies", "eval"];
+const TABS_OPS = ["navigate", "back", "forward", "reload", "cookies"];
 const DOM_OPS = [
   "wait_for", "query", "read_text", "get_attribute",
   "click", "type", "fill", "select", "scroll",
@@ -659,6 +659,13 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   }
 
   if (cdp) for (const op of CDP_ONLY) reg(op, (p) => cdp.execute(op, p));
+
+  // `eval` prefers the CDP path: page-world eval() is governed by the page's
+  // CSP (a `script-src` without 'unsafe-eval' blocks it, and executeScript
+  // swallows the throw → a silent {value:null}), while Runtime.evaluate is
+  // CSP-exempt and surfaces page exceptions. The MAIN-world injection stays as
+  // the fallback when chrome.debugger is unavailable.
+  reg("eval", (p) => (cdp ? cdp.execute("eval", p) : tabsExecutor.execute("eval", p)));
 
   // The session-target control op (SW-resolved; touches no page).
   reg("use_target", (p) => useTargetOp(p));

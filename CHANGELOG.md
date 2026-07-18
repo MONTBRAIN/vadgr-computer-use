@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.2] - 2026-07-18
+
+Browser-eval fix for strict-CSP pages.
+
+### Fixed
+- `browser_eval` no longer silently returns `null` on pages with a strict nonce-based
+  CSP (`script-src 'nonce-...'`, no `'unsafe-eval'`), and no longer swallows page
+  exceptions (#28). It ran page-world `eval()` via `chrome.scripting.executeScript`,
+  which the page CSP blocks and whose thrown errors surface as `undefined`, so every
+  call returned `{value: null}` regardless of the expression, DOM writes never landed,
+  and even a `ReferenceError` came back as `null`. `eval` now routes through the
+  `chrome.debugger` `Runtime.evaluate` path (like `press` / `snapshot`), which is exempt
+  from page CSP and reports exceptions, so a page error is thrown with its real message
+  instead of a silent null. The MAIN-world injection stays as the fallback when the
+  debugger is unavailable. Additive and wire-compatible; no `PROTOCOL_VERSION` bump.
+
+### Notes
+- Extension and package versions bump to 0.6.2 in lockstep; `PROTOCOL_VERSION` stays 1.
+
 ## [0.6.1] - 2026-07-17
 
 Browser round 3.1: multi-profile targeting. When the extension is installed in
