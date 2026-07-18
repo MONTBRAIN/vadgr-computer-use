@@ -248,3 +248,40 @@ describe("CdpExecutor.dialog (one-shot arm)", () => {
     expect(handled!.params.accept).toBe(false);
   });
 });
+
+// The eval op (routed CDP-first since the strict-CSP fix): page-world eval()
+// is governed by the page's CSP, Runtime.evaluate is not — and unlike
+// scripting.executeScript, it reports page exceptions instead of swallowing
+// them into {value: null}.
+describe("CdpExecutor.eval", () => {
+  it("evaluates through Runtime.evaluate with returnByValue + awaitPromise + userGesture", async () => {
+    const { send, calls } = fakeSend((e) => (e === "1+1" ? 2 : null));
+    const r: any = await exec(send).execute("eval", { expression: "1+1" });
+    expect(r).toMatchObject({ value: 2, via: "cdp" });
+    const ev = calls.find((c) => c.method === "Runtime.evaluate");
+    expect(ev!.params).toMatchObject({
+      expression: "1+1",
+      returnByValue: true,
+      awaitPromise: true,
+      userGesture: true,
+    });
+  });
+
+  it("surfaces a page exception instead of returning {value: null}", async () => {
+    const send: CdpSend = async () => ({
+      exceptionDetails: {
+        text: "Uncaught",
+        exception: { description: "ReferenceError: nope_xyz is not defined" },
+      },
+    });
+    await expect(exec(send).execute("eval", { expression: "nope_xyz" })).rejects.toThrow(
+      /ReferenceError: nope_xyz is not defined/,
+    );
+  });
+
+  it("normalises an undefined result to null", async () => {
+    const { send } = fakeSend(() => undefined);
+    const r: any = await exec(send).execute("eval", { expression: "void 0" });
+    expect(r.value).toBeNull();
+  });
+});
