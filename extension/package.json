@@ -1,6 +1,6 @@
 {
   "name": "vadgr-cua-extension",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "vadgr-computer-use browser tier — MV3 extension (DOM-first, native messaging)",
   "type": "module",
