@@ -2,6 +2,54 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.3] - 2026-07-21
+
+Trusted-click fix for pointer-driven widgets.
+
+### Fixed
+- `browser(op="click")` now drives widgets that only respond to genuine pointer
+  events. It dispatched `HTMLElement.click()`, which fires exactly ONE synthetic
+  `click` event with `isTrusted:false` and **no** `pointerdown`/`pointerup` or
+  `mousedown`/`mouseup` at all. Component libraries that open on `pointerdown` and
+  act on `pointerup` (menus, selects, popovers, custom radio/scale groups, and the
+  dismissable-layer pattern generally) ignored it completely, while the op still
+  returned `{clicked: true}` — a silent no-op reported as success. Clicking such a
+  control now falls back to real input:
+  - `click` self-verifies by diffing a widget-state signature (`data-state`,
+    `aria-expanded`, `aria-checked`, `aria-pressed`, `aria-selected`,
+    `aria-current`) across the click, so a control that did not react returns
+    `ok:false`;
+  - `click` joins `ESCALATING`, so that `ok:false` escalates DOM to CDP;
+  - `CdpExecutor` gains a `click` case that dispatches a trusted
+    `Input.dispatchMouseEvent` stream (`mouseMoved` -> `mousePressed` ->
+    `mouseReleased`) through Chrome's real input pipeline.
+
+  Elements with no state signature (plain buttons, links) report no `ok` and never
+  escalate, and native checkboxes/radios keep their `checked` read-back and are
+  deliberately excluded from `ok`-gating so an escalation cannot toggle them back.
+
+### Added
+- `click(..., trusted=True)` skips the DOM fast path and goes straight to the
+  trusted CDP event stream. This is the escape hatch for a pointer-driven control
+  that exposes no readable state, where the `ok:false` trigger can never fire.
+- The CDP `click` hit-tests its centre point (shadow-root aware) and fails loudly
+  when another element covers the target, rather than clicking the wrong thing.
+  `force=True` bypasses the check.
+- Selector resolution in the content script falls back to a breadth-first walk of
+  **open** shadow roots when the light DOM misses, so selector ops reach
+  shadow-DOM components that previously only `snapshot`/`eval` could see. Pages
+  without shadow DOM are unaffected. Closed roots remain out of reach.
+
+### Notes
+- Coordinates are viewport CSS pixels taken straight from `getBoundingClientRect()`,
+  which is what `Input.dispatchMouseEvent` expects — no DPR correction and no
+  window-chrome offset, so the pixel coordinate-mismatch class does not apply, and
+  the click works with the window unfocused or occluded.
+- Additive and wire-compatible: `click` was already in `SUPPORTED_OPS` on both
+  sides, `trusted` and `ok` are new optional fields. No `PROTOCOL_VERSION` bump
+  (stays 1). Extension and package versions bump to 0.6.3 in lockstep.
+- Out of scope: iframes, closed shadow roots, and `select` escalation.
+
 ## [0.6.2] - 2026-07-18
 
 Browser-eval fix for strict-CSP pages.

@@ -104,6 +104,8 @@ export class CdpExecutor implements Executor {
         return this.axTree(send);
       case "snapshot":
         return this.snapshot(send, params);
+      case "click":
+        return this.click(send, params);
       case "hover":
         return this.hover(send, params);
       case "upload":
@@ -174,6 +176,35 @@ export class CdpExecutor implements Executor {
     const page = nodes.slice(cursor, cursor + limit);
     const out: Record<string, unknown> = { nodes: page, via: "cdp" };
     if (cursor + limit < nodes.length) out.next_cursor = cursor + limit;
+    return out;
+  }
+
+  // Click via the trusted Input domain: a real mouseMoved -> mousePressed ->
+  // mouseReleased stream through Chrome's input pipeline. Unlike
+  // `HTMLElement.click()` (one synthetic `click`, isTrusted:false, no pointer or
+  // mouse events at all) this drives widgets that open on `pointerdown` and act on
+  // `pointerup` — the pattern every headless-browser library uses. Coordinates are
+  // viewport CSS pixels straight from getBoundingClientRect(), which is exactly
+  // what dispatchMouseEvent wants: no DPR correction, no window-chrome offset, so
+  // the whole pixel coordinate-mismatch class is structurally absent, and it works
+  // with the window unfocused or occluded.
+  //
+  // Self-verify by diffing a state signature across the click; a widget that
+  // exposes no state yields no `ok` rather than a fabricated one.
+  private async click(send: CdpSend, p: Params) {
+    const selector = String(p.selector);
+    const before = await this.stateSignature(send, selector);
+    const c = await this.centre(send, selector, p.force === true);
+    const base = { x: c.x, y: c.y, button: "left", clickCount: 1 };
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: c.x, y: c.y, buttons: 0 });
+    await send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", buttons: 1 });
+    await send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", buttons: 0 });
+    const out: Record<string, unknown> = { clicked: true, via: "cdp", x: c.x, y: c.y };
+    if (before !== null) {
+      const after = await this.stateSignature(send, selector);
+      // An element that vanished (menu item consumed, dialog closed) reacted.
+      out.ok = after === null ? true : after !== before;
+    }
     return out;
   }
 
@@ -344,16 +375,52 @@ export class CdpExecutor implements Executor {
     return r?.result?.value ?? null;
   }
 
-  // The element's centre point (viewport coords). Throws if it matches nothing.
-  private async centre(send: CdpSend, selector: string): Promise<{ x: number; y: number }> {
+  // The element's centre point (viewport CSS coords). Throws if it matches
+  // nothing. With `checkCovered` it also hit-tests the centre point in the
+  // element's own root (shadow-aware via elementFromPoint on the root node), so a
+  // click landing on a modal/overlay instead of the target fails loudly rather
+  // than silently hitting the wrong thing. `force` skips the hit-test.
+  private async centre(
+    send: CdpSend,
+    selector: string,
+    force = false,
+  ): Promise<{ x: number; y: number }> {
     const expr =
       `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
       ` if (!el) return null; el.scrollIntoView({block:'center'});` +
       ` const r = el.getBoundingClientRect();` +
-      ` return { x: r.left + r.width/2, y: r.top + r.height/2, found: true }; })()`;
+      ` const x = r.left + r.width/2, y = r.top + r.height/2;` +
+      ` const root = el.getRootNode();` +
+      ` const hit = (root.elementFromPoint ? root : document).elementFromPoint(x, y);` +
+      ` const covered = !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);` +
+      ` return { x, y, covered, found: true }; })()`;
     const v: any = await this.evalValue(send, expr);
     if (!v || !v.found) throw new Error(`no element matches ${selector}`);
+    if (!force && v.covered) {
+      throw new Error(`${selector} is covered by another element at its centre point`);
+    }
     return { x: v.x, y: v.y };
+  }
+
+  // A state signature for the click self-verify: the widget-state attributes a
+  // component library flips when it reacts. Returns null when the element matches
+  // nothing or carries none of them (no diffable surface — never fabricate `ok`).
+  private async stateSignature(send: CdpSend, selector: string): Promise<string | null> {
+    const attrs = [
+      "data-state",
+      "aria-expanded",
+      "aria-checked",
+      "aria-pressed",
+      "aria-selected",
+      "aria-current",
+    ];
+    const expr =
+      `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
+      ` if (!el) return null; const a = ${JSON.stringify(attrs)};` +
+      ` const parts = a.filter((n) => el.hasAttribute(n)).map((n) => n + '=' + el.getAttribute(n));` +
+      ` return parts.length ? parts.join('|') : null; })()`;
+    const v = await this.evalValue(send, expr);
+    return typeof v === "string" ? v : null;
   }
 
   // A visibility signature for the reveal-diff. For a `reveals` selector it is

@@ -17,26 +17,28 @@ beforeEach(() => {
 });
 
 describe("opClick", () => {
-  it("clicks a matching element", () => {
+  // opClick is async since the click self-verify may wait a frame for the
+  // widget to react (see trusted_click.test.ts).
+  it("clicks a matching element", async () => {
     const btn = document.createElement("button");
     btn.id = "go";
     let clicked = false;
     btn.addEventListener("click", () => (clicked = true));
     document.body.appendChild(btn);
-    const r = opClick({ selector: "#go" });
+    const r = await opClick({ selector: "#go" });
     expect(r).toEqual({ clicked: true });
     expect(clicked).toBe(true);
   });
 
-  it("self-verifies a checkbox click by reading back checked", () => {
+  it("self-verifies a checkbox click by reading back checked", async () => {
     document.body.innerHTML = `<input type="checkbox" id="c" />`;
-    const r = opClick({ selector: "#c" });
+    const r = await opClick({ selector: "#c" });
     expect(r).toEqual({ clicked: true, checked: true });
     expect((document.querySelector("#c") as HTMLInputElement).checked).toBe(true);
   });
 
-  it("throws op_failed when nothing matches", () => {
-    expect(() => opClick({ selector: "#missing" })).toThrowError(/no element/i);
+  it("throws op_failed when nothing matches", async () => {
+    await expect(opClick({ selector: "#missing" })).rejects.toThrowError(/no element/i);
   });
 });
 

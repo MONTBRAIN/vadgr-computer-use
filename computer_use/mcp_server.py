@@ -568,7 +568,12 @@ def browser(
     - get_value(selector) -> {value}  (input/textarea/select AND custom widgets)
     - element_state(selector) -> {visible, receives_events, enabled, focused,
       editable, checked?, value?, bbox}  (the explicit actionability read)
-    - click(selector, by="css") -> {clicked, checked?}
+    - click(selector, by="css", trusted=False) -> {clicked, checked?, ok?, via?}
+      Auto-escalates to a trusted CDP click when the DOM click left a
+      state-bearing widget (data-state / aria-expanded / aria-checked /
+      aria-pressed / aria-selected) unchanged. Pass trusted=True for a
+      pointer-driven control that exposes no such state. VERIFY: ok, or a
+      read-back op.
     - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
     - clear(selector) -> {value:"", ok}
     - select(selector, value) -> {selected, value, ok}
