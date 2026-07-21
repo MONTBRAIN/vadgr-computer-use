@@ -39,7 +39,38 @@ function resolve(selector: string, by: string = "css"): Element | null {
     );
     return (r.singleNodeValue as Element) ?? null;
   }
-  return document.querySelector(selector);
+  return document.querySelector(selector) ?? deepQuery(selector);
+}
+
+// Open-shadow fallback: walk shadow roots breadth-first and retry the selector
+// inside each. Only runs when the light DOM missed, so pages without shadow DOM
+// behave exactly as before. Closed roots stay unreachable by selector (use
+// snapshot/eval for those).
+function deepQuery(selector: string): Element | null {
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (let i = 0; i < roots.length; i++) {
+    const hit = roots[i].querySelector(selector);
+    if (hit) return hit;
+    for (const el of Array.from(roots[i].querySelectorAll("*"))) {
+      const sr = (el as HTMLElement).shadowRoot;
+      if (sr) roots.push(sr);
+    }
+  }
+  return null;
+}
+
+// Same walk, collecting every match across open shadow roots.
+function deepQueryAll(selector: string): Element[] {
+  const out: Element[] = [];
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (let i = 0; i < roots.length; i++) {
+    out.push(...Array.from(roots[i].querySelectorAll(selector)));
+    for (const el of Array.from(roots[i].querySelectorAll("*"))) {
+      const sr = (el as HTMLElement).shadowRoot;
+      if (sr) roots.push(sr);
+    }
+  }
+  return out;
 }
 
 function resolveAll(selector: string, by: string = "css"): Element[] {
@@ -57,7 +88,8 @@ function resolveAll(selector: string, by: string = "css"): Element[] {
     }
     return out;
   }
-  return Array.from(document.querySelectorAll(selector));
+  const light = Array.from(document.querySelectorAll(selector));
+  return light.length ? light : deepQueryAll(selector);
 }
 
 function require(selector: string, by: string = "css"): Element {
@@ -88,21 +120,72 @@ function isVisible(el: Element): boolean {
   return true;
 }
 
-export function opClick(p: { selector: string; by?: string; force?: boolean }) {
+// The widget-state attributes a component library flips when it reacts to a
+// click. Used as the click self-verify signature.
+const STATE_ATTRS = [
+  "data-state",
+  "aria-expanded",
+  "aria-checked",
+  "aria-pressed",
+  "aria-selected",
+  "aria-current",
+];
+
+// Returns the element's state signature, or null when it carries none of the
+// attributes (no diffable surface — we must not fabricate an `ok`).
+function stateSignature(el: Element): string | null {
+  const parts = STATE_ATTRS.filter((n) => el.hasAttribute(n)).map(
+    (n) => `${n}=${el.getAttribute(n)}`,
+  );
+  return parts.length ? parts.join("|") : null;
+}
+
+const nextFrame = () =>
+  new Promise<void>((res) =>
+    typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame(() => res())
+      : setTimeout(res, 0),
+  );
+
+export async function opClick(p: {
+  selector: string;
+  by?: string;
+  force?: boolean;
+}) {
   const el = require(p.selector, p.by) as HTMLElement;
   assertActionable(el, p.selector, { force: p.force });
+  const before = stateSignature(el);
   el.scrollIntoView?.({ block: "center" });
   el.click();
   // Self-verify: for a checkable control, read back the post-click state so the
   // result carries the proof the click took effect (not just that it dispatched).
   // For other elements the effect is page-level — the agent verifies via a
   // read-back op (or the SW reports {navigated} when the click navigated away).
-  const out: { clicked: boolean; checked?: boolean } = { clicked: true };
+  const out: { clicked: boolean; checked?: boolean; ok?: boolean } = {
+    clicked: true,
+  };
   if (
     el instanceof HTMLInputElement &&
     (el.type === "checkbox" || el.type === "radio")
   ) {
+    // Natives always react to the synthetic click. They are deliberately NOT
+    // ok-gated: escalating would re-click and toggle them back.
     out.checked = el.checked;
+    return out;
+  }
+  // A state-bearing widget that did not flip means the synthetic click was
+  // ignored — the signal that this element needs a trusted event stream. React
+  // flushes discrete events synchronously, so one frame is enough headroom for
+  // the rest. Elements with no state signature report no `ok` at all, so plain
+  // buttons and links never escalate spuriously.
+  if (before !== null) {
+    let after = stateSignature(el);
+    if (after === before) {
+      await nextFrame();
+      after = el.isConnected ? stateSignature(el) : null;
+    }
+    // A vanished element (menu item consumed, dialog dismissed) reacted.
+    out.ok = after === null ? !el.isConnected : after !== before;
   }
   return out;
 }

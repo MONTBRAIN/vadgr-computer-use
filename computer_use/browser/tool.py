@@ -138,8 +138,12 @@ def _get_attribute(bridge: BrowserBridge, selector: str, name: str) -> Any:
 
 @_ops.operation("click")
 def _click(bridge: BrowserBridge, selector: str, by: str = "css",
-           force: bool = False) -> Any:
-    return bridge.send("click", selector=selector, by=by, force=force)
+           force: bool = False, trusted: bool = False) -> Any:
+    # trusted=True skips the DOM fast path and clicks via the CDP Input domain
+    # (a real mouseMoved/Pressed/Released stream). Needed for widgets that react
+    # only to genuine pointer events AND expose no state to auto-escalate on.
+    return bridge.send("click", selector=selector, by=by, force=force,
+                       trusted=trusted)
 
 
 @_ops.operation("type")

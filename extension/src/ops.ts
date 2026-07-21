@@ -365,9 +365,9 @@ const DOM_OPS = [
   "element_state", "clear", "get_value",
 ];
 // Interactive ops that self-verify (have a read-back `ok`) AND that the CDP path
-// can perform — these escalate DOM→CDP on `ok:false`. (click/select gain
-// escalation when the CDP path grows those ops; until then they stay DOM-only.)
-const ESCALATING = new Set(["type", "fill", "clear", "get_value"]);
+// can perform — these escalate DOM→CDP on `ok:false`. (`select` gains escalation
+// when the CDP path grows that op; until then it stays DOM-only.)
+const ESCALATING = new Set(["click", "type", "fill", "clear", "get_value"]);
 // CDP-only ops (no DOM equivalent).
 const CDP_ONLY = [
   "press", "accessibility_tree",
@@ -651,7 +651,19 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   for (const op of TABS_OPS) reg(op, (p) => tabsExecutor.execute(op, p));
 
   for (const op of DOM_OPS) {
-    if (ESCALATING.has(op)) {
+    if (op === "click") {
+      // `trusted:true` skips the DOM fast path entirely and goes straight to the
+      // trusted CDP event stream. It is the escape hatch for widgets that expose
+      // NO readable state (so the `ok:false` escalation trigger can never fire)
+      // yet still ignore an untrusted click — e.g. a pointerdown-driven overlay
+      // button. Without the flag, click behaves as before and only escalates
+      // when its read-back says the state did not change.
+      reg(op, (p) =>
+        p.trusted === true && cdp
+          ? cdp.execute(op, p)
+          : withEscalation(op, p, domExecutor, cdp, isInteractive),
+      );
+    } else if (ESCALATING.has(op)) {
       reg(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
     } else {
       reg(op, (p) => domExecutor.execute(op, p));
