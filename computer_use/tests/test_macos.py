@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Stubs and fixtures
 # ---------------------------------------------------------------------------
@@ -137,8 +136,9 @@ class TestMacOSScreenCapture:
         assert state.height == shot.height
 
         # Decoded PNG has the same logical dimensions, not Retina pixels.
-        from PIL import Image
         import io as _io
+
+        from PIL import Image
         img = Image.open(_io.BytesIO(state.image_bytes))
         assert img.size == (shot.width, shot.height)
 
@@ -684,11 +684,10 @@ class TestScreenRecordingPreflight:
         from computer_use.core.errors import ScreenCaptureError
         from computer_use.core.types import Region
         quartz.CGPreflightScreenCaptureAccess.return_value = False
-        with patch.object(macos_mod.subprocess, "run"):
-            with pytest.raises(ScreenCaptureError):
-                macos_mod.MacOSScreenCapture().capture_region(
-                    Region(0, 0, 10, 10)
-                )
+        with patch.object(macos_mod.subprocess, "run"), pytest.raises(ScreenCaptureError):
+            macos_mod.MacOSScreenCapture().capture_region(
+                Region(0, 0, 10, 10)
+            )
 
     def test_capture_full_succeeds_when_screen_recording_granted(
         self, macos_mod, quartz
@@ -707,9 +706,8 @@ class TestScreenRecordingPreflight:
         quartz.CGPreflightScreenCaptureAccess.return_value = False
         with patch.object(
             macos_mod.subprocess, "run", side_effect=OSError("nope")
-        ):
-            with pytest.raises(ScreenCaptureError):
-                macos_mod.MacOSScreenCapture().capture_full()
+        ), pytest.raises(ScreenCaptureError):
+            macos_mod.MacOSScreenCapture().capture_full()
 
 
 class TestAccessibilityPreflight:
@@ -746,9 +744,8 @@ class TestAccessibilityPreflight:
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"):
-            with pytest.raises(ActionError):
-                ex.double_click(10, 20)
+             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+            ex.double_click(10, 20)
 
     def test_move_mouse_raises_when_accessibility_revoked(
         self, macos_mod, hiservices
@@ -757,9 +754,8 @@ class TestAccessibilityPreflight:
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"):
-            with pytest.raises(ActionError):
-                ex.move_mouse(10, 20)
+             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+            ex.move_mouse(10, 20)
 
     def test_type_text_raises_when_accessibility_revoked(
         self, macos_mod, hiservices
@@ -767,9 +763,8 @@ class TestAccessibilityPreflight:
         from computer_use.core.errors import ActionError
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"):
-            with pytest.raises(ActionError):
-                ex.type_text("hi")
+        with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
+            ex.type_text("hi")
 
     def test_key_press_raises_when_accessibility_revoked(
         self, macos_mod, hiservices
@@ -777,9 +772,8 @@ class TestAccessibilityPreflight:
         from computer_use.core.errors import ActionError
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"):
-            with pytest.raises(ActionError):
-                ex.key_press(["enter"])
+        with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
+            ex.key_press(["enter"])
 
     def test_scroll_raises_when_accessibility_revoked(
         self, macos_mod, hiservices
@@ -787,9 +781,8 @@ class TestAccessibilityPreflight:
         from computer_use.core.errors import ActionError
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"):
-            with pytest.raises(ActionError):
-                ex.scroll(10, 20, 3)
+        with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
+            ex.scroll(10, 20, 3)
 
     def test_drag_raises_when_accessibility_revoked(
         self, macos_mod, hiservices
@@ -798,9 +791,8 @@ class TestAccessibilityPreflight:
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"):
-            with pytest.raises(ActionError):
-                ex.drag(0, 0, 10, 10, duration=0.01)
+             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+            ex.drag(0, 0, 10, 10, duration=0.01)
 
     def test_click_succeeds_when_accessibility_granted(
         self, macos_mod, hiservices
@@ -817,6 +809,7 @@ class TestAccessibilityPreflight:
 class TestDoctorMergesMacOSStatus:
     def test_doctor_includes_macos_fields_on_darwin(self, capsys):
         import json
+
         from computer_use import mcp_server
 
         supervisor = MagicMock()
@@ -841,6 +834,7 @@ class TestDoctorMergesMacOSStatus:
 
     def test_doctor_omits_macos_fields_off_darwin(self, capsys):
         import json
+
         from computer_use import mcp_server
 
         supervisor = MagicMock()

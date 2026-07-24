@@ -18,7 +18,6 @@ import inspect
 
 import pytest
 
-
 V010_TOOLS = frozenset({
     "screenshot",
     "screenshot_region",

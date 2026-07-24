@@ -25,7 +25,6 @@ from computer_use.browser import server as S
 from computer_use.browser.native_host import read_message, write_message
 from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 
-
 # --- a fake "extension over the shim": a raw TCP client speaking the framing ---
 
 class _FakeShim:

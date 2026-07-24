@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import time as _time
-from typing import Any, Optional
+from typing import Any
 
 from computer_use.core.ops import OperationGroup
 
@@ -26,7 +26,7 @@ _ops = OperationGroup("time")
 
 
 @_ops.operation("now")
-def _now(tz: Optional[str] = None) -> str:
+def _now(tz: str | None = None) -> str:
     if tz is None:
         return _dt.datetime.now(_dt.timezone.utc).isoformat()
     try:
@@ -38,15 +38,13 @@ def _now(tz: Optional[str] = None) -> str:
 
 @_ops.operation("sleep")
 def _sleep(seconds: float = 0.0) -> dict[str, float]:
-    if seconds < 0:
-        seconds = 0
-    if seconds > _MAX_SLEEP_SECONDS:
-        seconds = _MAX_SLEEP_SECONDS
+    seconds = max(seconds, 0)
+    seconds = min(seconds, _MAX_SLEEP_SECONDS)
     _time.sleep(seconds)
     return {"slept": float(seconds)}
 
 
-def time(op: str, seconds: float = 0, tz: Optional[str] = None) -> Any:
+def time(op: str, seconds: float = 0, tz: str | None = None) -> Any:
     """Dispatch a clock sub-operation.
 
     Args:

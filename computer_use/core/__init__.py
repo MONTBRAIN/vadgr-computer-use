@@ -38,12 +38,12 @@ REGISTRY = ToolRegistry()
 tool = make_tool_decorator(REGISTRY)
 
 __all__ = [
-    "tool",
-    "make_tool_decorator",
     "REGISTRY",
+    "OperationGroup",
+    "Risk",
+    "Tier",
     "Tool",
     "ToolRegistry",
-    "OperationGroup",
-    "Tier",
-    "Risk",
+    "make_tool_decorator",
+    "tool",
 ]

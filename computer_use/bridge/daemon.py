@@ -15,6 +15,7 @@ import ctypes
 import ctypes.wintypes
 import sys
 
+
 def _set_dpi_awareness():
     """Set per-monitor DPI awareness v2. Must run before any Win32 usage."""
     if sys.platform != "win32":
@@ -754,7 +755,7 @@ class BridgeDaemon:
     def _serve_client(self, client, addr):
         try:
             self._handle_client(client)
-        except socket.timeout:
+        except TimeoutError:
             logger.info("Client %s timed out after %ds idle", addr, CLIENT_TIMEOUT)
         except Exception as e:
             logger.warning("Client %s disconnected: %s", addr, e)

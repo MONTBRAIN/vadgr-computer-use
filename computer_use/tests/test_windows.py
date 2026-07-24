@@ -23,8 +23,8 @@ def _import_windows_module():
     if _REAL_WIN32:
         from computer_use.platform.windows import (
             WindowsActionExecutor,
-            WindowsScreenCapture,
             WindowsBackend,
+            WindowsScreenCapture,
         )
         return WindowsActionExecutor, WindowsScreenCapture, WindowsBackend
 

@@ -95,7 +95,7 @@ class TestManifestProbe:
 class TestNativeMessagingBridgeStatus:
     def test_not_set_up_when_no_manifest(self, monkeypatch):
         b = B.NativeMessagingBridge()
-        monkeypatch.setattr(b, "_probe_setup", lambda: [])
+        monkeypatch.setattr(b, "_probe_setup", list)
         monkeypatch.setattr(b, "_active_session", lambda: None)
         st = b.status()
         assert st.connected is False
@@ -158,7 +158,7 @@ class TestNativeMessagingBridgeSend:
 
     def test_send_without_setup_raises_not_set_up(self, monkeypatch):
         b = B.NativeMessagingBridge()
-        monkeypatch.setattr(b, "_probe_setup", lambda: [])
+        monkeypatch.setattr(b, "_probe_setup", list)
         monkeypatch.setattr(b, "_active_session", lambda: None)
         with pytest.raises(BrowserError) as ei:
             b.send("click", selector="#x")

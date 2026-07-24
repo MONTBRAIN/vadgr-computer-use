@@ -17,19 +17,17 @@
 import io
 import logging
 import os
+import random
 import shutil
 import subprocess
 import tempfile
 import time
 from typing import Optional
 
-import random
-
 from computer_use.core.actions import ActionExecutor
-from computer_use.core.errors import ActionError, ScreenCaptureError
+from computer_use.core.errors import ActionError, PlatformNotSupportedError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
-    CursorTracker,
     DRAG_GRAVITY,
     DRAG_MAX_VEL,
     DRAG_WIND,
@@ -37,16 +35,16 @@ from computer_use.core.smooth_move import (
     PRE_CLICK_RAND,
     PRE_DRAG_BASE,
     PRE_DRAG_RAND,
+    CursorTracker,
     generate_delays,
     smooth_move,
     windmouse_path,
 )
-from computer_use.core.errors import PlatformNotSupportedError
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
-from computer_use.platform.base import AvailabilityReport, PlatformBackend
 from computer_use.platform.backends.portal import PortalScreenshotCapture, portal_available
 from computer_use.platform.backends.uinput import UinputDevice
 from computer_use.platform.backends.xtest import XTestExecutor
+from computer_use.platform.base import AvailabilityReport, PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.linux")
 
@@ -523,7 +521,7 @@ def _get_system_keyboard_layout() -> str:
 
 class _CharEntry:
     """How to produce a character: keycode + which modifiers to hold."""
-    __slots__ = ("keycode", "shift", "altgr")
+    __slots__ = ("altgr", "keycode", "shift")
 
     def __init__(self, keycode: int, shift: bool = False, altgr: bool = False):
         self.keycode = keycode
@@ -539,7 +537,7 @@ _MAIN_KBD_MIN = 1
 _MAIN_KBD_MAX = 88
 
 
-def _build_xkb_char_map(layout: Optional[str] = None) -> Optional[dict[str, _CharEntry]]:
+def _build_xkb_char_map(layout: str | None = None) -> dict[str, _CharEntry] | None:
     """Build char -> _CharEntry map using xkb_state.
 
     For each physical key on the main keyboard, asks xkb_state what character
@@ -1086,8 +1084,8 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
     def __init__(self):
         super().__init__()
         self._conn = None
-        self._session_path: Optional[str] = None
-        self._stream_path: Optional[str] = None
+        self._session_path: str | None = None
+        self._stream_path: str | None = None
         self._setup_session()
 
     def _call(self, addr, method: str, signature: str = "", body: tuple = ()):
@@ -1377,10 +1375,10 @@ def _create_action_executor(screen_w: int = 1366, screen_h: int = 853) -> Action
 # ---------------------------------------------------------------------------
 
 _FG_WINDOW_TTL = 0.1  # 100ms cache
-_fg_window_cache: Optional[tuple[float, Optional[ForegroundWindow]]] = None
+_fg_window_cache: tuple[float, ForegroundWindow | None] | None = None
 
 
-def _get_foreground_window_linux() -> Optional[ForegroundWindow]:
+def _get_foreground_window_linux() -> ForegroundWindow | None:
     global _fg_window_cache
     now = time.monotonic()
     if _fg_window_cache is not None:
@@ -1393,7 +1391,7 @@ def _get_foreground_window_linux() -> Optional[ForegroundWindow]:
     return result
 
 
-def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
+def _query_foreground_window_wayland() -> ForegroundWindow | None:
     """Get the focused window on Wayland via AT-SPI2 accessibility.
 
     AT-SPI requires the [linux-atspi] extra (PyGObject). When the import or
@@ -1412,7 +1410,7 @@ def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
     except Exception:
         return None
 
-    best: Optional[ForegroundWindow] = None
+    best: ForegroundWindow | None = None
 
     for i in range(desktop.get_child_count()):
         app = desktop.get_child_at_index(i)
@@ -1434,7 +1432,7 @@ def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
                     try:
                         with open(f"/proc/{pid}/comm") as f:
                             app_name = f.read().strip()
-                    except (OSError, IOError):
+                    except OSError:
                         pass
                 if not app_name:
                     app_name = app.get_name()
@@ -1454,7 +1452,7 @@ def _query_foreground_window_wayland() -> Optional[ForegroundWindow]:
     return best
 
 
-def _query_foreground_window_xdotool() -> Optional[ForegroundWindow]:
+def _query_foreground_window_xdotool() -> ForegroundWindow | None:
     """Get the focused window on X11 via xdotool."""
     try:
         result = subprocess.run(
@@ -1490,7 +1488,7 @@ def _query_foreground_window_xdotool() -> Optional[ForegroundWindow]:
             try:
                 with open(f"/proc/{pid}/comm") as f:
                     app_name = f.read().strip()
-            except (OSError, IOError):
+            except OSError:
                 pass
 
         return ForegroundWindow(
@@ -1501,7 +1499,7 @@ def _query_foreground_window_xdotool() -> Optional[ForegroundWindow]:
         return None
 
 
-def _query_foreground_window() -> Optional[ForegroundWindow]:
+def _query_foreground_window() -> ForegroundWindow | None:
     """Get the focused window. Tries Wayland (AT-SPI2) first, then X11 (xdotool)."""
     if _is_wayland():
         result = _query_foreground_window_wayland()
@@ -1522,8 +1520,8 @@ def _wayland_screenshot_tool_available() -> bool:
 class LinuxBackend(PlatformBackend):
 
     def __init__(self):
-        self._capture: Optional[ScreenCapture] = None
-        self._executor: Optional[ActionExecutor] = None
+        self._capture: ScreenCapture | None = None
+        self._executor: ActionExecutor | None = None
 
     def get_screen_capture(self) -> ScreenCapture:
         if self._capture is None:
@@ -1592,6 +1590,6 @@ class LinuxBackend(PlatformBackend):
             ),
         )
 
-    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+    def get_foreground_window(self) -> ForegroundWindow | None:
         return _get_foreground_window_linux()
 

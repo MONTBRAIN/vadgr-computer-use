@@ -1,7 +1,7 @@
 """Tests for the WSL2 platform backend."""
 
 import sys
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -13,18 +13,17 @@ pytestmark = pytest.mark.skipif(
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.types import Region
 from computer_use.platform.wsl2 import (
-    wsl_to_win_path,
-    win_to_wsl_path,
+    VK_CODES,
     PersistentPowerShell,
-    WSL2ScreenCapture,
     WSL2ActionExecutor,
     WSL2Backend,
+    WSL2ScreenCapture,
     _get_windows_temp_dir,
     _run_ps,
     _run_ps_subprocess,
-    VK_CODES,
+    win_to_wsl_path,
+    wsl_to_win_path,
 )
-
 
 # --- Path conversion ---
 

@@ -8,7 +8,6 @@ import io
 import logging
 import os
 import sys
-from typing import Optional
 
 _DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
@@ -385,6 +384,7 @@ def get_platform_info() -> dict:
 # surface) and `@tool(...)` (for the registry), matching the 0.2.0
 # pattern used by the pixel tools above.
 
+from computer_use.browser import tool as _browser_impl
 from computer_use.tools.system import clipboard as _clipboard_impl
 from computer_use.tools.system import data as _data_impl
 from computer_use.tools.system import env as _env_impl
@@ -393,8 +393,6 @@ from computer_use.tools.system import http as _http_impl
 from computer_use.tools.system import shell as _shell_impl
 from computer_use.tools.system import tempfile as _tempfile_impl
 from computer_use.tools.system import time as _time_impl
-
-from computer_use.browser import tool as _browser_impl
 
 
 @mcp.tool()
@@ -1011,7 +1009,7 @@ def _run_mcp_server(args) -> int:
     return 0
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     handler_name = _SUBCOMMAND_NAMES.get(args.command)
     if handler_name is not None:

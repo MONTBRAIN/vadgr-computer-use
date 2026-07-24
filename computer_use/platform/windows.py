@@ -22,13 +22,11 @@ import random
 import struct
 import sys
 import time
-from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
-    CursorTracker,
     DRAG_GRAVITY,
     DRAG_MAX_VEL,
     DRAG_WIND,
@@ -36,6 +34,7 @@ from computer_use.core.smooth_move import (
     PRE_CLICK_RAND,
     PRE_DRAG_BASE,
     PRE_DRAG_RAND,
+    CursorTracker,
     generate_delays,
     smooth_move,
     windmouse_path,
@@ -358,7 +357,7 @@ class WindowsBackend(PlatformBackend):
     def is_available(self) -> bool:
         return sys.platform == "win32"
 
-    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+    def get_foreground_window(self) -> ForegroundWindow | None:
         if sys.platform != "win32":
             return None
         try:

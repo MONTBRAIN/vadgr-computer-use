@@ -21,7 +21,6 @@ import tempfile
 
 import pytest
 
-
 TIER0_TOOLS = {
     # name -> (expected risk literal, sub-ops)
     "fs": ("medium", {"read", "write", "list", "stat", "delete"}),
@@ -47,7 +46,7 @@ TIER0_TOOLS = {
 
 def _load_registry():
     """Trigger @tool decoration by importing mcp_server."""
-    from computer_use import mcp_server  # noqa: F401
+    from computer_use import mcp_server
     from computer_use.core import REGISTRY
 
     return REGISTRY
@@ -253,8 +252,9 @@ class TestEnv:
 
 class TestTime:
     def test_now_returns_iso_8601(self):
-        from computer_use.tools.system import time as time_tool
         import datetime as _dt
+
+        from computer_use.tools.system import time as time_tool
 
         s = time_tool.time(op="now")
         # Must round-trip through fromisoformat.
@@ -309,7 +309,7 @@ class TestData:
         from computer_use.tools.system import data
 
         try:
-            import yaml  # noqa: F401
+            import yaml
         except ImportError:
             pytest.skip("PyYAML not installed")
         parsed = data.data(op="parse_yaml", source="a: 1\nb: 2\n")

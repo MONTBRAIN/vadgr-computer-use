@@ -24,14 +24,14 @@ from computer_use.platform.resolver.registry import (
 from computer_use.platform.resolver.session import SessionContext
 
 __all__ = [
-    "SessionContext",
-    "CaptureProvider",
-    "InputProvider",
-    "BackendUnavailable",
     "CAPTURE_PROVIDERS",
     "INPUT_PROVIDERS",
+    "BackendResolver",
+    "BackendUnavailable",
+    "CaptureProvider",
+    "InputProvider",
+    "SessionContext",
+    "Skip",
     "register_capture",
     "register_input",
-    "BackendResolver",
-    "Skip",
 ]

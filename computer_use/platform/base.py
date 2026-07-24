@@ -16,7 +16,6 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.screenshot import ScreenCapture
@@ -67,7 +66,7 @@ class PlatformBackend(ABC):
         )
 
     @abstractmethod
-    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+    def get_foreground_window(self) -> ForegroundWindow | None:
         """Return info about the currently focused window.
 
         Returns ForegroundWindow with app name, title, position, and size.

@@ -14,7 +14,8 @@ Runs middleware `before` hooks in order, invokes the handler, then runs
 
 from __future__ import annotations
 
-from typing import Any, Callable, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from computer_use.core.middleware.base import Middleware, ToolCall
 

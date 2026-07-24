@@ -92,7 +92,7 @@ class SessionContext:
     libs: frozenset[str]
 
     @classmethod
-    def detect(cls) -> "SessionContext":
+    def detect(cls) -> SessionContext:
         return cls(
             server=_detect_server(),
             compositor=_detect_compositor() if _is_wayland() else "unknown",

@@ -28,13 +28,11 @@ import random
 import subprocess
 import sys
 import time
-from typing import Optional
 
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
-    CursorTracker,
     DRAG_GRAVITY,
     DRAG_MAX_VEL,
     DRAG_WIND,
@@ -42,6 +40,7 @@ from computer_use.core.smooth_move import (
     PRE_CLICK_RAND,
     PRE_DRAG_BASE,
     PRE_DRAG_RAND,
+    CursorTracker,
     generate_delays,
     smooth_move,
     windmouse_path,
@@ -273,8 +272,8 @@ class MacOSActionExecutor(ActionExecutor):
         x: int,
         y: int,
         button: int = 0,
-        click_state: Optional[int] = None,
-        flags: Optional[int] = None,
+        click_state: int | None = None,
+        flags: int | None = None,
     ) -> None:
         ev = _Quartz.CGEventCreateMouseEvent(None, event_type, (x, y), button)
         if click_state is not None:
@@ -410,10 +409,10 @@ class MacOSActionExecutor(ActionExecutor):
 
 
 _FG_WINDOW_TTL = 0.1
-_fg_window_cache_mac: "Optional[tuple[float, Optional[ForegroundWindow]]]" = None
+_fg_window_cache_mac: "tuple[float, ForegroundWindow | None] | None" = None
 
 
-def _query_foreground_window_macos() -> "Optional[ForegroundWindow]":
+def _query_foreground_window_macos() -> "ForegroundWindow | None":
     script = (
         'tell application "System Events"\n'
         '  set fp to first process whose frontmost is true\n'
@@ -457,7 +456,7 @@ def _query_foreground_window_macos() -> "Optional[ForegroundWindow]":
         return None
 
 
-def _get_foreground_window_macos() -> "Optional[ForegroundWindow]":
+def _get_foreground_window_macos() -> "ForegroundWindow | None":
     global _fg_window_cache_mac
     now = time.monotonic()
     if _fg_window_cache_mac is not None:
@@ -575,8 +574,8 @@ def macos_permission_status() -> dict:
 
 class MacOSBackend(PlatformBackend):
     def __init__(self):
-        self._capture: Optional[MacOSScreenCapture] = None
-        self._executor: Optional[MacOSActionExecutor] = None
+        self._capture: MacOSScreenCapture | None = None
+        self._executor: MacOSActionExecutor | None = None
         if sys.platform == "darwin":
             self._request_permissions()
 
@@ -619,5 +618,5 @@ class MacOSBackend(PlatformBackend):
             )
         return AvailabilityReport(available=True)
 
-    def get_foreground_window(self) -> Optional[ForegroundWindow]:
+    def get_foreground_window(self) -> ForegroundWindow | None:
         return _get_foreground_window_macos()

@@ -25,11 +25,11 @@ for) anything.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from computer_use.platform.resolver import registry
 from computer_use.platform.backends.portal import portal_available
+from computer_use.platform.resolver import registry
 from computer_use.platform.resolver.providers import BackendUnavailable
 from computer_use.platform.resolver.session import SessionContext
 

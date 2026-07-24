@@ -135,7 +135,7 @@ class BridgeClient:
             if not response.get("ok", False):
                 raise BridgeError(response.get("error", "Unknown daemon error"))
             return response.get("result", {})
-        except (socket.error, OSError, ConnectionError) as e:
+        except (OSError, ConnectionError) as e:
             self._close_socket()
             if retry:
                 logger.debug("Connection lost, retrying: %s", e)

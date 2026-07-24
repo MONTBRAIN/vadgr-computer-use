@@ -17,7 +17,7 @@ handler and passes through only the parameters that handler declares.
 from __future__ import annotations
 
 import inspect
-from typing import Callable
+from collections.abc import Callable
 
 
 class OperationGroup:

@@ -387,8 +387,8 @@ class TestOpUnsupportedForOldExtension:
     def test_tabs_op_unsupported_on_an_extension_lacking_it(self):
         # An older extension whose supported_ops has no `tabs` -> op_unsupported.
         from computer_use.browser.bridge import (
-            NativeMessagingBridge,
             BrowserSession,
+            NativeMessagingBridge,
         )
 
         bridge = NativeMessagingBridge(auto_register=False)

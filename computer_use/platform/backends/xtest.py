@@ -88,7 +88,7 @@ class XlibInput:
 class XTestExecutor(ActionExecutor):
     """ActionExecutor backed by XTEST."""
 
-    def __init__(self, xinput: "XlibInput | None" = None):
+    def __init__(self, xinput: XlibInput | None = None):
         self._x = xinput or XlibInput()
 
     def _code(self, keysym: int) -> int:

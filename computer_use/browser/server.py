@@ -184,7 +184,7 @@ class TcpBrowserSession(BrowserSession):
             try:
                 write_message(self._file, op_message(msg_id, op, params))
                 reply = self._read_reply(msg_id)
-            except socket.timeout:
+            except TimeoutError:
                 # A socket-timeout leaves the buffered reader unrecoverable, so
                 # the session can't continue. Tear the connection down: that
                 # drops the extension's native port and MV3 reconnects with a
@@ -305,7 +305,7 @@ class BrowserServer:
         while not self._stop.is_set():
             try:
                 conn, _addr = self._sock.accept()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 return
@@ -390,8 +390,8 @@ def ensure_server(bridge: NativeMessagingBridge | None = None) -> BrowserServer:
         discovery = resolve_discovery_path()
         win_copy = None
         try:
-            from computer_use.platform.detect import detect_platform
             from computer_use.core.types import Platform
+            from computer_use.platform.detect import detect_platform
 
             if detect_platform() == Platform.WSL2:
                 # On WSL the Windows relay shim reads its copy from the Windows

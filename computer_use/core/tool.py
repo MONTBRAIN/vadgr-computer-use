@@ -14,8 +14,8 @@ registers the function with the global ToolRegistry at import time.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from computer_use.core.risk import Risk
 from computer_use.core.tier import Tier

@@ -16,7 +16,6 @@ those live in the host's agent loop (see vadgr's engine/policy/* modules).
 
 import logging
 
-
 # --- Chain ordering / composition ---
 
 
