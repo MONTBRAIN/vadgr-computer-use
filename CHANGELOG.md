@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.4] - 2026-07-24
+
+CI/CD: keyless Chrome Web Store auto-publish. No extension behavior change.
+
+### Added
+- The release pipeline publishes the extension to the Chrome Web Store on a
+  version tag, **keyless** via GitHub OIDC to Google Workload Identity Federation
+  impersonating the publisher-linked service account (CWS API, `chromewebstore`
+  scope) - no long-lived credential in GitHub. It is gated by a required-reviewer
+  `chrome-web-store` environment, and a first-party `extension/scripts/cws_publish.py`
+  uploads + publishes so no third-party action ever touches the credential.
+- The build job now packages a **key-stripped store zip** (the store rejects a
+  manifest with a `key` field) alongside the unpacked zip, verifies the store zip
+  has no `key`, records both zips' sha256, and the publish job ships those exact
+  bytes.
+
+### Changed
+- Every GitHub Action in the release workflow is pinned to a full commit SHA
+  (tj-actions CVE class).
+- The build job refuses to publish a tag whose commit is not an ancestor of
+  `master`, so an off-branch tag cannot ship unreviewed code.
+- New `test_release_consistency.py` guards manifest version == package version and
+  that the source manifest keeps its pinned `key`.
+
 ## [0.6.3] - 2026-07-21
 
 Trusted-click fix for pointer-driven widgets.
