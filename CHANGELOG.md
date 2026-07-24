@@ -21,6 +21,8 @@ CI/CD: keyless Chrome Web Store auto-publish. No extension behavior change.
 ### Changed
 - Every GitHub Action in the release workflow is pinned to a full commit SHA
   (tj-actions CVE class).
+- The build job refuses to publish a tag whose commit is not an ancestor of
+  `master`, so an off-branch tag cannot ship unreviewed code.
 - New `test_release_consistency.py` guards manifest version == package version and
   that the source manifest keeps its pinned `key`.
 
