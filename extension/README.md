@@ -19,10 +19,17 @@ npm test             # vitest + happy-dom (fill, DOM ops, router)
 npm run typecheck    # tsc --noEmit
 ```
 
+## Install (Chrome Web Store)
+
+The published build's ID is `bjjpaehedfnjnjmamjhppjnjnikpnfjl` (the store
+strips the pinned `key` and assigns its own ID). The native-host manifest cua
+writes allowlists BOTH the store ID and the dev ID, so a store install and an
+unpacked build can each connect.
+
 ## Load (unpacked, dev)
 
 1. Run `vadgr-cua` native-host setup so `com.vadgr.cua.json` is installed
-   (writes `allowed_origins` pinned to this build's extension ID).
+   (writes `allowed_origins` covering the dev + Web Store extension IDs).
 2. Open `chrome://extensions` (or `edge://extensions`), enable Developer mode.
 3. "Load unpacked" → select the `dist/` directory.
 4. Confirm the extension ID is `bcbdnpafilijienocokppgmfianhehll` (fixed by the
