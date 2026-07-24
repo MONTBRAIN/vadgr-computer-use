@@ -1,13 +1,12 @@
 """Tests for the Linux platform backend."""
 
 import os
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from computer_use.core.errors import ScreenCaptureError
-
-from computer_use.platform.linux import jeepney_import, evdev_import, ecodes
+from computer_use.platform.linux import ecodes, evdev_import, jeepney_import
 
 _has_jeepney = jeepney_import is not None
 _has_evdev = evdev_import is not None
@@ -50,7 +49,7 @@ class TestIsWayland:
 class TestCreateScreenCapture:
     @patch("computer_use.platform.linux._is_wayland", return_value=False)
     def test_x11_returns_mss_capture(self, _mock):
-        from computer_use.platform.linux import _create_screen_capture, MssScreenCapture
+        from computer_use.platform.linux import MssScreenCapture, _create_screen_capture
 
         mock_mss = MagicMock(spec=MssScreenCapture)
         with patch("computer_use.platform.linux.MssScreenCapture", return_value=mock_mss):
@@ -60,7 +59,7 @@ class TestCreateScreenCapture:
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("shutil.which", side_effect=lambda cmd: "/usr/bin/grim" if cmd == "grim" else None)
     def test_wayland_prefers_grim_when_it_works(self, _which, _wayland):
-        from computer_use.platform.linux import _create_screen_capture, GrimScreenCapture
+        from computer_use.platform.linux import GrimScreenCapture, _create_screen_capture
 
         with patch.object(GrimScreenCapture, "capture_full"):
             capture = _create_screen_capture()
@@ -69,7 +68,7 @@ class TestCreateScreenCapture:
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("shutil.which", side_effect=lambda cmd: "/usr/bin/gnome-screenshot" if cmd == "gnome-screenshot" else None)
     def test_wayland_falls_back_to_gnome_screenshot(self, _which, _wayland):
-        from computer_use.platform.linux import _create_screen_capture, GnomeScreenCapture
+        from computer_use.platform.linux import GnomeScreenCapture, _create_screen_capture
 
         with patch.object(GnomeScreenCapture, "capture_full"):
             capture = _create_screen_capture()
@@ -80,7 +79,9 @@ class TestCreateScreenCapture:
     def test_wayland_skips_broken_tool(self, _which, _wayland):
         """If grim is installed but fails, fall back to gnome-screenshot."""
         from computer_use.platform.linux import (
-            _create_screen_capture, GrimScreenCapture, GnomeScreenCapture,
+            GnomeScreenCapture,
+            GrimScreenCapture,
+            _create_screen_capture,
         )
 
         def which_both(cmd):
@@ -108,7 +109,7 @@ class TestCreateScreenCapture:
     @patch("shutil.which", return_value=None)
     def test_wayland_uses_portal_when_no_cli_tool(self, _which, _wayland, _portal):
         """GNOME 49+: no working CLI tool, but the XDG portal carries capture."""
-        from computer_use.platform.linux import _create_screen_capture, PortalScreenshotCapture
+        from computer_use.platform.linux import PortalScreenshotCapture, _create_screen_capture
 
         capture = _create_screen_capture()
         assert isinstance(capture, PortalScreenshotCapture)
@@ -717,7 +718,7 @@ class TestEvdevActionExecutor:
 class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_wayland", return_value=False)
     def test_x11_prefers_xtest(self, _mock):
-        from computer_use.platform.linux import _create_action_executor, XTestExecutor
+        from computer_use.platform.linux import XTestExecutor, _create_action_executor
 
         inst = MagicMock(spec=XTestExecutor)
         with patch("computer_use.platform.linux.XTestExecutor", return_value=inst):
@@ -726,7 +727,7 @@ class TestCreateActionExecutor:
 
     @patch("computer_use.platform.linux._is_wayland", return_value=False)
     def test_x11_falls_back_to_xdotool_when_xtest_unavailable(self, _mock):
-        from computer_use.platform.linux import _create_action_executor, LinuxActionExecutor
+        from computer_use.platform.linux import LinuxActionExecutor, _create_action_executor
 
         with patch("computer_use.platform.linux.XTestExecutor", side_effect=Exception("no xlib")):
             ex = _create_action_executor()
@@ -736,7 +737,7 @@ class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_wayland", return_value=True)
     @patch("computer_use.platform.linux._is_mutter_available", return_value=True)
     def test_wayland_gnome_returns_mutter(self, _mutter, _wayland):
-        from computer_use.platform.linux import _create_action_executor, MutterRemoteDesktopExecutor
+        from computer_use.platform.linux import MutterRemoteDesktopExecutor, _create_action_executor
         with patch("computer_use.platform.linux.MutterRemoteDesktopExecutor._setup_session"):
             ex = _create_action_executor()
             assert isinstance(ex, MutterRemoteDesktopExecutor)
@@ -747,7 +748,7 @@ class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._find_evdev_mouse")
     @patch("computer_use.platform.linux._find_evdev_keyboard")
     def test_wayland_no_mutter_returns_evdev(self, mock_kbd, mock_mouse, _mutter, _wayland):
-        from computer_use.platform.linux import _create_action_executor, EvdevActionExecutor
+        from computer_use.platform.linux import EvdevActionExecutor, _create_action_executor
 
         mouse, kbd = _mock_evdev()
         mock_mouse.return_value = mouse
@@ -901,10 +902,10 @@ class TestForegroundWindowWayland:
 
     @patch("computer_use.platform.linux._query_foreground_window_wayland")
     def test_dispatch_uses_wayland_on_wayland(self, mock_wayland):
+        import computer_use.platform.linux as linux_mod
         from computer_use.platform.linux import (
             _query_foreground_window,
         )
-        import computer_use.platform.linux as linux_mod
 
         # Clear the cache
         linux_mod._fg_window_cache = None
@@ -917,8 +918,8 @@ class TestForegroundWindowWayland:
 
     @patch("computer_use.platform.linux._query_foreground_window_xdotool")
     def test_dispatch_uses_xdotool_on_x11(self, mock_xdotool):
-        from computer_use.platform.linux import _query_foreground_window
         import computer_use.platform.linux as linux_mod
+        from computer_use.platform.linux import _query_foreground_window
 
         linux_mod._fg_window_cache = None
         mock_xdotool.return_value = MagicMock(app_name="gedit")
@@ -933,8 +934,8 @@ class TestForegroundWindowWayland:
     def test_dispatch_falls_back_to_xdotool_when_wayland_returns_none(
         self, mock_wayland, mock_xdotool,
     ):
-        from computer_use.platform.linux import _query_foreground_window
         import computer_use.platform.linux as linux_mod
+        from computer_use.platform.linux import _query_foreground_window
 
         linux_mod._fg_window_cache = None
         mock_wayland.return_value = None

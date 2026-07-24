@@ -1,8 +1,8 @@
 """Shared data types for the computer use engine."""
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-import time
 
 
 class Platform(Enum):

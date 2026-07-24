@@ -14,7 +14,7 @@ here; nothing else owns the tool list.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from computer_use.core.risk import Risk
 from computer_use.core.tier import Tier

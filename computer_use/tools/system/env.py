@@ -16,7 +16,7 @@ the agent doesn't mistake it for a persistent setter.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from computer_use.core.ops import OperationGroup
 
@@ -24,19 +24,19 @@ _ops = OperationGroup("env")
 
 
 @_ops.operation("get")
-def _get(name: str) -> Optional[str]:
+def _get(name: str) -> str | None:
     return os.environ.get(name)
 
 
 @_ops.operation("set")
-def _set(name: str, value: Optional[str] = None) -> dict[str, str]:
+def _set(name: str, value: str | None = None) -> dict[str, str]:
     if value is None:
         raise ValueError("env.set requires value")
     os.environ[name] = value
     return {"name": name, "value": value}
 
 
-def env(op: str, name: str, value: Optional[str] = None) -> Any:
+def env(op: str, name: str, value: str | None = None) -> Any:
     """Dispatch an environment-variable sub-operation.
 
     Args:

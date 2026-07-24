@@ -25,7 +25,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-from typing import Optional
 
 from computer_use.core.ops import OperationGroup
 
@@ -40,7 +39,7 @@ _BACKENDS = [
 ]
 
 
-def _pick_backend() -> Optional[tuple[str, list[str], list[str]]]:
+def _pick_backend() -> tuple[str, list[str], list[str]] | None:
     """Return the first backend whose copy binary is on PATH, or None."""
     # On macOS prefer pbcopy/pbpaste; otherwise fall back to the canonical order.
     order = list(_BACKENDS)
@@ -68,7 +67,7 @@ def _copy_detached(copy_cmd: list[str], text: str) -> None:
     (EOF lets the foreground process hand off to its daemon), then wait only on
     the foreground process with a bounded timeout — never on the daemon.
     """
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         copy_cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
@@ -95,7 +94,7 @@ def _copy(text: str) -> dict:
     if name == "wl-copy":
         _copy_detached(copy_cmd, text)
         return {"backend": name, "bytes": len(text)}
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(
         copy_cmd, input=text, text=True, capture_output=True, timeout=_COPY_TIMEOUT
     )
     if proc.returncode != 0:
@@ -113,7 +112,7 @@ def _paste() -> str:
             "pbcopy (macOS), wl-clipboard (Wayland), or xclip (X11)"
         )
     name, _, paste_cmd = backend
-    proc = subprocess.run(  # noqa: S603
+    proc = subprocess.run(
         paste_cmd, text=True, capture_output=True
     )
     if proc.returncode != 0:
@@ -124,7 +123,7 @@ def _paste() -> str:
 
 
 @_ops.operation("copy")
-def _op_copy(text: Optional[str] = None) -> dict:
+def _op_copy(text: str | None = None) -> dict:
     if text is None:
         raise ValueError("clipboard.copy requires text")
     return _copy(text)
@@ -135,7 +134,7 @@ def _op_paste() -> str:
     return _paste()
 
 
-def clipboard(op: str, text: Optional[str] = None) -> object:
+def clipboard(op: str, text: str | None = None) -> object:
     """Dispatch a clipboard sub-operation.
 
     Args:

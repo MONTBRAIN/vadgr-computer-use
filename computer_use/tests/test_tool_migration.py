@@ -62,7 +62,7 @@ EXPECTED_MEDIUM_RISK = frozenset(
 
 def _load_registry():
     # Triggers @tool decoration at module import.
-    from computer_use import mcp_server  # noqa: F401
+    from computer_use import mcp_server
     from computer_use.core import REGISTRY
 
     return REGISTRY

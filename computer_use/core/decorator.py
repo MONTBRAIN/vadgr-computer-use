@@ -17,7 +17,7 @@ The decorator:
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from computer_use.core.registry import ToolRegistry
 from computer_use.core.risk import Risk

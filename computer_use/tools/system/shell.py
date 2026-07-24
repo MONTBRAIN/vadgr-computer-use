@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from typing import Any, Optional, Union
+from typing import Any
 
 from computer_use.core.ops import OperationGroup
 
@@ -28,18 +28,17 @@ _ops = OperationGroup("shell")
 
 
 def _run(
-    command: Union[str, list[str]],
+    command: str | list[str],
     shell: bool = False,
     timeout: int = _DEFAULT_TIMEOUT,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
 ) -> dict[str, Any]:
-    if timeout > _MAX_TIMEOUT:
-        timeout = _MAX_TIMEOUT
+    timeout = min(timeout, _MAX_TIMEOUT)
     if isinstance(command, str) and not shell:
         # The agent passed a string but didn't ask for shell parsing; treat as
         # a single argv element to avoid the unsafe shell=True surprise.
         command = [command]
-    proc = subprocess.run(  # noqa: S603 — HIGH-risk tool by design
+    proc = subprocess.run(
         command,
         shell=shell,
         capture_output=True,
@@ -54,16 +53,16 @@ def _run(
     }
 
 
-def _which(command: str) -> Optional[str]:
+def _which(command: str) -> str | None:
     return shutil.which(command)
 
 
 @_ops.operation("run")
 def _op_run(
-    command: Union[str, list[str], None] = None,
+    command: str | list[str] | None = None,
     shell_mode: bool = False,
     timeout: int = _DEFAULT_TIMEOUT,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
 ) -> dict[str, Any]:
     if command is None:
         raise ValueError("shell.run requires a command")
@@ -71,7 +70,7 @@ def _op_run(
 
 
 @_ops.operation("which")
-def _op_which(command: Union[str, list[str], None] = None) -> Optional[str]:
+def _op_which(command: str | list[str] | None = None) -> str | None:
     if not isinstance(command, str):
         raise ValueError("shell.which requires a string command name")
     return _which(command)
@@ -79,10 +78,10 @@ def _op_which(command: Union[str, list[str], None] = None) -> Optional[str]:
 
 def shell(
     op: str,
-    command: Union[str, list[str], None] = None,
+    command: str | list[str] | None = None,
     shell_mode: bool = False,
     timeout: int = _DEFAULT_TIMEOUT,
-    cwd: Optional[str] = None,
+    cwd: str | None = None,
 ) -> Any:
     """Dispatch a shell sub-operation.
 

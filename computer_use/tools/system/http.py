@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import urllib.error
 import urllib.request as urllib_request
-from typing import Any, Optional
+from typing import Any
 
 from computer_use.core.ops import OperationGroup
 
@@ -25,7 +25,7 @@ _DEFAULT_TIMEOUT = 30
 _ops = OperationGroup("http")
 
 
-def _request(method: str, url: str, body: Optional[str], headers: Optional[dict], timeout: int) -> dict[str, Any]:
+def _request(method: str, url: str, body: str | None, headers: dict | None, timeout: int) -> dict[str, Any]:
     data = body.encode("utf-8") if body is not None else None
     req = urllib_request.Request(url, data=data, headers=headers or {}, method=method)
     try:
@@ -50,7 +50,7 @@ def _request(method: str, url: str, body: Optional[str], headers: Optional[dict]
 @_ops.operation("get")
 def _get(
     url: str,
-    headers: Optional[dict] = None,
+    headers: dict | None = None,
     timeout: int = _DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
     return _request("GET", url, None, headers, timeout)
@@ -59,8 +59,8 @@ def _get(
 @_ops.operation("post")
 def _post(
     url: str,
-    body: Optional[str] = None,
-    headers: Optional[dict] = None,
+    body: str | None = None,
+    headers: dict | None = None,
     timeout: int = _DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
     return _request("POST", url, body, headers, timeout)
@@ -69,8 +69,8 @@ def _post(
 def http(
     op: str,
     url: str,
-    body: Optional[str] = None,
-    headers: Optional[dict] = None,
+    body: str | None = None,
+    headers: dict | None = None,
     timeout: int = _DEFAULT_TIMEOUT,
 ) -> Any:
     """Dispatch an HTTP sub-operation.

@@ -64,6 +64,7 @@ def _patch_engine(mock_engine):
 class TestScreenshotTools:
     def test_screenshot_returns_image(self, mock_engine):
         from mcp.server.fastmcp import Image
+
         from computer_use.mcp_server import screenshot
 
         result = screenshot()
@@ -111,6 +112,7 @@ class TestScreenshotTools:
 
     def test_screenshot_region_returns_image(self, mock_engine):
         from mcp.server.fastmcp import Image
+
         from computer_use.mcp_server import screenshot_region
 
         result = screenshot_region(10, 20, 200, 100)
@@ -262,7 +264,7 @@ class TestInfoTools:
     def test_get_screen_size_returns_display_dims_after_screenshot(self, mock_engine):
         """After screenshot(), get_screen_size returns the downscaled dimensions."""
         import computer_use.mcp_server as mod
-        from computer_use.mcp_server import screenshot, get_screen_size
+        from computer_use.mcp_server import get_screen_size, screenshot
 
         # Engine returns 1920x1080, _MAX_WIDTH=1024 -> downscale to 1024x576
         screenshot()
@@ -331,7 +333,7 @@ class TestScreenshotRegionScalePreservation:
     def test_click_after_region_uses_correct_scale(self, mock_engine):
         """Full integration: screenshot -> region -> click should use the original scale."""
         import computer_use.mcp_server as mod
-        from computer_use.mcp_server import screenshot, screenshot_region, click
+        from computer_use.mcp_server import click, screenshot, screenshot_region
 
         screenshot()
         scale_x = mod._scale_x  # 1920/1024 = 1.875
@@ -445,7 +447,7 @@ class TestImageEncoding:
         # A small noise band so PNG can't trivially win on flat fills.
         pixels = img.load()
         for y in range(750, 800):
-            for x in range(0, 1366):
+            for x in range(1366):
                 pixels[x, y] = ((x * 7) % 256, (y * 11) % 256, ((x + y) * 5) % 256)
 
         buf = io.BytesIO()
@@ -517,8 +519,8 @@ class TestDimensionCeiling:
     def test_screen_smaller_than_ceiling_no_resize(self, mock_engine):
         """If the real screen is already small, no resize at all."""
         import computer_use.mcp_server as mod
-        from computer_use.mcp_server import screenshot
         from computer_use.core.types import ScreenState
+        from computer_use.mcp_server import screenshot
 
         mock_engine.screenshot.return_value = ScreenState(
             image_bytes=_make_png(1024, 768), width=1024, height=768

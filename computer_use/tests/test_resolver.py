@@ -7,8 +7,8 @@
 import pytest
 
 from computer_use.core.errors import PlatformNotSupportedError
-from computer_use.platform.resolver.providers import BackendUnavailable
 from computer_use.platform.resolver import BackendResolver, Skip
+from computer_use.platform.resolver.providers import BackendUnavailable
 from computer_use.platform.resolver.session import SessionContext
 
 

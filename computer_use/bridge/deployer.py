@@ -24,7 +24,6 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("computer_use.bridge.deployer")
 
@@ -52,7 +51,7 @@ class DaemonDeployer:
     _SUBPROCESS_TIMEOUT_SHORT = 5.0
     _SUBPROCESS_TIMEOUT_PIP = 120.0
 
-    def __init__(self, deploy_dir_name: Optional[str] = None) -> None:
+    def __init__(self, deploy_dir_name: str | None = None) -> None:
         self._dir_name = deploy_dir_name or self.DEPLOY_DIR_NAME
 
     # --- Inspection ---
@@ -71,7 +70,7 @@ class DaemonDeployer:
 
     # --- Windows Python discovery ---
 
-    def find_windows_python(self) -> Optional[str]:
+    def find_windows_python(self) -> str | None:
         """Find a usable Windows python.exe.
 
         Resolution order:
@@ -122,7 +121,7 @@ class DaemonDeployer:
 
     # --- Deploy directory ---
 
-    def get_deploy_dir(self) -> Optional[Path]:
+    def get_deploy_dir(self) -> Path | None:
         """Return the WSL-mounted path to the Windows deploy directory.
 
         Does not create it. Returns None if the Windows user profile
@@ -273,7 +272,7 @@ class DaemonDeployer:
         except Exception:
             return False
 
-    def _get_windows_userprofile_wsl(self) -> Optional[str]:
+    def _get_windows_userprofile_wsl(self) -> str | None:
         """Return `$env:USERPROFILE` as a WSL-mounted path, or None."""
         try:
             result = subprocess.run(

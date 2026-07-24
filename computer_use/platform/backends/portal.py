@@ -134,7 +134,7 @@ class PortalScreenshotClient:
 class PortalScreenshotCapture(ScreenCapture):
     """Capture via the XDG Screenshot portal; decode + crop + clean up locally."""
 
-    def __init__(self, client: "PortalScreenshotClient | None" = None):
+    def __init__(self, client: PortalScreenshotClient | None = None):
         self._client = client or PortalScreenshotClient()
 
     def _grab_png(self) -> bytes:

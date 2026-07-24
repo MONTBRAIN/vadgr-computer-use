@@ -24,8 +24,8 @@ import logging
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Callable, Iterator, Optional
 
 from computer_use.bridge.client import BridgeClient
 from computer_use.bridge.deployer import DaemonDeployer
@@ -59,15 +59,15 @@ class DaemonSupervisor:
 
     def __init__(
         self,
-        deployer: Optional[DaemonDeployer] = None,
-        client_factory: Optional[Callable[[], BridgeClient]] = None,
+        deployer: DaemonDeployer | None = None,
+        client_factory: Callable[[], BridgeClient] | None = None,
     ) -> None:
         self._deployer = deployer or DaemonDeployer()
         self._client_factory = client_factory or BridgeClient
 
     # --- Public API ---
 
-    def ensure_running(self) -> Optional[BridgeClient]:
+    def ensure_running(self) -> BridgeClient | None:
         """Return a working BridgeClient, or None if the daemon can't be brought up.
 
         Fast path (no lock): probe + version check. If the daemon is
@@ -113,7 +113,7 @@ class DaemonSupervisor:
             return False
         return resp.get("version_hash") == expected
 
-    def _deploy_and_launch(self) -> Optional[BridgeClient]:
+    def _deploy_and_launch(self) -> BridgeClient | None:
         """Common path for first-time launch and post-drift relaunch."""
         win_python = self._deployer.find_windows_python()
         if win_python is None:
@@ -172,7 +172,7 @@ class DaemonSupervisor:
             except Exception as e:
                 logger.debug("Daemon stop step failed (continuing): %s", e)
 
-    def restart(self) -> Optional[BridgeClient]:
+    def restart(self) -> BridgeClient | None:
         """Stop then start. Returns the fresh client or None."""
         self.stop()
         return self.ensure_running()
@@ -251,7 +251,7 @@ class DaemonSupervisor:
         except Exception as e:
             logger.warning("Daemon launch failed: %s", e)
 
-    def _poll_for_ready(self, timeout: float) -> Optional[BridgeClient]:
+    def _poll_for_ready(self, timeout: float) -> BridgeClient | None:
         """Probe repeatedly until the daemon responds or the timeout elapses."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:

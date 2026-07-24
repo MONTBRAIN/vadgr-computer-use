@@ -18,7 +18,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from typing import Any, Optional
+from typing import Any
 
 from computer_use.core.ops import OperationGroup
 
@@ -67,7 +67,7 @@ def _serialize_yaml(value: Any) -> str:
 
 
 @_ops.operation("parse_json")
-def _op_parse_json(source: Optional[str] = None) -> Any:
+def _op_parse_json(source: str | None = None) -> Any:
     if source is None:
         raise ValueError("data.parse_json requires source")
     return _parse_json(source)
@@ -79,7 +79,7 @@ def _op_serialize_json(value: Any = None) -> str:
 
 
 @_ops.operation("parse_csv")
-def _op_parse_csv(source: Optional[str] = None) -> list[dict[str, str]]:
+def _op_parse_csv(source: str | None = None) -> list[dict[str, str]]:
     if source is None:
         raise ValueError("data.parse_csv requires source")
     return _parse_csv(source)
@@ -91,7 +91,7 @@ def _op_serialize_csv(value: Any = None) -> str:
 
 
 @_ops.operation("parse_yaml")
-def _op_parse_yaml(source: Optional[str] = None) -> Any:
+def _op_parse_yaml(source: str | None = None) -> Any:
     if source is None:
         raise ValueError("data.parse_yaml requires source")
     return _parse_yaml(source)
@@ -104,7 +104,7 @@ def _op_serialize_yaml(value: Any = None) -> str:
 
 def data(
     op: str,
-    source: Optional[str] = None,
+    source: str | None = None,
     value: Any = None,
 ) -> Any:
     """Dispatch a data-format sub-operation.

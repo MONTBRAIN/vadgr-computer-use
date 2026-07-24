@@ -22,7 +22,7 @@ from computer_use.core.middleware.telemetry import TelemetryMiddleware
 
 __all__ = [
     "Middleware",
-    "ToolCall",
     "MiddlewareChain",
     "TelemetryMiddleware",
+    "ToolCall",
 ]

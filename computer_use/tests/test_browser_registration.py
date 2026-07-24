@@ -10,7 +10,7 @@
 
 
 def _load_registry():
-    from computer_use import mcp_server  # noqa: F401
+    from computer_use import mcp_server
     from computer_use.core import REGISTRY
 
     return REGISTRY

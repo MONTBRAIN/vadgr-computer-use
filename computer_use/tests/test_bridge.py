@@ -11,6 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 from PIL import Image as PILImage
 
+from computer_use.bridge.actions import BridgeActionExecutor
+from computer_use.bridge.capture import BridgeScreenCapture
+from computer_use.bridge.client import BridgeClient, BridgeError
 from computer_use.bridge.protocol import (
     HEADER_SIZE,
     decode_header,
@@ -19,9 +22,6 @@ from computer_use.bridge.protocol import (
     make_request,
     make_response,
 )
-from computer_use.bridge.client import BridgeClient, BridgeError
-from computer_use.bridge.capture import BridgeScreenCapture
-from computer_use.bridge.actions import BridgeActionExecutor
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.types import ScreenState
@@ -405,7 +405,7 @@ class TestWSL2BackendBridgeFallbackWiring:
     """Tests that WSL2Backend wires the PowerShell fallback into BridgeActionExecutor."""
 
     def test_bridge_executor_gets_ps_fallback(self):
-        from computer_use.platform.wsl2 import WSL2Backend, WSL2ActionExecutor
+        from computer_use.platform.wsl2 import WSL2ActionExecutor, WSL2Backend
 
         backend = WSL2Backend(supervisor=MagicMock())
         # Simulate bridge available
@@ -417,7 +417,7 @@ class TestWSL2BackendBridgeFallbackWiring:
         assert isinstance(executor._fallback, WSL2ActionExecutor)
 
     def test_no_bridge_returns_ps_executor(self):
-        from computer_use.platform.wsl2 import WSL2Backend, WSL2ActionExecutor
+        from computer_use.platform.wsl2 import WSL2ActionExecutor, WSL2Backend
 
         backend = WSL2Backend(supervisor=MagicMock())
         backend._use_bridge = False
