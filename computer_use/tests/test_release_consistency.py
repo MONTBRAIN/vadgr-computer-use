@@ -4,15 +4,17 @@ The publish workflow also enforces these at release time, but catching them in t
 regular suite means a mismatch fails a PR, not a tag build.
 """
 import json
-import tomllib
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _pkg_version() -> str:
-    with open(ROOT / "pyproject.toml", "rb") as f:
-        return tomllib.load(f)["project"]["version"]
+    text = (ROOT / "pyproject.toml").read_text()
+    m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+    assert m, "could not find project version in pyproject.toml"
+    return m.group(1)
 
 
 def test_extension_manifest_version_matches_package():
@@ -27,7 +29,7 @@ def test_source_manifest_keeps_the_pinned_key():
     # The source manifest keeps `key` (stable unpacked/dev id). CD strips it for the
     # store zip only. If this ever disappears from source, the dev id drifts.
     manifest = json.loads((ROOT / "extension" / "manifest.json").read_text())
-    assert "key" in manifest and isinstance(manifest["key"], str) and manifest["key"], (
+    assert manifest.get("key"), (
         "extension/manifest.json must keep its pinned public `key` (dev id stability); "
         "the store zip is stripped by CD, not the source"
     )
