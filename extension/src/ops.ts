@@ -91,6 +91,16 @@ function detectBrowserName(): string {
   }
 }
 
+// This build's version, straight from the manifest. Guarded so the router can
+// be built in unit tests with no chrome.* at all.
+function extensionVersion(): string {
+  try {
+    return chrome.runtime?.getManifest?.().version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 // The `use_target` control op — explicitly pin the session target and report it.
 // 0.6.0 also switches `current` in the registry and reports `url` + `provenance`.
 async function useTargetOp(p: Params) {
@@ -678,6 +688,16 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
   // CSP-exempt and surfaces page exceptions. The MAIN-world injection stays as
   // the fallback when chrome.debugger is unavailable.
   reg("eval", (p) => (cdp ? cdp.execute("eval", p) : tabsExecutor.execute("eval", p)));
+
+  // `status` is normally answered cua-side by bridge.status() without touching
+  // the wire, but it IS advertised in SUPPORTED_OPS (the hello capability
+  // list), so the router must honor it — an advertised op must never come back
+  // `unknown op` (issue #36, minor). SW-resolved; touches no page.
+  reg("status", () => ({
+    connected: true,
+    ext_version: extensionVersion(),
+    browser: detectBrowserName(),
+  }));
 
   // The session-target control op (SW-resolved; touches no page).
   reg("use_target", (p) => useTargetOp(p));

@@ -10,14 +10,24 @@
 
 Chrome only spawns ``native_host.py`` if a host manifest is registered. The
 manifest is ``com.vadgr.cua.json`` — ``{name, description, path, type:"stdio",
-allowed_origins:["chrome-extension://<EXTENSION_ID>/"]}``. Two things bite if
-wrong: the per-OS location, and ``allowed_origins`` must match the extension's
-ID exactly (a mismatch = native messaging silently never connects).
+allowed_origins:["chrome-extension://<id>/", ...]}``. Two things bite if
+wrong: the per-OS location, and ``allowed_origins`` must contain the installed
+extension's ID exactly (a mismatch = Chrome refuses ``connectNative`` before
+the host is ever spawned, so nothing is logged anywhere — issue #36).
 
-The extension ID is fixed by the ``key`` pinned in ``extension/manifest.json``
-so an unpacked dev build keeps a stable ID across loads. ``EXTENSION_ID`` here
-is the SHA256-derived ID of that pinned key — keep the two in sync (one source
-of truth for the test harness).
+There are TWO known IDs for the same extension and BOTH must be allowlisted:
+
+- ``EXTENSION_ID`` — the unpacked dev build, fixed by the ``key`` pinned in
+  ``extension/manifest.json`` (SHA256-derived; keep the two in sync).
+- ``WEBSTORE_EXTENSION_ID`` — the Chrome Web Store build. The store strips the
+  ``key`` field and assigns its own ID, so a store install has a DIFFERENT id
+  than the dev build. 0.6.4 allowlisted only the dev id, which made every Web
+  Store install permanently unable to connect (issue #36, defect 1).
+
+``install_manifests`` also MERGES with any ``allowed_origins`` already present
+at the destination instead of clobbering them: ``ensure_registered`` runs on
+every server start, and an unconditional rewrite silently reverted any manual
+allowlist fix (issue #36).
 """
 
 from __future__ import annotations
@@ -33,46 +43,93 @@ from computer_use.browser.bridge import manifest_paths
 # extension/manifest.json. If the manifest key changes, regenerate this.
 EXTENSION_ID = "bcbdnpafilijienocokppgmfianhehll"
 
+# The Chrome Web Store build's ID. The store strips the pinned `key` from the
+# uploaded zip and assigns its own ID, so a store install is a DIFFERENT origin
+# than the dev build and must be allowlisted too (issue #36).
+WEBSTORE_EXTENSION_ID = "bjjpaehedfnjnjmamjhppjnjnikpnfjl"
+
+# Every ID the host manifest must always allow, dev + store. Order matters only
+# cosmetically (dev first, matching the historical single-entry manifest).
+KNOWN_EXTENSION_IDS = (EXTENSION_ID, WEBSTORE_EXTENSION_ID)
+
 HOST_NAME = "com.vadgr.cua"
 
 
+def _origin(extension_id: str) -> str:
+    return f"chrome-extension://{extension_id}/"
+
+
 def build_manifest(host_path: str) -> dict:
-    """Build the native-host manifest contents."""
+    """Build the native-host manifest contents (dev + Web Store origins)."""
     return {
         "name": HOST_NAME,
         "description": "vadgr-computer-use browser tier native messaging host",
         "path": host_path,
         "type": "stdio",
-        "allowed_origins": [f"chrome-extension://{EXTENSION_ID}/"],
+        "allowed_origins": [_origin(i) for i in KNOWN_EXTENSION_IDS],
     }
+
+
+def _merge_allowed_origins(dest: Path, required: list[str]) -> list[str]:
+    """Union of ``required`` with any origins already present at ``dest``.
+
+    ``ensure_registered`` rewrites the manifest on every server start; a user's
+    manual allowlist addition (an enterprise-forced id, a fork's id, a canary
+    build) must survive that rewrite (issue #36). Required origins come first;
+    pre-existing extras keep their relative order. An unreadable/invalid
+    existing file merges nothing.
+    """
+    merged = list(required)
+    try:
+        existing = json.loads(Path(dest).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return merged
+    origins = existing.get("allowed_origins") if isinstance(existing, dict) else None
+    if isinstance(origins, list):
+        for origin in origins:
+            if isinstance(origin, str) and origin not in merged:
+                merged.append(origin)
+    return merged
 
 
 def install_manifests(
     host_path: str,
     paths: dict[str, Path] | None = None,
 ) -> list[str]:
-    """Write the manifest to each per-OS target. Returns the browsers written."""
+    """Write the manifest to each per-OS target. Returns the browsers written.
+
+    Guarantees BOTH known extension origins (dev + Web Store) are present, and
+    merges — never drops — extra ``allowed_origins`` found in an existing
+    manifest at the destination.
+    """
     targets = paths if paths is not None else manifest_paths()
     manifest = build_manifest(host_path)
     written: list[str] = []
     for browser, dest in targets.items():
         dest = Path(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        merged = dict(manifest)
+        merged["allowed_origins"] = _merge_allowed_origins(
+            dest, manifest["allowed_origins"]
+        )
+        dest.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         written.append(browser)
     return written
 
 
 def load_steps() -> str:
-    """Human-facing instructions for sideloading the unpacked extension."""
+    """Human-facing instructions for installing the extension."""
     return (
         "Browser tier setup:\n"
+        "  Either install from the Chrome Web Store (extension ID\n"
+        f"  {WEBSTORE_EXTENSION_ID}), or sideload the dev build:\n"
         "  1. Open chrome://extensions (or edge://extensions).\n"
         "  2. Enable Developer mode.\n"
         "  3. Click 'Load unpacked' and select the built `extension/` dir.\n"
         f"  4. Confirm the extension ID is {EXTENSION_ID}.\n"
-        "  5. The native-host manifest has been installed; restart the browser\n"
-        "     if it was already running, then run `browser(op='status')`."
+        "  5. The native-host manifest has been installed (both IDs are\n"
+        "     allowlisted); restart the browser if it was already running,\n"
+        "     then run `browser(op='status')`."
     )
 
 

@@ -14,6 +14,9 @@ import pytest
 
 from computer_use.setup import extension_setup as S
 
+DEV_ORIGIN = f"chrome-extension://{S.EXTENSION_ID}/"
+STORE_ORIGIN = f"chrome-extension://{S.WEBSTORE_EXTENSION_ID}/"
+
 
 class TestManifestContent:
     def test_build_manifest_shape(self):
@@ -21,16 +24,26 @@ class TestManifestContent:
         assert m["name"] == "com.vadgr.cua"
         assert m["type"] == "stdio"
         assert m["path"] == "/usr/bin/vadgr-cua-host"
-        assert m["allowed_origins"] == [
-            f"chrome-extension://{S.EXTENSION_ID}/"
-        ]
+        assert m["allowed_origins"] == [DEV_ORIGIN, STORE_ORIGIN]
         assert "description" in m
 
-    def test_extension_id_is_a_stable_constant(self):
-        # 32 lowercase a-p chars (Chrome extension ID alphabet).
-        assert isinstance(S.EXTENSION_ID, str)
-        assert len(S.EXTENSION_ID) == 32
-        assert all(c in "abcdefghijklmnop" for c in S.EXTENSION_ID)
+    def test_build_manifest_allowlists_both_dev_and_store_ids(self):
+        # Issue #36: the Web Store build has a DIFFERENT id (the store strips
+        # the pinned key) — a manifest without it makes every store install
+        # unable to connect, silently.
+        origins = S.build_manifest(host_path="/h")["allowed_origins"]
+        assert DEV_ORIGIN in origins
+        assert STORE_ORIGIN in origins
+
+    def test_extension_ids_are_stable_constants(self):
+        # 32 lowercase a-p chars (Chrome extension ID alphabet), and the two
+        # ids are distinct (dev/unpacked vs Web Store).
+        for ext_id in (S.EXTENSION_ID, S.WEBSTORE_EXTENSION_ID):
+            assert isinstance(ext_id, str)
+            assert len(ext_id) == 32
+            assert all(c in "abcdefghijklmnop" for c in ext_id)
+        assert S.EXTENSION_ID != S.WEBSTORE_EXTENSION_ID
+        assert S.KNOWN_EXTENSION_IDS == (S.EXTENSION_ID, S.WEBSTORE_EXTENSION_ID)
 
 
 class TestInstall:
@@ -45,14 +58,81 @@ class TestInstall:
         for p in (chrome, edge):
             data = json.loads(p.read_text())
             assert data["path"] == "/opt/host"
-            assert data["allowed_origins"] == [
-                f"chrome-extension://{S.EXTENSION_ID}/"
-            ]
+            assert data["allowed_origins"] == [DEV_ORIGIN, STORE_ORIGIN]
+
+    def test_writes_both_origins_for_every_supported_browser(self, tmp_path):
+        # chrome/chromium/edge all get the same dual-id allowlist.
+        targets = {
+            b: tmp_path / b / "com.vadgr.cua.json"
+            for b in ("chrome", "chromium", "edge")
+        }
+        written = S.install_manifests(host_path="/opt/host", paths=targets)
+        assert set(written) == {"chrome", "chromium", "edge"}
+        for p in targets.values():
+            origins = json.loads(p.read_text())["allowed_origins"]
+            assert DEV_ORIGIN in origins
+            assert STORE_ORIGIN in origins
 
     def test_creates_parent_dirs(self, tmp_path):
         target = tmp_path / "deep" / "nested" / "com.vadgr.cua.json"
         S.install_manifests(host_path="/h", paths={"chrome": target})
         assert target.exists()
+
+
+class TestInstallMerges:
+    """Issue #36: ensure_registered() rewrites on every server start; a manual
+    allowed_origins addition must SURVIVE the rewrite, not be clobbered."""
+
+    def test_rewrite_preserves_a_manually_added_origin(self, tmp_path):
+        dest = tmp_path / "com.vadgr.cua.json"
+        extra = "chrome-extension://aaaabbbbccccddddeeeeffffgggghhhh/"
+        dest.write_text(json.dumps({
+            "name": "com.vadgr.cua",
+            "path": "/old/host",
+            "type": "stdio",
+            "allowed_origins": [DEV_ORIGIN, extra],
+        }))
+        S.install_manifests(host_path="/new/host", paths={"chrome": dest})
+        data = json.loads(dest.read_text())
+        # Required ids always present, the manual extra kept, path refreshed.
+        assert data["path"] == "/new/host"
+        assert DEV_ORIGIN in data["allowed_origins"]
+        assert STORE_ORIGIN in data["allowed_origins"]
+        assert extra in data["allowed_origins"]
+
+    def test_rewrite_does_not_duplicate_known_origins(self, tmp_path):
+        dest = tmp_path / "com.vadgr.cua.json"
+        dest.write_text(json.dumps({
+            "allowed_origins": [STORE_ORIGIN, DEV_ORIGIN],
+        }))
+        S.install_manifests(host_path="/h", paths={"chrome": dest})
+        origins = json.loads(dest.read_text())["allowed_origins"]
+        assert sorted(origins) == sorted({DEV_ORIGIN, STORE_ORIGIN})
+
+    def test_rewrite_tolerates_a_corrupt_existing_manifest(self, tmp_path):
+        dest = tmp_path / "com.vadgr.cua.json"
+        dest.write_text("{ not json at all")
+        S.install_manifests(host_path="/h", paths={"chrome": dest})
+        data = json.loads(dest.read_text())
+        assert data["allowed_origins"] == [DEV_ORIGIN, STORE_ORIGIN]
+
+    def test_rewrite_ignores_non_string_origin_entries(self, tmp_path):
+        dest = tmp_path / "com.vadgr.cua.json"
+        dest.write_text(json.dumps({"allowed_origins": [42, None, DEV_ORIGIN]}))
+        S.install_manifests(host_path="/h", paths={"chrome": dest})
+        origins = json.loads(dest.read_text())["allowed_origins"]
+        assert origins == [DEV_ORIGIN, STORE_ORIGIN]
+
+    def test_second_rewrite_is_stable(self, tmp_path):
+        # Repeated server starts must converge, not grow the list.
+        dest = tmp_path / "com.vadgr.cua.json"
+        extra = "chrome-extension://aaaabbbbccccddddeeeeffffgggghhhh/"
+        dest.write_text(json.dumps({"allowed_origins": [extra]}))
+        S.install_manifests(host_path="/h", paths={"chrome": dest})
+        first = json.loads(dest.read_text())["allowed_origins"]
+        S.install_manifests(host_path="/h", paths={"chrome": dest})
+        second = json.loads(dest.read_text())["allowed_origins"]
+        assert first == second == [DEV_ORIGIN, STORE_ORIGIN, extra]
 
 
 class TestSelfRegister:
@@ -102,7 +182,7 @@ class TestSelfRegister:
         assert result["host_path"] == "/opt/vadgr/host.sh"
         data = json.loads(chrome.read_text())
         assert data["path"] == "/opt/vadgr/host.sh"
-        assert data["allowed_origins"] == [f"chrome-extension://{S.EXTENSION_ID}/"]
+        assert data["allowed_origins"] == [DEV_ORIGIN, STORE_ORIGIN]
 
     def test_ensure_registered_writes_windows_registry(self, tmp_path):
         chrome = tmp_path / "com.vadgr.cua.json"
@@ -161,7 +241,7 @@ class TestWSLRegistration:
         # Manifests written to the Windows-side (here, tmp) locations.
         assert chrome.exists() and edge.exists()
         data = json.loads(chrome.read_text())
-        assert data["allowed_origins"] == [f"chrome-extension://{S.EXTENSION_ID}/"]
+        assert data["allowed_origins"] == [DEV_ORIGIN, STORE_ORIGIN]
         # reg.exe-style writer was invoked for both browsers, with Win paths.
         assert {k for k, _ in reg_calls}
         chrome_keys = [k for k, _ in reg_calls if r"Google\Chrome" in k]

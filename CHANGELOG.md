@@ -2,6 +2,55 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.5] - 2026-07-24
+
+Fixes #36: a Chrome Web Store install of the extension could never connect to
+the native host, and once the first connect was refused the MV3 service worker
+had no path left to retry.
+
+### Fixed
+- **Native-host manifest now allowlists the Web Store extension ID.** The
+  store build has a different ID than the unpacked dev build (the store strips
+  the pinned `key`), but `extension_setup.py` wrote
+  `allowed_origins: ["chrome-extension://<dev id>/"]` only — so Chrome refused
+  `connectNative` for every Web Store install before the host ever spawned,
+  with nothing logged. The manifest now always carries BOTH origins
+  (`EXTENSION_ID` dev + `WEBSTORE_EXTENSION_ID` store), on every platform the
+  registration covers (Linux/macOS/Windows/WSL, chrome/chromium/edge).
+- **Manifest rewrites merge `allowed_origins` instead of clobbering them.**
+  `ensure_registered()` runs on every MCP-server start and rewrote the manifest
+  unconditionally, silently reverting any manual allowlist fix. Extra origins
+  found in an existing manifest now survive the rewrite (union, deduplicated),
+  while both known IDs are always guaranteed present.
+- **The service worker can now (re)establish the native port after MV3 idle
+  termination.** `connect()` was reachable only from `onStartup`, `onInstalled`
+  and the in-memory reconnect controller — none of which fire when an
+  idle-killed worker is woken by any other event, so a dropped port stayed dead
+  until a full browser restart. Now: `connect()` is idempotent (no-op while a
+  port is open, and a synchronous `connectNative` throw backs off instead of
+  killing the worker start), the module top level calls
+  `ensureOffscreen()` + `connect()` on EVERY worker start, a `chrome.alarms`
+  keep-alive (1-minute period, new `"alarms"` permission) revives the port
+  after idle death, and the offscreen document's ~20s heartbeat message is now
+  answered with a reconnect check as a faster-cadence path.
+- The offscreen-document comments/justification no longer claim it "holds the
+  native-messaging port alive" — it cannot (the port belongs to the service
+  worker); its heartbeat wakes the worker so the reconnect paths run.
+- Stale version strings: `CUA_VERSION` in `computer_use/browser/server.py` and
+  the `background.ts` fallback both read `"0.6.1"`; both now track the release
+  and `test_release_consistency.py` enforces they never drift again.
+- The extension advertised `"status"` in `supported_ops` but registered no
+  handler (a latent `unknown op`). The router now serves a lightweight
+  SW-resolved `status` (`{connected, ext_version, browser}`); the op remains
+  answered cua-side (`bridge.status()`) in normal operation.
+
+### Added
+- `browser(op="status")`-visible setup text and `extension/README.md` now
+  document the Web Store install path and both extension IDs.
+- Release-consistency guards: `CUA_VERSION` == package version, the
+  `background.ts` version fallback == package version, and the extension
+  manifest must keep the `"alarms"` permission.
+
 ## [0.6.4] - 2026-07-24
 
 CI/CD: keyless Chrome Web Store auto-publish. No extension behavior change.
