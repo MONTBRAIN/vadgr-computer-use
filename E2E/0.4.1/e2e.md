@@ -1,7 +1,7 @@
 # Desktop tier 0.4.1 - end to end test runbook
 
 > Status: **implementation complete and unit-green; awaiting user approval of
-> this test suite before any run** (per ENGINEERING.md §2 — the runbook gate).
+> this test suite before any run** (the engineering standard's runbook gate).
 > Nothing here is executed until approved. The 0.4.1 code under test: the XDG
 > portal screenshot backend, the provider/resolver abstraction + `doctor`
 > reporting (`platform_backends`), the pure-python uinput executor, the

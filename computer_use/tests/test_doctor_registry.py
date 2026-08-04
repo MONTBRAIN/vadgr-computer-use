@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""`vadgr-cua doctor` must verify the new registry per ARCHITECTURE.md §10.1.
+"""`vadgr-cua doctor` must verify the new registry, per the registry contract.
 
 The JSON output gains: tool_count, tier_breakdown, registry_loaded.
 """

@@ -71,8 +71,11 @@ moves work down a tier makes every agent loop more expensive.
 **5. Design comes before code** for anything carrying a minor:
 
 ```bash
-python3 ../vadgr-docs/scripts/check_iteration.py <phase> <iteration>
+python3 ../docs/scripts/check_iteration.py <phase> <iteration>
 ```
+
+(`../docs/` on the working machine, `../vadgr-docs/` where the docs repo was
+cloned under its own name.) Exit `0` or do not start.
 
 ## How a change is proven here
 

@@ -89,8 +89,8 @@ end-to-end.
    recognition context is meaningful.
 5. On WSL nothing else is needed: cua self-registers the native host and places
    the Windows relay shim automatically on startup. cua runs in WSL, Chrome on
-   Windows. **WSL: rebuild the extension on the *Windows* side** (see
-   `ENGINEERING.md` §4 gotcha) — a WSL-side `npm build` never reaches the Windows
+   Windows. **WSL: rebuild the extension on the *Windows* side** (a
+   known WSL gotcha) — a WSL-side `npm build` never reaches the Windows
    Chrome that loads the unpacked dist.
 6. Sanity check: the agent's first `browser(op="status")` returns
    `connected: true` and a `profiles` array with **two** entries, each carrying
@@ -265,8 +265,8 @@ Legend: pass / fail / blocked (login or anti-bot) / not run / **Not-Needed**
 | Part W (W1-W7 regression) | Not-Needed | Not-Needed | Not-Needed | **pass (full W1-W7)** |
 | Overall | Not-Needed | Not-Needed | Not-Needed | **pass (1 finding found + fixed + confirmed)** |
 
-**Live e2e for 0.6.1 is WSL-only; the other OSes are `Not-Needed`** (per
-`ENGINEERING.md` §1, the OS-agnostic clause). 0.6.1 has **no OS-specific surface** —
+**Live e2e for 0.6.1 is WSL-only; the other OSes are `Not-Needed`** (the
+engineering standard's OS-agnostic clause). 0.6.1 has **no OS-specific surface** —
 the multi-connection registry, the profile handshake/context refresh, and the
 discovery-file env override are pure Python + a pure extension handshake with no
 socket/pipe/path/registry/process branching and no per-OS deps — so Linux / macOS /

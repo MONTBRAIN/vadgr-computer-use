@@ -7,7 +7,7 @@
 #     http://www.apache.org/licenses/LICENSE-2.0
 
 """Tests for the new core/ framework: @tool decorator + ToolRegistry +
-Tier and Risk enums. Pinned to the contract in ARCHITECTURE.md §5.6, §5.7.
+Tier and Risk enums. Pinned to the published tier and risk contract.
 """
 
 import pytest

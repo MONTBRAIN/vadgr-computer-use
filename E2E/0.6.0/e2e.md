@@ -72,8 +72,8 @@ end-to-end.
    `chrome.windows`/`chrome.tabs`).
 4. On WSL nothing else is needed: cua self-registers the native host and places
    the Windows relay shim automatically on startup. cua runs in WSL, Chrome on
-   Windows. **WSL: rebuild the extension on the *Windows* side** (see
-   `ENGINEERING.md` §4 gotcha) — a WSL-side `npm build` never reaches the Windows
+   Windows. **WSL: rebuild the extension on the *Windows* side** (a
+   known WSL gotcha) — a WSL-side `npm build` never reaches the Windows
    Chrome that loads the unpacked dist.
 5. Sanity check: the agent's first `browser(op="status")` returns
    `connected: true`, and `supported_ops` now includes `tabs` and `windows`

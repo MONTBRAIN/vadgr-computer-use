@@ -10,7 +10,7 @@
 MCP tool is registered in the ToolRegistry with the correct tier and risk.
 
 The MCP wire surface is unchanged; this asserts the new internal
-registration mechanism wraps the same 13 tools (per ARCHITECTURE.md §10.1).
+registration mechanism wraps the same 13 tools the registry contract names.
 """
 
 
@@ -32,7 +32,7 @@ EXPECTED_TOOLS = frozenset(
     }
 )
 
-# Per ARCHITECTURE.md §5.1: all existing 13 tools are pixel-layer -> Tier 2.
+# The tier ladder: all 13 pre-registry tools are pixel-layer -> Tier 2.
 EXPECTED_TIER_FOR_ALL = 2
 
 # Risk mapping fixed in §10.1 plan: read-only for query tools, medium for

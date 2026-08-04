@@ -774,7 +774,7 @@ def _get_supervisor():
 def _registry_status() -> dict:
     """Snapshot of the ToolRegistry for `doctor` output.
 
-    Returns three fields per ARCHITECTURE.md §10.1:
+    Returns the registry contract's three fields:
     - `registry_loaded`: True once the registry import succeeded.
     - `tool_count`: total number of registered tools.
     - `tier_breakdown`: map of tier-string -> count (e.g. {"2": 13}).
