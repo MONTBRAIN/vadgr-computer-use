@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License").
 // http://www.apache.org/licenses/LICENSE-2.0
 //
-// The wire contract — the only coupling between the extension and cua. This is
+// The wire contract - the only coupling between the extension and cua. This is
 // a mirror of computer_use/browser/protocol.py: keep PROTOCOL_VERSION and
 // SUPPORTED_OPS in sync. The two builds share no imports, only this envelope.
 
@@ -28,10 +28,10 @@ export const SUPPORTED_OPS = [
   "cookies",
   "status",
   "eval",
-  // CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
+  // CDP universal path (chrome.debugger) - additive (no PROTOCOL_VERSION bump).
   "press",
   "accessibility_tree",
-  // 0.5.0 — session targeting + the remaining interaction ops (additive).
+  // 0.5.0 - session targeting + the remaining interaction ops (additive).
   "use_target",
   "hover",
   "dialog",
@@ -42,10 +42,10 @@ export const SUPPORTED_OPS = [
   "clear",
   "get_value",
   "snapshot",
-  // 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
+  // 0.6.0 - window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
   "tabs",
   "windows",
-  // 0.6.1 — multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
+  // 0.6.1 - multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
   "profiles",
 ] as const;
 

@@ -1,4 +1,4 @@
-# Privacy Policy — vadgr-computer-use browser tier
+# Privacy Policy - vadgr-computer-use browser tier
 
 _Last updated: 2026-07-22_
 
@@ -12,11 +12,11 @@ operate the pages you direct it to.
 
 To perform the actions you ask of it, the extension can access:
 
-- **Website content** — text, values, and elements of the page it is told to
+- **Website content** - text, values, and elements of the page it is told to
   act on, so it can read the page, fill forms, click, and extract data.
-- **Authentication information** — it exposes a scoped cookie read/write
+- **Authentication information** - it exposes a scoped cookie read/write
   operation for the current site when a task requires it.
-- **Web history** — the URLs and titles of your open tabs, so the agent can
+- **Web history** - the URLs and titles of your open tabs, so the agent can
   find and switch to the right page.
 
 ## How that data is used

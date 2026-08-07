@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""upload path translation — the WSL boundary (four-platforms, non-negotiable).
+"""upload path translation - the WSL boundary (four-platforms, non-negotiable).
 
 ``DOM.setFileInputFiles`` resolves each path in the *browser* process's OS. On
 WSL, Chrome is Windows Chrome over the bridge, so a cua-side WSL path is

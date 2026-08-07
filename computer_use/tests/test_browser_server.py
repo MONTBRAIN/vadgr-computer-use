@@ -9,7 +9,7 @@
 """Loopback-TCP transport: discovery file, handshake, op round-trip.
 
 Drives the listener with an in-process fake shim (a raw TCP client that
-speaks the native-messaging framing) — no real Chrome, no real cua. Proves a
+speaks the native-messaging framing) - no real Chrome, no real cua. Proves a
 full ``hello`` + one op round-trips, auth-token rejection, and clean errors
 when the listener is down.
 """
@@ -151,7 +151,7 @@ class TestDiscoveryFile:
 
     def test_ensure_server_writes_to_env_path(self, monkeypatch, tmp_path):
         # ensure_server must pass the env-resolved discovery path to BrowserServer
-        # (the read-side override was previously dead — the server ignored it).
+        # (the read-side override was previously dead - the server ignored it).
         custom = tmp_path / "session-b" / "browser.port"
         monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
         monkeypatch.setattr(S, "_SERVER", None)

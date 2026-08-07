@@ -6,11 +6,11 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""`computer_use.core` — domain types + tool registration framework.
+"""`computer_use.core` - domain types + tool registration framework.
 
 This package contains:
 - Existing engine domain (engine, actions, screenshot, types, errors,
-  smooth_move) — internal API consumed by mcp_server.
+  smooth_move) - internal API consumed by mcp_server.
 - The 0.2.0 framework: `tool`, `Tier`, `Risk`, `ToolRegistry`, decorator,
   and a lightweight middleware chain for telemetry.
 

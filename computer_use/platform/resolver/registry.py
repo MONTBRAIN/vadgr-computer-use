@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provider registry — the open/closed seam.
+"""Provider registry - the open/closed seam.
 
 A new desktop backend is added by writing a provider and registering it here (or
 self-registering on import). The resolver and the rest of the platform tier are

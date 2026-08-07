@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for OwnedWindowManager — it opens a dedicated automation window in the
+// TDD for OwnedWindowManager - it opens a dedicated automation window in the
 // user's real profile (chrome.windows.create), unfocused so it never fights the
 // user's foreground tab, and pins its first tab. The chrome.windows glue is
 // live-only; the sequencing + shape is pure and tested here against a fake.
@@ -26,7 +26,7 @@ describe("OwnedWindowManager", () => {
     const owm = new OwnedWindowManager(windows);
     const target = await owm.create();
     expect(target).toEqual({ windowId: 42, tabId: 137 });
-    // focused:false is the whole point — the user keeps working untouched.
+    // focused:false is the whole point - the user keeps working untouched.
     expect(calls[0].focused).toBe(false);
     // ...but NOT minimized: a real, sized viewport so hit-testing works.
     expect(calls[0].state).toBe("normal");

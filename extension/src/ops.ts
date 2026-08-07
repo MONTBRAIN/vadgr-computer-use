@@ -3,7 +3,7 @@
 //
 // Service-worker-side op handlers + registration. Non-DOM ops run here against
 // the extension APIs (chrome.tabs, chrome.cookies); DOM ops are forwarded to
-// the content script in the active tab. Registration is the OCP seam — adding
+// the content script in the active tab. Registration is the OCP seam - adding
 // an op is a new handler + a register() line.
 
 import { Router } from "./router";
@@ -31,7 +31,7 @@ import type {
 //
 // Every executor resolves its target through ONE TargetResolver, BY ID. The
 // 0.4.0 focus-coupled `query({active, currentWindow})` is GONE from op targeting
-// — the only legitimate `active` read is the one-time attach snapshot inside the
+// - the only legitimate `active` read is the one-time attach snapshot inside the
 // resolver. The resolver is a lazy singleton so importing this module never
 // touches chrome.* (safe under the unit-test DOM harness); it is shared with the
 // lifecycle listeners in background.ts so re-pins reach the same instance.
@@ -101,7 +101,7 @@ function extensionVersion(): string {
   }
 }
 
-// The `use_target` control op — explicitly pin the session target and report it.
+// The `use_target` control op - explicitly pin the session target and report it.
 // 0.6.0 also switches `current` in the registry and reports `url` + `provenance`.
 async function useTargetOp(p: Params) {
   const out = await sharedResolver().useTarget({
@@ -132,7 +132,7 @@ async function targetTab(): Promise<chrome.tabs.Tab> {
 }
 
 // How long to wait for a navigation to settle before returning whatever state
-// the tab reached. A heavy SPA — or a tab that never reports "complete" — must
+// the tab reached. A heavy SPA - or a tab that never reports "complete" - must
 // NOT block the op, and thus the whole single-lock native pipe, forever.
 const NAV_SETTLE_TIMEOUT_MS = 15000;
 
@@ -140,8 +140,8 @@ const NAV_SETTLE_TIMEOUT_MS = 15000;
 // mirrors cua's navigate wait: "none" returns immediately; anything else waits
 // for tab status "complete". (Chrome's tabs API doesn't surface
 // DOMContentLoaded, so "domcontentloaded" shares the "complete" path but is
-// still time-bounded.) On timeout we resolve — the caller reads the tab's
-// actual url/title — rather than hanging.
+// still time-bounded.) On timeout we resolve - the caller reads the tab's
+// actual url/title - rather than hanging.
 function tabComplete(tabId: number, wait?: string): Promise<void> {
   if (wait === "none") return Promise.resolve();
   return new Promise((resolve) => {
@@ -167,20 +167,20 @@ async function summary(tab: chrome.tabs.Tab) {
 
 // The content script is reachable only once its onMessage listener has
 // registered. On a fresh page (just navigated) there is a window where it has
-// not — sendMessage then throws "Receiving end does not exist" / "Could not
+// not - sendMessage then throws "Receiving end does not exist" / "Could not
 // establish connection". The content script is declared for <all_urls> but
 // races document_idle; force it in and retry.
 function isUnreachable(msg: string): boolean {
   return /receiving end does not exist|could not establish connection/i.test(msg);
 }
 // The op's own navigation tore down the page mid-message (channel/bfcache
-// closed). The action still happened — report it as a navigation, not an error.
+// closed). The action still happened - report it as a navigation, not an error.
 function isNavClose(msg: string): boolean {
   return /message channel is closed|back\/forward cache/i.test(msg);
 }
 
 // Unwrap a content-script result envelope. On ok:false we THROW so the SW
-// router turns it into a proper {ok:false, error} reply — otherwise an op
+// router turns it into a proper {ok:false, error} reply - otherwise an op
 // failure (e.g. a selector that matches nothing) would reach cua as a
 // success-looking value and defeat verification. Exported for unit testing.
 export function unwrap(res: unknown): unknown {
@@ -189,7 +189,7 @@ export function unwrap(res: unknown): unknown {
     if (r.ok) return r.result;
     throw new Error(r.error?.message ?? "op failed");
   }
-  return res; // navigation sentinel or legacy shape — pass through
+  return res; // navigation sentinel or legacy shape - pass through
 }
 
 // The two channel primitives self-heal needs, injectable so the retry logic is
@@ -204,7 +204,7 @@ export interface ContentChannel {
 //   - UNREACHABLE ("Receiving end does not exist"): sendMessage found NO
 //     listener, so the message never arrived and the op NEVER RAN. Re-injecting
 //     content.js and delivering ONCE is therefore a first delivery, not a retry
-//     of an executed action — safe for EVERY op, click/fill/type included (0.6.0
+//     of an executed action - safe for EVERY op, click/fill/type included (0.6.0
 //     closes the 0.5.0 "reads self-heal, writes fail on a fresh page" split).
 //   - NAV-CLOSE (channel torn down mid-message): the op MAY have run, so it is
 //     reported as {navigated} and NEVER redelivered.
@@ -219,7 +219,7 @@ export async function deliverWithSelfHeal(
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
     if (isUnreachable(msg)) {
-      // Content script not present yet (fresh navigation) — inject + deliver
+      // Content script not present yet (fresh navigation) - inject + deliver
       // ONCE. Unreachable means not-yet-executed, so this is safe for all ops.
       await ch.reinject();
       return unwrap(await ch.send(op, params));
@@ -248,7 +248,7 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
   return deliverWithSelfHeal(op, params, ch);
 }
 
-// `eval` runs JS in the page's MAIN world via chrome.scripting — the content
+// `eval` runs JS in the page's MAIN world via chrome.scripting - the content
 // script's isolated world is CSP-blocked from eval under MV3. Returns {value}.
 // (HIGH-risk escape hatch; page CSP may still forbid eval, which now surfaces
 // as a real error instead of an empty result.)
@@ -266,7 +266,7 @@ async function evalInPage(expression: string) {
 // Wait for a navigation to leave `beforeUrl` and finish loading, or give up
 // after `timeout`. A history move with no entry in that direction is a benign
 // no-op: it never leaves `beforeUrl`, times out, and the caller returns the
-// unchanged page — far friendlier than the old hard "no page in history" error.
+// unchanged page - far friendlier than the old hard "no page in history" error.
 function settleNav(
   tabId: number,
   beforeUrl: string | undefined,
@@ -287,7 +287,7 @@ function settleNav(
 // back/forward via the page History API (run in the MAIN world like eval).
 // chrome.tabs.goBack/goForward are gated by the user-gesture rule, so
 // extension-initiated chrome.tabs.update navigations are unreachable through
-// them — they fail "no page in history" even when history.length is large.
+// them - they fail "no page in history" even when history.length is large.
 // history.go() uses the page session history and is not gated.
 async function historyGo(delta: number) {
   const tab = await targetTab();
@@ -316,7 +316,7 @@ async function cookiesOp(p: Params) {
   throw new Error(`unknown cookies action ${action}`);
 }
 
-// chrome.tabs / chrome.cookies / scripting — navigation, cookies, page eval.
+// chrome.tabs / chrome.cookies / scripting - navigation, cookies, page eval.
 // Not interactive page actions, so these never escalate.
 const tabsExecutor: Executor = {
   name: "tabs",
@@ -375,7 +375,7 @@ const DOM_OPS = [
   "element_state", "clear", "get_value",
 ];
 // Interactive ops that self-verify (have a read-back `ok`) AND that the CDP path
-// can perform — these escalate DOM→CDP on `ok:false`. (`select` gains escalation
+// can perform - these escalate DOM→CDP on `ok:false`. (`select` gains escalation
 // when the CDP path grows that op; until then it stays DOM-only.)
 const ESCALATING = new Set(["click", "type", "fill", "clear", "get_value"]);
 // CDP-only ops (no DOM equivalent).
@@ -389,7 +389,7 @@ const isInteractive = (op: string) => ESCALATING.has(op);
 // --- tabs / windows op-groups (0.6.0) ---
 //
 // `tabs` and `windows` are OPERATION GROUPS (sub-op routed via params.op, like
-// cua's Tier-0 fs/shell tools) — so the wire op is "tabs"/"windows" and the
+// cua's Tier-0 fs/shell tools) - so the wire op is "tabs"/"windows" and the
 // sub-op rides in params.op. Provenance-aware and user-context-safe: the agent
 // SEES every context (list), but ACTS only on `current`; a `user` tab/window is
 // closed only with force=True. The chrome.* glue is injected so the routing is
@@ -422,7 +422,7 @@ export interface WindowsMutApi {
   remove(windowId: number): Promise<void>;
 }
 
-// The registry surface the group ops drive — the TargetResolver satisfies it.
+// The registry surface the group ops drive - the TargetResolver satisfies it.
 export interface TargetControl {
   resolve(): Promise<PinnedTarget>;
   adoptCurrent(
@@ -471,7 +471,7 @@ export async function tabsGroupOp(
     }
     case "switch": {
       const tabId = p.tab_id as number;
-      // Activate the tab WITHIN its window — deliberately NO
+      // Activate the tab WITHIN its window - deliberately NO
       // windows.update({focused}); routing attention never steals the user's
       // screen (bringing a window forward is windows.focus only).
       const updated = await deps.tabs.update(tabId, { active: true });
@@ -515,7 +515,7 @@ export async function windowsGroupOp(
     case "list":
       return deps.resolver.listWindows();
     case "open": {
-      // A new OWNED window — unfocused by default (the owned-window discipline).
+      // A new OWNED window - unfocused by default (the owned-window discipline).
       const win = await deps.windows.create({
         url: p.url as string | undefined,
         focused: p.focused === true,
@@ -604,7 +604,7 @@ export async function profilesOp(
 // --- per-op target context (0.6.0) ---
 //
 // Every op result is wrapped with {window_id, tab_id, url} (additive; no proto
-// bump), so the agent always sees WHICH tab it just acted on — a surprise
+// bump), so the agent always sees WHICH tab it just acted on - a surprise
 // chrome://newtab is visible immediately, not inferred two ops later. Only
 // object results carry it (a bare string from read_text is passed through); a
 // result that already has `target` is left untouched.
@@ -633,7 +633,7 @@ export function wrapWithTarget(
   };
 }
 
-// The live target-context provider: the in-memory `current` (never resolve() —
+// The live target-context provider: the in-memory `current` (never resolve() - 
 // wrapping must not itself open a window) plus the tab's real url.
 async function currentTargetContext(): Promise<
   { window_id: number; tab_id: number; url: string } | null
@@ -644,7 +644,7 @@ async function currentTargetContext(): Promise<
   try {
     url = (await chrome.tabs.get(cur.tabId)).url ?? "";
   } catch {
-    // best-effort — a target that vanished mid-op still reports its ids.
+    // best-effort - a target that vanished mid-op still reports its ids.
   }
   return { window_id: cur.windowId, tab_id: cur.tabId, url };
 }
@@ -665,7 +665,7 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
       // `trusted:true` skips the DOM fast path entirely and goes straight to the
       // trusted CDP event stream. It is the escape hatch for widgets that expose
       // NO readable state (so the `ok:false` escalation trigger can never fire)
-      // yet still ignore an untrusted click — e.g. a pointerdown-driven overlay
+      // yet still ignore an untrusted click - e.g. a pointerdown-driven overlay
       // button. Without the flag, click behaves as before and only escalates
       // when its read-back says the state did not change.
       reg(op, (p) =>
@@ -691,7 +691,7 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
 
   // `status` is normally answered cua-side by bridge.status() without touching
   // the wire, but it IS advertised in SUPPORTED_OPS (the hello capability
-  // list), so the router must honor it — an advertised op must never come back
+  // list), so the router must honor it - an advertised op must never come back
   // `unknown op` (issue #36, minor). SW-resolved; touches no page.
   reg("status", () => ({
     connected: true,

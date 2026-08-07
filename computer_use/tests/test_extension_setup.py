@@ -29,7 +29,7 @@ class TestManifestContent:
 
     def test_build_manifest_allowlists_both_dev_and_store_ids(self):
         # Issue #36: the Web Store build has a DIFFERENT id (the store strips
-        # the pinned key) — a manifest without it makes every store install
+        # the pinned key) - a manifest without it makes every store install
         # unable to connect, silently.
         origins = S.build_manifest(host_path="/h")["allowed_origins"]
         assert DEV_ORIGIN in origins
@@ -279,7 +279,7 @@ class TestWSLRegistration:
         assert data["path"].endswith("vadgr-cua-host.exe")
 
     def test_ensure_registered_wsl_installs_the_relay_exe(self, tmp_path):
-        # The WSL path auto-places the relay shim (no manual copy) — the installer
+        # The WSL path auto-places the relay shim (no manual copy) - the installer
         # is invoked with the resolved windows_user.
         seen = {}
         S.ensure_registered(
@@ -356,8 +356,8 @@ class TestWslAutoDetection:
 
     def test_reg_exe_writer_does_not_inherit_stdin(self, monkeypatch):
         # Issue #18 (broadened): the reg.exe registration runs at startup on WSL
-        # (the #19 auto-register path), so it must not inherit fd 0 — the stdio
-        # MCP JSON-RPC pipe — or `initialize` hangs. Must pass DEVNULL.
+        # (the #19 auto-register path), so it must not inherit fd 0 - the stdio
+        # MCP JSON-RPC pipe - or `initialize` hangs. Must pass DEVNULL.
         import subprocess
 
         captured: dict = {}

@@ -9,7 +9,7 @@
 """Lightweight middleware chain for observability.
 
 The chain lets the runtime emit structured telemetry events around tool
-calls. It is intentionally minimal — `vadgr-computer-use` does not host
+calls. It is intentionally minimal - `vadgr-computer-use` does not host
 authorization, denylist, redaction, approval prompts, or any other policy
 concern. Those live in the host's agent loop. cua exposes tools, `tier` +
 `risk` metadata, and telemetry events; the host decides what to do with

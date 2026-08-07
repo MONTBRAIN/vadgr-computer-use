@@ -116,7 +116,7 @@ class TestBrowserTierStartup:
             "computer_use.setup.extension_setup.ensure_registered",
             side_effect=RuntimeError("boom"),
         ):
-            # Must not raise — startup is best-effort.
+            # Must not raise - startup is best-effort.
             mcp_server._start_browser_tier()
 
 

@@ -9,17 +9,17 @@
 """First-run: install the native-host manifest so Chrome can spawn the host.
 
 Chrome only spawns ``native_host.py`` if a host manifest is registered. The
-manifest is ``com.vadgr.cua.json`` — ``{name, description, path, type:"stdio",
+manifest is ``com.vadgr.cua.json`` - ``{name, description, path, type:"stdio",
 allowed_origins:["chrome-extension://<id>/", ...]}``. Two things bite if
 wrong: the per-OS location, and ``allowed_origins`` must contain the installed
 extension's ID exactly (a mismatch = Chrome refuses ``connectNative`` before
-the host is ever spawned, so nothing is logged anywhere — issue #36).
+the host is ever spawned, so nothing is logged anywhere - issue #36).
 
 There are TWO known IDs for the same extension and BOTH must be allowlisted:
 
-- ``EXTENSION_ID`` — the unpacked dev build, fixed by the ``key`` pinned in
+- ``EXTENSION_ID`` - the unpacked dev build, fixed by the ``key`` pinned in
   ``extension/manifest.json`` (SHA256-derived; keep the two in sync).
-- ``WEBSTORE_EXTENSION_ID`` — the Chrome Web Store build. The store strips the
+- ``WEBSTORE_EXTENSION_ID`` - the Chrome Web Store build. The store strips the
   ``key`` field and assigns its own ID, so a store install has a DIFFERENT id
   than the dev build. 0.6.4 allowlisted only the dev id, which made every Web
   Store install permanently unable to connect (issue #36, defect 1).
@@ -99,7 +99,7 @@ def install_manifests(
     """Write the manifest to each per-OS target. Returns the browsers written.
 
     Guarantees BOTH known extension origins (dev + Web Store) are present, and
-    merges — never drops — extra ``allowed_origins`` found in an existing
+    merges - never drops - extra ``allowed_origins`` found in an existing
     manifest at the destination.
     """
     targets = paths if paths is not None else manifest_paths()
@@ -136,7 +136,7 @@ def load_steps() -> str:
 # --- self-registration: cua writes its own host wiring (no manual setup) ------
 
 # HKCU registry subkeys Chrome/Edge read native hosts from (Windows only). The
-# manifest *file* alone isn't enough on Windows — the key must point at it.
+# manifest *file* alone isn't enough on Windows - the key must point at it.
 _WIN_REGISTRY_KEYS = {
     "chrome": r"Software\Google\Chrome\NativeMessagingHosts\com.vadgr.cua",
     "edge": r"Software\Microsoft\Edge\NativeMessagingHosts\com.vadgr.cua",
@@ -146,7 +146,7 @@ _WIN_REGISTRY_KEYS = {
 def windows_relay_path(windows_user: str | None = None) -> str:
     """The Windows-form path of the relay shim Chrome spawns on Windows (WSL).
 
-    On WSL the manifest ``path`` cannot point at a Linux launcher — Chrome runs
+    On WSL the manifest ``path`` cannot point at a Linux launcher - Chrome runs
     on Windows. It points at ``vadgr-cua-host.exe``, a tiny stdio<->TCP
     forwarder placed under the Windows user's ``AppData\\Local\\vadgr-cua``
     (see ``computer_use/browser/winhost/``). Returns the ``C:\\...`` form
@@ -168,7 +168,7 @@ def bundled_relay_exe() -> Path:
 
 def relay_exe_dest(windows_user: str | None = None) -> Path:
     """The ``/mnt/c`` destination the relay shim must live at for Windows Chrome
-    to spawn it — the WSL view of
+    to spawn it - the WSL view of
     ``%LOCALAPPDATA%\\vadgr-cua\\vadgr-cua-host.exe``."""
     from computer_use.browser.bridge import windows_user_home_mnt
 
@@ -249,7 +249,7 @@ _REG_EXE = "/mnt/c/Windows/System32/reg.exe"
 def reg_exe_writer(subkey: str, value: str, *, runner=None) -> None:
     """Set ``HKCU\\<subkey>`` default value via Windows ``reg.exe`` from WSL.
 
-    This is the WSL analogue of ``_winreg_writer`` — cua-in-Linux cannot use
+    This is the WSL analogue of ``_winreg_writer`` - cua-in-Linux cannot use
     ``winreg``, so it shells out to the Windows ``reg.exe`` over interop. The
     ``runner(argv)`` seam is injected in tests; it defaults to ``subprocess``.
     """
@@ -267,7 +267,7 @@ def reg_exe_writer(subkey: str, value: str, *, runner=None) -> None:
             argv, check=False, capture_output=True, timeout=10,
             # Never inherit fd 0: this reg.exe runs at startup on WSL (the #19
             # auto-registration path), and a child holding fd 0 (the stdio MCP
-            # JSON-RPC pipe) stalls `initialize` — same class as #18.
+            # JSON-RPC pipe) stalls `initialize` - same class as #18.
             stdin=subprocess.DEVNULL,
         )
     else:
@@ -326,7 +326,7 @@ def ensure_registered(
     relay_installer=None,
     windows_user: str | None = None,
 ) -> dict:
-    """Self-register the native host so Chrome can reach cua — no manual step.
+    """Self-register the native host so Chrome can reach cua - no manual step.
 
     Writes the launcher, the per-OS manifest, and the registry keys (Windows
     and WSL). On WSL cua-in-Linux targets the *Windows* Chrome it actually
@@ -341,7 +341,7 @@ def ensure_registered(
         # On WSL the manifest `path` must point at the Windows relay shim
         # (a .exe Chrome spawns on Windows); the launcher script is irrelevant.
         host = host_path or windows_relay_path(windows_user=windows_user)
-        # Place the packaged relay shim where the manifest points — no manual copy.
+        # Place the packaged relay shim where the manifest points - no manual copy.
         if host_path is None:
             (relay_installer or ensure_relay_exe)(windows_user=windows_user)
         written = install_manifests(host, targets)

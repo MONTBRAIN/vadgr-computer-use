@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""System-dependency provisioning — the bits ``pip`` cannot install.
+"""System-dependency provisioning - the bits ``pip`` cannot install.
 
 The desktop tier's common GNOME/KDE/X11 paths are pure-python (jeepney, Pillow,
 python-xlib) and need no system packages. What's left is genuine OS-package
-residue — ``wl-clipboard`` for the clipboard, and write access to ``/dev/uinput``
+residue - ``wl-clipboard`` for the clipboard, and write access to ``/dev/uinput``
 for the uinput fallback. ``pip`` cannot install those (and must not shell out to
 a package manager during install), so this module diagnoses what's missing and
 emits an explicit, distro-aware plan, à la ``playwright install-deps``: printed
@@ -83,7 +83,7 @@ def detect_escalation() -> str | None:
     display, else ``sudo``. Returns None if neither is available.
 
     pkexec pops a desktop password dialog (one click, no terminal), so the whole
-    plan runs under a single GUI prompt — the macOS-style "authenticate once".
+    plan runs under a single GUI prompt - the macOS-style "authenticate once".
     """
     has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     if has_display and shutil.which("pkexec"):
@@ -121,7 +121,7 @@ def build_plan(
     steps = _privileged_steps(manager, missing_names)
     plan = [f"{escalate} {step}" for step in steps]
     if not steps and "wl-clipboard" in missing_names and manager is None:
-        plan.append("# unknown package manager — add 'wl-clipboard' via your distro's tools")
+        plan.append("# unknown package manager - add 'wl-clipboard' via your distro's tools")
     return plan
 
 
@@ -147,15 +147,15 @@ def install_deps(*, assume_yes: bool = False, dry_run: bool = True) -> int:
         print(f"  {line}")
 
     if dry_run or not assume_yes:
-        print("\n(dry run — re-run with --yes to execute)")
+        print("\n(dry run - re-run with --yes to execute)")
         return 0
 
     steps = _privileged_steps(manager, names)
     if not steps:
-        print("\nNothing runnable (unknown package manager) — install the package manually.")
+        print("\nNothing runnable (unknown package manager) - install the package manually.")
         return 1
     if escalate is None:
-        print("\nNo pkexec or sudo available — run the plan as root.")
+        print("\nNo pkexec or sudo available - run the plan as root.")
         return 1
 
     # One escalated invocation -> a single GUI/sudo auth prompt for the whole plan.

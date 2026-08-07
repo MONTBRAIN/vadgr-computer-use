@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Tool tiers — capability classes used by the agent loop to pick the
+"""Tool tiers - capability classes used by the agent loop to pick the
 cheapest viable approach for a given action.
 
 | Tier | Examples | Cost |

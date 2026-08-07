@@ -1,20 +1,20 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TargetResolver — the single target authority. 0.4.0 resolved each op's target
+// TargetResolver - the single target authority. 0.4.0 resolved each op's target
 // inline via chrome.tabs.query({active:true, currentWindow:true}), so the agent
 // acted on whatever window the HUMAN last focused. 0.5.0 pinned ONE explicit
 // {windowId, tabId} resolved by id. 0.6.0 generalizes that single pin into an
 // enumerable, switchable REGISTRY (registry.ts) plus a `current` pointer, while
-// resolve() keeps its exact signature — every executor still acts BY ID, the
+// resolve() keeps its exact signature - every executor still acts BY ID, the
 // focus-proof guarantee is untouched. `active` / `currentWindow` are still banned
 // for op targeting; the only legitimate `active` read is the attach snapshot.
 //
 // The 0.6.0 headline is LOUD LOSS. resolve() splits a COLD start (never
 // established -> auto-open the owned window, the zero-use_target default) from a
 // MID-TASK loss (established, current gone -> raise target_lost). The 0.5.0
-// silent owned re-open of a blank window — which slipped a wrong target under the
-// agent — is gone. The split rides on the persisted `established` flag, so it
+// silent owned re-open of a blank window - which slipped a wrong target under the
+// agent - is gone. The split rides on the persisted `established` flag, so it
 // survives an SW idle-termination.
 
 import { OwnedWindowManager, type PinnedTarget } from "./owned_window";
@@ -49,7 +49,7 @@ const TARGET_LOST_MESSAGE =
   "the pinned tab was closed; run tabs(list) then use_target, or " +
   "use_target(mode=owned) to open a fresh window";
 
-// The slice of chrome.tabs we depend on — id/url validation + the attach snapshot.
+// The slice of chrome.tabs we depend on - id/url validation + the attach snapshot.
 export interface TabsLike {
   get(
     tabId: number,
@@ -89,7 +89,7 @@ export class TargetResolver {
 
   // Resolve the target every op acts on, BY ID. A live `current` is returned
   // as-is. A COLD start auto-opens the owned window. A MID-TASK loss (established
-  // but current gone) raises target_lost — never a silent blank re-open.
+  // but current gone) raises target_lost - never a silent blank re-open.
   async resolve(): Promise<PinnedTarget> {
     await this.hydrate();
     if (this.registry.established) {
@@ -119,7 +119,7 @@ export class TargetResolver {
     await this.hydrate();
     this.mode = p.mode ?? "owned";
 
-    // Explicit id selection — adopt the tab (owned stays owned via upsert).
+    // Explicit id selection - adopt the tab (owned stays owned via upsert).
     if (p.tabId != null) {
       const tab = await this.deps.tabs.get(p.tabId);
       const windowId = p.windowId ?? tab?.windowId;
@@ -128,7 +128,7 @@ export class TargetResolver {
     }
 
     if (this.mode === "attach") {
-      // The single legitimate `active` read — scoped to the last-focused window,
+      // The single legitimate `active` read - scoped to the last-focused window,
       // NOT bare {active:true} (which returns the active tab of EVERY window).
       const [tab] = await this.deps.tabs.query({
         active: true,
@@ -181,7 +181,7 @@ export class TargetResolver {
     return rec;
   }
 
-  // Re-pin to a spawned target (lifecycle: a tab an owned tab opened — _blank,
+  // Re-pin to a spawned target (lifecycle: a tab an owned tab opened - _blank,
   // OAuth popup). It is the agent's own flow, so it is registered `owned`.
   async pin(t: PinnedTarget): Promise<void> {
     await this.adoptCurrent(t, "owned");
@@ -217,7 +217,7 @@ export class TargetResolver {
     await this.persist();
   }
 
-  // tabs(op="list") — the full window -> tabs tree, joined with the registry.
+  // tabs(op="list") - the full window -> tabs tree, joined with the registry.
   async enumerate(): Promise<{ windows: WindowNode[] }> {
     await this.hydrate();
     return enumerateTabs(this.deps.windowsApi, {
@@ -226,7 +226,7 @@ export class TargetResolver {
     });
   }
 
-  // windows(op="list") — the thin variant.
+  // windows(op="list") - the thin variant.
   async listWindows(): Promise<{ windows: WindowSummary[] }> {
     await this.hydrate();
     return enumerateWindows(this.deps.windowsApi, {

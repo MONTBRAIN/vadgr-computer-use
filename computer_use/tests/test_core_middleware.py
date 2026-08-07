@@ -8,7 +8,7 @@
 
 """Middleware chain tests.
 
-The chain is a lightweight observability hook only — it lets the runtime
+The chain is a lightweight observability hook only - it lets the runtime
 emit structured telemetry events around tool calls. Authorization, denylist,
 redaction, approval prompts, and auth-mode policy are NOT cua concerns;
 those live in the host's agent loop (see vadgr's engine/policy/* modules).

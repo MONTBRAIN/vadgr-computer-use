@@ -318,7 +318,7 @@ def _create_screen_capture() -> ScreenCapture:
     # Portable catch-net: the XDG screenshot portal. Tried AFTER the no-dialog CLI
     # tools so an older desktop (e.g. GNOME 46 / Ubuntu 24.04, where
     # gnome-screenshot still works) keeps its silent path unchanged, while GNOME
-    # 49+ — where the CLI tools are dead — transparently falls through to here.
+    # 49+ - where the CLI tools are dead - transparently falls through to here.
     if portal_available():
         logger.info("Wayland: using XDG screenshot portal")
         return PortalScreenshotCapture()
@@ -1212,7 +1212,7 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
                     entry = _CharEntry(kc, needs_shift)
 
             if entry is None:
-                # Not in layout — queue for clipboard paste
+                # Not in layout - queue for clipboard paste
                 clipboard_buf.append(ch)
                 continue
 

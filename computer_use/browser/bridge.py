@@ -6,15 +6,15 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""``BrowserBridge`` — the seam that makes the tool testable with no browser.
+"""``BrowserBridge`` - the seam that makes the tool testable with no browser.
 
 The ``browser`` tool depends on the ``BrowserBridge`` Protocol, never on
 native messaging directly:
 
-- ``NativeMessagingBridge`` — the real bridge: a session registry, the
+- ``NativeMessagingBridge`` - the real bridge: a session registry, the
   per-OS native-host manifest probe, ``status()`` (pre-flight), and ``send()``
   that routes an op to the active session.
-- ``FakeBridge`` — scripted responses for unit tests, no browser.
+- ``FakeBridge`` - scripted responses for unit tests, no browser.
 
 The live socket/native-messaging plumbing (session registration over the IPC
 socket) is the spike's job; the registry, routing and error model below are
@@ -35,7 +35,7 @@ from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 # auto-substitutes pixel actions; it names the fallback so the LLM can choose.
 PIXEL_FALLBACK = (
     "Fallback: call `screenshot` to see the page, then act with the pixel "
-    "tools `click`/`type_text`/`scroll` by coordinates (degraded mode — slower, "
+    "tools `click`/`type_text`/`scroll` by coordinates (degraded mode - slower, "
     "less precise; install the extension for the reliable path)."
 )
 
@@ -72,7 +72,7 @@ class BrowserBridge(Protocol):
     """Send an op, await its result. Raises ``BrowserError`` on failure.
 
     ``op`` is positional-only so an op-group can carry a wire param literally
-    named ``op`` (the sub-op) without a keyword collision — e.g.
+    named ``op`` (the sub-op) without a keyword collision - e.g.
     ``send("tabs", op="list")`` routes wire op ``tabs`` with ``params={"op":"list"}``.
     """
 
@@ -160,7 +160,7 @@ def manifest_paths(
     plat = platform or sys.platform
     home = Path.home()
     if plat == "wsl":
-        # cua-in-WSL drives Windows Chrome — register to the Windows locations.
+        # cua-in-WSL drives Windows Chrome - register to the Windows locations.
         win = windows_user_home_mnt(windows_user)
         local = win / "AppData" / "Local"
         return {
@@ -194,7 +194,7 @@ def probe_manifests(paths: dict[str, Path]) -> list[str]:
 
 
 class FakeBridge:
-    """Scripted bridge for unit tests — no browser, no native messaging.
+    """Scripted bridge for unit tests - no browser, no native messaging.
 
     ``responses`` maps op name → a value, a callable ``(**params) -> value``,
     or a ``BrowserError`` to raise. ``connected=False`` makes every ``send``
@@ -269,7 +269,7 @@ class NativeMessagingBridge:
 
     def _maybe_self_register(self) -> None:
         """Write cua's own native-host wiring on first use, so there is no
-        manual registration step. Best-effort — never break an op over it."""
+        manual registration step. Best-effort - never break an op over it."""
         if not self._auto_register or self._ensured:
             return
         self._ensured = True
@@ -287,7 +287,7 @@ class NativeMessagingBridge:
     def _active_session(self) -> BrowserSession | None:
         # The session the resolution ladder points at, or None when it cannot
         # decide (zero connections, or multiple with no selection). Never raises
-        # — `send`/`status` translate a None into the right loud error / report.
+        # - `send`/`status` translate a None into the right loud error / report.
         key = self._current_key()
         return self._sessions.get(key) if key is not None else None
 
@@ -300,7 +300,7 @@ class NativeMessagingBridge:
         2. the ``CUA_BROWSER_PROFILE`` env pin (profile_id prefix or a
            sample_tab_title substring), if it matches exactly one;
         3. the sole connection when there is exactly one;
-        4. otherwise ``None`` (ambiguous — the caller raises ``profile_ambiguous``).
+        4. otherwise ``None`` (ambiguous - the caller raises ``profile_ambiguous``).
         """
         if not self._sessions:
             return None
@@ -493,7 +493,7 @@ class NativeMessagingBridge:
         if op == "profiles":
             return self._profiles_op(params)
         # A profile carried inline (use_target(profile_id=...)) pins `current`
-        # first, then is consumed here — the extension never sees profile_id.
+        # first, then is consumed here - the extension never sees profile_id.
         profile_id = params.pop("profile_id", None)
         if profile_id is not None:
             self._select_profile(profile_id)

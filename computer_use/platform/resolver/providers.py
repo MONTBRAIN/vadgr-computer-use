@@ -15,7 +15,7 @@
 """Provider seams for the backend resolver.
 
 A provider is a small, stateless object that knows (a) whether it applies to a
-session and (b) how to construct its backend — nothing else. Capture and input
+session and (b) how to construct its backend - nothing else. Capture and input
 are two narrow protocols so a capture-only environment never implements input.
 ``create`` returns a *validated, working* backend or raises ``BackendUnavailable``;
 this is what lets the resolver fall through a tool whose binary exists but no

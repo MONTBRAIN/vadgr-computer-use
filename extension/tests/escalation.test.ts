@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for the escalation policy — the DOM→CDP routing driven by the read-back
+// TDD for the escalation policy - the DOM→CDP routing driven by the read-back
 // `ok`. Verification is the routing decision, so this is the load-bearing logic.
 
 import { describe, it, expect, vi } from "vitest";
