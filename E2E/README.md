@@ -69,3 +69,15 @@ PY
   transcript. Do not accept the agent's written summary in its place.
 - If neither the stream nor a transcript is available, the test is **not verified**
   - say so; do not infer a pass.
+
+## Writing a new runbook
+
+**Start from [`TEMPLATE.md`](TEMPLATE.md).** Every runbook in this directory has
+the same shape, so a reader who has followed one can follow the next without
+re-learning where the verdicts live.
+
+The template is **this repo's**. The sibling repos have their own, and they are
+deliberately different: `vadgr` proves an API and a CLI, `vadgr-mobile` proves a
+screen in someone's hand, and this one proves a real agent driving a real
+desktop. A shared template would have to drop everything that makes each pass
+worth running.
