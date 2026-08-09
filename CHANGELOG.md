@@ -12,8 +12,10 @@ has been red on the same error since 2026-08-04.
 
 **The tool surface is unchanged.** The 26 tools keep their names, their derived
 input and output schemas and their result shapes; both majors were snapshotted
-over a live stdio `tools/list` and the diff is empty. Nothing else in this
-release changes behaviour.
+over a live stdio `tools/list` and the diff is empty. **Every one of the 26 was
+then called** over the wire from a fresh, non-editable install and each returned
+its declared shape, so the claim covers what the tools do and not only how they
+are declared. Nothing else in this release changes behaviour.
 
 ### Fixed
 - **The MCP server builds on `mcp.server.mcpserver`.** `FastMCP` becomes
