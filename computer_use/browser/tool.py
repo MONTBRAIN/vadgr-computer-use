@@ -14,7 +14,7 @@
 dispatcher edit.
 
 A ``BrowserError`` from the bridge is mapped to a ``ToolError`` whose message
-carries the page reason / remediation and the guided pixel fallback — FastMCP
+carries the page reason / remediation and the guided pixel fallback - MCPServer
 forwards ``ToolError`` text to the LLM verbatim (generic exceptions get
 masked), so the guidance actually reaches the model.
 """
@@ -24,7 +24,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from computer_use.browser.bridge import (
     PIXEL_FALLBACK,

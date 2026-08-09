@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vadgr-computer-use"
-version = "0.6.5"
+version = "0.6.6"
 description = "Local-first MCP server for desktop automation: screenshots, mouse, keyboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -28,7 +28,7 @@ classifiers = [
 # platform installs only what applies. The browser tier is stdlib sockets + the
 # bundled native-host relay (package data) — the extension is NOT a pip dep.
 dependencies = [
-    "mcp>=1.0",
+    "mcp>=2.0",
     "pillow>=10",
     "mss>=9",
     "nodriver>=0.40",                                                   # stealth (all OSes)

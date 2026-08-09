@@ -13,7 +13,7 @@ computer_use/
 ├── platform/           # OS backends (linux.py, wsl2.py, windows.py, macos.py) + detect.py
 ├── bridge/             # WSL2 -> Windows TCP daemon: client, deployer, supervisor
 ├── tests/              # pytest suite
-└── mcp_server.py       # FastMCP server entry point (`vadgr-cua` console script)
+└── mcp_server.py       # MCPServer entry point (`vadgr-cua` console script)
 ```
 
 ## Architecture contract

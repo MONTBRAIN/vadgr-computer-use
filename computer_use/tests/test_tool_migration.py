@@ -139,8 +139,7 @@ class TestRegistryIntrospection:
 class TestMcpWireSurfaceUnchanged:
     """The MCP-level tool surface must NOT change with the refactor."""
 
-    def test_fastmcp_still_exposes_thirteen(self):
-        from computer_use import mcp_server
+    def test_server_still_exposes_thirteen(self):
+        from computer_use.tests.test_mcp2_surface import _wire_tool_names
 
-        tools = mcp_server.mcp._tool_manager._tools
-        assert EXPECTED_TOOLS <= set(tools.keys())
+        assert EXPECTED_TOOLS <= _wire_tool_names()

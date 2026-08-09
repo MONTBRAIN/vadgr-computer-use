@@ -83,12 +83,9 @@ REMOVED_MODULES = frozenset({
 
 
 def _mcp_tool_names() -> frozenset[str]:
-    from computer_use import mcp_server
+    from computer_use.tests.test_mcp2_surface import _wire_tool_names
 
-    tools = getattr(mcp_server.mcp, "_tool_manager", None)
-    if tools is None:
-        pytest.skip("FastMCP internal layout changed; update this probe")
-    return frozenset(tools._tools.keys())
+    return _wire_tool_names()
 
 
 class TestMcpToolSurface:

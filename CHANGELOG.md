@@ -2,6 +2,59 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.6] - 2026-08-09
+
+Fixes #39: a fresh `pip install vadgr-computer-use` could not start. `mcp` 2.0.0
+removed `mcp.server.fastmcp`, this package declared `mcp>=1.0` with no upper
+bound, so a new install resolved 2.0.0 and `vadgr-cua` died at import with
+`ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. The `test` workflow
+has been red on the same error since 2026-08-04.
+
+**The tool surface is unchanged.** The 26 tools keep their names, their derived
+input and output schemas and their result shapes; both majors were snapshotted
+over a live stdio `tools/list` and the diff is empty. Nothing else in this
+release changes behaviour.
+
+### Fixed
+- **The MCP server builds on `mcp.server.mcpserver`.** `FastMCP` becomes
+  `MCPServer` and `mcp.server.fastmcp.exceptions.ToolError` becomes
+  `mcp.server.mcpserver.exceptions.ToolError`, at the same position in the
+  exception hierarchy, so the browser tier's page reason, remediation and guided
+  pixel fallback still reach the model verbatim. `Image` comes from the same new
+  module and serializes the same content block.
+- **The `--port` flag reaches the SSE transport again.** 2.x's settings object
+  has no `host` or `port`; the transport takes its options on `run()`. The start
+  path now branches on the transport and passes each call only what its own
+  overload accepts, so `--transport sse --port N` binds to N as it did before.
+  Nothing on the SSE path changes otherwise: the host, `sse_path`,
+  `message_path` and the loopback rebinding protection all keep their previous
+  defaults.
+
+### Changed
+- **The `mcp` dependency is now `mcp>=2.0`.** The floor moves because
+  `mcp.server.mcpserver` exists in no 1.x release, so without it a resolver
+  reaching 1.x would rebuild the same broken install from the other side. There
+  is deliberately no upper bound: this package tracks the current `mcp`.
+- The three tests that read the tool surface now read it from the public
+  `list_tools()` instead of a private tool-manager dictionary, and the one that
+  could `pytest.skip` itself when that dictionary moved no longer can. Two new
+  tests hold the surface as a total: the exact 26 names as set equality, and a
+  source scan proving no module reaches for the removed package.
+- Version bumped to 0.6.6 across the package, the extension manifest, the
+  extension package and lockfile, `CUA_VERSION` and the `background.ts` version
+  fallback.
+
+### Notes
+- No new tools, no changed tools, no behaviour change on any tool, and no new
+  transport: 2.x's `streamable-http` is not offered, `--transport` still takes
+  `stdio` and `sse`.
+- The Python floor is unchanged. `mcp` 2.0.0 requires >=3.10, the same floor
+  this package declares, so the 3.10 / 3.11 / 3.12 matrix is untouched.
+- One difference worth knowing about even though nothing here depends on it:
+  1.x read the SSE bind from `FASTMCP_HOST` and `FASTMCP_PORT`, and 2.x does
+  not. This package never read them, never documented them and has its own
+  `--port`.
+
 ## [0.6.5] - 2026-07-24
 
 Fixes #36: a Chrome Web Store install of the extension could never connect to

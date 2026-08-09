@@ -33,12 +33,12 @@ def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
         f.write(data)
     logger.info("Debug screenshot saved: %s", path)
 
-from mcp.server.fastmcp import FastMCP, Image
+from mcp.server.mcpserver import Image, MCPServer
 from PIL import Image as PILImage
 
 from computer_use.core import REGISTRY, Risk, Tier, tool
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="computer-use",
     instructions=(
         "Desktop automation engine. Use screenshot() to see the screen, "
@@ -129,7 +129,7 @@ def _resolve_format(fmt: str) -> str:
 def _encode_image(img: "PILImage.Image", fmt: str) -> tuple[bytes, str]:
     """Encode a PIL image to bytes in the given format.
 
-    Returns (bytes, image_format) where image_format is what FastMCP's
+    Returns (bytes, image_format) where image_format is what MCPServer's
     Image() constructor expects ("jpeg" or "png").
     """
     buf = io.BytesIO()
@@ -989,7 +989,7 @@ def _start_browser_tier() -> None:
 
 
 def _run_mcp_server(args) -> int:
-    """Run the FastMCP server with the parsed CLI args."""
+    """Run the MCPServer with the parsed CLI args."""
     global _MAX_WIDTH
     _MAX_WIDTH = args.max_width
 
@@ -1001,11 +1001,15 @@ def _run_mcp_server(args) -> int:
 
     _start_browser_tier()
 
+    # mcp 2.x takes the transport's options on run() instead of on a settings
+    # object, so the port travels with the call that uses it. run() is
+    # overloaded per transport and the stdio arm ignores any keyword it is
+    # given, so each branch passes only what its own overload documents.
     if args.transport == "sse":
-        mcp.settings.port = args.port
         logger.info("SSE server on port %d", args.port)
-
-    mcp.run(transport=args.transport)
+        mcp.run(transport="sse", port=args.port)
+    else:
+        mcp.run(transport="stdio")
     return 0
 
 
