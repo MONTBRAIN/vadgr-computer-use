@@ -5,6 +5,6 @@
 
 """Package marker for the Windows relay shim.
 
-Ships ``vadgr-cua-host.exe`` (built from ``main.go``) as package data — the
+Ships ``vadgr-cua-host.exe`` (built from ``main.go``) as package data - the
 thin stdio<->TCP forwarder Chrome spawns on Windows when cua runs in WSL.
 """

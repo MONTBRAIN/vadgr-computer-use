@@ -1,14 +1,14 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// Enumeration — the map the agent was missing. `chrome.windows.getAll({populate})`
+// Enumeration - the map the agent was missing. `chrome.windows.getAll({populate})`
 // returns every window and (populated) every tab; a local join against the
 // registry tags each with `owned` / `is_current`. This is both the awareness
-// surface ("aware of all — its own and the user's") and the recovery path (after
+// surface ("aware of all - its own and the user's") and the recovery path (after
 // any drift: list -> find the real tab -> use_target it). READ_ONLY: it never
 // touches or acts on a context.
 //
-// On WSL `getAll` is a pure extension API inside Windows Chrome — no filesystem
+// On WSL `getAll` is a pure extension API inside Windows Chrome - no filesystem
 // or path boundary (unlike upload); the tree crosses the wire as plain JSON, so
 // Linux / Windows / macOS / WSL behave identically here.
 
@@ -26,7 +26,7 @@ export interface ChromeWindowInfo {
   tabs?: ChromeTabInfo[];
 }
 
-// The slice of chrome.windows we depend on — injectable so enumeration is
+// The slice of chrome.windows we depend on - injectable so enumeration is
 // testable with no browser.
 export interface WindowsEnumApi {
   getAll(opts: { populate?: boolean }): Promise<ChromeWindowInfo[]>;
@@ -63,7 +63,7 @@ export interface WindowSummary {
   active_tab_id: number | null;
 }
 
-// tabs(op="list") — the full window -> tabs tree, every window, every tab.
+// tabs(op="list") - the full window -> tabs tree, every window, every tab.
 export async function enumerateTabs(
   api: WindowsEnumApi,
   join: RegistryJoin,
@@ -90,7 +90,7 @@ export async function enumerateTabs(
   };
 }
 
-// windows(op="list") — the thin variant (windows without the per-tab breakdown).
+// windows(op="list") - the thin variant (windows without the per-tab breakdown).
 export async function enumerateWindows(
   api: WindowsEnumApi,
   join: RegistryJoin,

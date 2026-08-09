@@ -6,7 +6,7 @@
 - **Found**: 2026-03-01
 - **Impact**: After any `screenshot_region()` call, all subsequent `click()` calls landed at completely wrong positions (e.g., clicking at real pixel 480 instead of scaled 1349)
 - **Root cause**: `screenshot_region()` passed its small region image through `_downscale()`, which reset `_scale_x`/`_scale_y` to 1.0 (since region < MAX_WIDTH). All action tools use `_to_real()` which depends on those globals.
-- **Fix**: `screenshot_region()` no longer calls `_downscale()` — returns raw region bytes directly
+- **Fix**: `screenshot_region()` no longer calls `_downscale()` - returns raw region bytes directly
 - **Tests**: `TestScreenshotRegionScalePreservation` (5 tests) in `test_mcp_server.py`
 
 ### 2. get_screen_size returned real pixels instead of display pixels

@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// The CDP universal path — chrome.debugger API (the DevTools Protocol, reached
+// The CDP universal path - chrome.debugger API (the DevTools Protocol, reached
 // PROGRAMMATICALLY; no DevTools panel ever opens). It is the widget-agnostic
 // substrate: act via *trusted* Input events (any contenteditable / custom ARIA
 // widget / React control reacts as it would to a human), perceive via the
@@ -127,7 +127,7 @@ export class CdpExecutor implements Executor {
     }
   }
 
-  // Focus the element by selector (JS focus is fine — it's the *keystrokes* that
+  // Focus the element by selector (JS focus is fine - it's the *keystrokes* that
   // must be trusted), then insert text via the trusted Input domain. insertText
   // replaces the current selection, so select-all clears first.
   private async typeText(send: CdpSend, p: Params) {
@@ -183,7 +183,7 @@ export class CdpExecutor implements Executor {
   // mouseReleased stream through Chrome's input pipeline. Unlike
   // `HTMLElement.click()` (one synthetic `click`, isTrusted:false, no pointer or
   // mouse events at all) this drives widgets that open on `pointerdown` and act on
-  // `pointerup` — the pattern every headless-browser library uses. Coordinates are
+  // `pointerup` - the pattern every headless-browser library uses. Coordinates are
   // viewport CSS pixels straight from getBoundingClientRect(), which is exactly
   // what dispatchMouseEvent wants: no DPR correction, no window-chrome offset, so
   // the whole pixel coordinate-mismatch class is structurally absent, and it works
@@ -210,7 +210,7 @@ export class CdpExecutor implements Executor {
 
   // Move the mouse to the element centre (trusted Input.mouseMoved) so CSS
   // `:hover` fires. `revealed` diffs the visibility of the reveal target (the
-  // `reveals` selector, or — absent it — the hover target's own subtree) across
+  // `reveals` selector, or - absent it - the hover target's own subtree) across
   // the move; a hidden→visible flip is a real reveal. No diffable surface →
   // `revealed` is omitted, never fabricated.
   private async hover(send: CdpSend, p: Params) {
@@ -230,7 +230,7 @@ export class CdpExecutor implements Executor {
     return out;
   }
 
-  // Set a file input's files via CDP (paths resolved in Chrome's OS — cua has
+  // Set a file input's files via CDP (paths resolved in Chrome's OS - cua has
   // already rewritten them to Chrome-OS paths). Self-verify by reading back the
   // input's files.length.
   private async upload(send: CdpSend, p: Params) {
@@ -327,7 +327,7 @@ export class CdpExecutor implements Executor {
 
   // Page eval via the debugger's Runtime domain. CSP-exempt: a page policy of
   // `script-src 'nonce-…'` (no `'unsafe-eval'`) blocks MAIN-world `eval()`, but
-  // the debugger backend is not governed by page CSP — which is exactly why
+  // the debugger backend is not governed by page CSP - which is exactly why
   // press/snapshot keep working on such pages. Surfaces page exceptions instead
   // of swallowing them; awaitPromise preserves the executeScript promise-await.
   private async evalOp(send: CdpSend, p: Params) {
@@ -404,7 +404,7 @@ export class CdpExecutor implements Executor {
 
   // A state signature for the click self-verify: the widget-state attributes a
   // component library flips when it reacts. Returns null when the element matches
-  // nothing or carries none of them (no diffable surface — never fabricate `ok`).
+  // nothing or carries none of them (no diffable surface - never fabricate `ok`).
   private async stateSignature(send: CdpSend, selector: string): Promise<string | null> {
     const attrs = [
       "data-state",
@@ -448,7 +448,7 @@ export class CdpExecutor implements Executor {
   }
 }
 
-// The real attach (thin chrome.debugger glue — exercised live, not unit-tested).
+// The real attach (thin chrome.debugger glue - exercised live, not unit-tested).
 export function chromeDebuggerAttach(activeTabId: () => Promise<number>): Attach {
   return async () => {
     const tabId = await activeTabId();

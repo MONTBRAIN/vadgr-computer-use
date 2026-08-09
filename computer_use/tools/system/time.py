@@ -31,7 +31,7 @@ def _now(tz: str | None = None) -> str:
         return _dt.datetime.now(_dt.timezone.utc).isoformat()
     try:
         from zoneinfo import ZoneInfo
-    except ImportError as e:  # pragma: no cover — Python 3.9+ ships zoneinfo
+    except ImportError as e:  # pragma: no cover - Python 3.9+ ships zoneinfo
         raise RuntimeError("zoneinfo not available on this interpreter") from e
     return _dt.datetime.now(ZoneInfo(tz)).isoformat()
 

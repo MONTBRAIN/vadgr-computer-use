@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Pure-python uinput — a kernel virtual input device with no compiler needed.
+"""Pure-python uinput - a kernel virtual input device with no compiler needed.
 
 The python-evdev package is sdist-only (needs a C toolchain); it is used here for
 nothing but constants and ioctl numbers we can compute ourselves. This module
 writes ``struct input_event`` records straight to ``/dev/uinput`` via ``fcntl``,
 so the default Wayland input fallback installs from a pure wheel. It still needs
-``/dev/uinput`` to be writable — the installer ships a udev rule for that.
+``/dev/uinput`` to be writable - the installer ships a udev rule for that.
 
 The event encoding and emission are unit-tested with an injected fd; the real
 device-create (ioctl setup) is permission-gated and covered by the e2e runbook.

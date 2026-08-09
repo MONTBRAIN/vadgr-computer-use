@@ -38,7 +38,7 @@ def test_source_manifest_keeps_the_pinned_key():
 def test_cua_version_matches_package():
     # Issue #36 (minor): server.py shipped a stale CUA_VERSION ("0.6.1" in the
     # 0.6.4 release). The handshake compares only the integer proto, but a stale
-    # string misleads debugging — pin it to the package version.
+    # string misleads debugging - pin it to the package version.
     from computer_use.browser.server import CUA_VERSION
 
     assert CUA_VERSION == _pkg_version(), (
@@ -67,6 +67,6 @@ def test_extension_manifest_has_the_alarms_permission():
     # silently vanishes.
     manifest = json.loads((ROOT / "extension" / "manifest.json").read_text())
     assert "alarms" in manifest.get("permissions", []), (
-        "extension/manifest.json must keep the 'alarms' permission — the "
+        "extension/manifest.json must keep the 'alarms' permission - the "
         "periodic keep-alive is what revives the native port after SW idle death"
     )

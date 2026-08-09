@@ -2,7 +2,7 @@
   "name": "vadgr-cua-extension",
   "version": "0.6.6",
   "private": true,
-  "description": "vadgr-computer-use browser tier — MV3 extension (DOM-first, native messaging)",
+  "description": "vadgr-computer-use browser tier - MV3 extension (DOM-first, native messaging)",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

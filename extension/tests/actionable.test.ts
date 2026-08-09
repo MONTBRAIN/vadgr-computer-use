@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for the actionability gate — closes the hollow-verification trap (acting on
+// TDD for the actionability gate - closes the hollow-verification trap (acting on
 // a hidden non-authoritative mirror, e.g. Gmail's compose textarea).
 
 import { describe, it, expect, vi } from "vitest";
@@ -97,7 +97,7 @@ describe("receivesEvents", () => {
     vi.restoreAllMocks();
   });
 
-  it("true when the hit-test can't resolve (null) — occluded/throttled owned window, not a DOM overlay", () => {
+  it("true when the hit-test can't resolve (null) - occluded/throttled owned window, not a DOM overlay", () => {
     document.body.innerHTML = `<input id="a">`;
     const el = document.querySelector("#a") as HTMLElement;
     liveLayout(el);

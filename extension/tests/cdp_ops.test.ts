@@ -250,7 +250,7 @@ describe("CdpExecutor.dialog (one-shot arm)", () => {
 });
 
 // The eval op (routed CDP-first since the strict-CSP fix): page-world eval()
-// is governed by the page's CSP, Runtime.evaluate is not — and unlike
+// is governed by the page's CSP, Runtime.evaluate is not - and unlike
 // scripting.executeScript, it reports page exceptions instead of swallowing
 // them into {value: null}.
 describe("CdpExecutor.eval", () => {

@@ -14,7 +14,7 @@ a real agent can *see the screen and drive the mouse/keyboard* and that **every
 tool actually works** on a live session. Run this runbook and record the result in
 the table at the bottom.
 
-Targets: **Ubuntu 26.04 (GNOME 50)** and **Ubuntu 24.04.4 LTS (GNOME 46)** — the
+Targets: **Ubuntu 26.04 (GNOME 50)** and **Ubuntu 24.04.4 LTS (GNOME 46)** - the
 goal is the tier working on both. 24.04 is also the backward-compatibility baseline
 (it must keep selecting the backends it uses today). 0.4.1 is a Linux-only change;
 the desktop tier on Windows / macOS / WSL is untouched and covered by its own runs.
@@ -22,7 +22,7 @@ the desktop tier on Windows / macOS / WSL is untouched and covered by its own ru
 ## Scope: which tools this runbook exercises
 
 **Every non-browser tool is tested here** (the full desktop + system surface). The
-**browser tier (`browser`, `browser_eval`) is out of scope** — it already has its
+**browser tier (`browser`, `browser_eval`) is out of scope** - it already has its
 own agent suite (`E2E/0.4.0/e2e.md`), which is reused and **not re-run** for this
 minor. The tool-coverage checklist at the end maps each tool to its test.
 
@@ -32,22 +32,22 @@ Real end to end is driven by a real agent, never a script. The runner gives a
 headless Claude Code subagent the cua MCP server and a goal-level task, then reads
 the verdict from the agent's tool stream:
 
-1. The task prompt is **goal-level only** — the outcome, never the coordinates or
+1. The task prompt is **goal-level only** - the outcome, never the coordinates or
    the tool names. Whether the agent screenshots, grounds its clicks, and verifies
    on its own is part of what this measures.
 2. The verdict comes from the `tool_use` / `tool_result` JSON (cua's real
    read-backs) **and an independent ground-truth** (a file on disk, a `wl-paste`, a
-   before/after screenshot contrast) — never the agent's prose. See
+   before/after screenshot contrast) - never the agent's prose. See
    [`../README.md`](../README.md) for where that JSON lives (the run stream, and
    the `~/.claude` session transcript fallback) and how to read it.
 3. A self-reported success with no confirming read-back is a fail.
 
-Run **one** subagent at a time, never in parallel — they share one real screen,
+Run **one** subagent at a time, never in parallel - they share one real screen,
 mouse, and keyboard. Finish and judge one test before starting the next.
 
 ## Prerequisites
 
-1. Install cua into a venv: `pip install .` (no compiler needed — `evdev` is now an
+1. Install cua into a venv: `pip install .` (no compiler needed - `evdev` is now an
    optional extra; the default input path is pure-python uinput / XTEST).
 2. Provision system deps: `vadgr-cua install-deps` (clipboard + the `/dev/uinput`
    udev rule), or accept the printed commands.
@@ -81,7 +81,7 @@ string, which truncates long prompts):
     --mcp-config .mcp.json --output-format stream-json --verbose -p
 ```
 
-The portal screenshot path prompts for consent on first use — grant it once before
+The portal screenshot path prompts for consent on first use - grant it once before
 the run (or pre-seed the PermissionStore) so the agent sees a silent capture.
 
 ## Part A: system & info tools (deterministic, run first)
@@ -89,25 +89,25 @@ the run (or pre-seed the PermissionStore) so the agent sees a silent capture.
 Goal-level asks that force each Tier-0 / info tool; verdict from the `tool_result`
 JSON plus an independent ground-truth.
 
-- **A1 Platform** — ask the agent to report the OS and platform details. Exercises
+- **A1 Platform** - ask the agent to report the OS and platform details. Exercises
   `get_platform` (= linux) and `get_platform_info`. Cross-check `/etc/os-release`.
-- **A2 Screen size** — report the screen size. `get_screen_size` returns `WxH`
+- **A2 Screen size** - report the screen size. `get_screen_size` returns `WxH`
   matching the screenshot's pixel dimensions (Part B).
-- **A3 File round-trip** — write a sentinel to `~/e2e-a3.txt` then read it back.
+- **A3 File round-trip** - write a sentinel to `~/e2e-a3.txt` then read it back.
   Exercises `fs` write+read; ground-truth: independent `cat` matches.
-- **A4 Shell** — run a trivial command (e.g. `echo` / `uname`). Exercises `shell`;
+- **A4 Shell** - run a trivial command (e.g. `echo` / `uname`). Exercises `shell`;
   `tool_result.returncode == 0` and expected stdout.
-- **A5 HTTP** — GET a known endpoint (e.g. `https://httpbin.org/get`). Exercises
+- **A5 HTTP** - GET a known endpoint (e.g. `https://httpbin.org/get`). Exercises
   `http`; `tool_result.status == 200`.
-- **A6 Env** — read `HOME` (and set a process var). Exercises `env`; value matches
+- **A6 Env** - read `HOME` (and set a process var). Exercises `env`; value matches
   the real environment.
-- **A7 Time** — get the current time / sleep briefly. Exercises `time`; ISO-8601
+- **A7 Time** - get the current time / sleep briefly. Exercises `time`; ISO-8601
   result.
-- **A8 Tempfile** — allocate a temp path. Exercises `tempfile`; an absolute path is
+- **A8 Tempfile** - allocate a temp path. Exercises `tempfile`; an absolute path is
   returned.
-- **A9 Data** — parse a small JSON and a CSV blob. Exercises `data`; structured
+- **A9 Data** - parse a small JSON and a CSV blob. Exercises `data`; structured
   result matches input.
-- **A10 Clipboard** — copy a sentinel string. Exercises `clipboard`; ground-truth:
+- **A10 Clipboard** - copy a sentinel string. Exercises `clipboard`; ground-truth:
   `wl-paste` (Wayland) / `xclip -o` (X11) returns the sentinel.
 
 **Pass for Part A:** each tool returns a non-error `tool_result` and the
@@ -116,30 +116,30 @@ ground-truth confirms the real side effect.
 ## Part B: pixel & input tools (the desktop-specific surface)
 
 Each names a tool and is judged from a screenshot read-back or a file/clipboard
-ground-truth — never the agent's prose.
+ground-truth - never the agent's prose.
 
-- **B1 screenshot** — capture the screen; expect a real, non-blank frame matching
+- **B1 screenshot** - capture the screen; expect a real, non-blank frame matching
   the actual desktop (cross-check the resolved capture backend from `doctor`).
-- **B2 screenshot_region** — capture a sub-rectangle; expect dimensions equal to the
+- **B2 screenshot_region** - capture a sub-rectangle; expect dimensions equal to the
   requested region and content matching that area of the full frame.
-- **B3 move_mouse** — move over a control with a hover state; screenshot shows the
+- **B3 move_mouse** - move over a control with a hover state; screenshot shows the
   hover highlight (cursor moved without clicking).
-- **B4 click** — screenshot, click a visible button/menu, screenshot again; the
+- **B4 click** - screenshot, click a visible button/menu, screenshot again; the
   expected dialog/menu actually opened (the click landed on the target).
-- **B5 double_click** — double-click a word in a text editor; the word shows
+- **B5 double_click** - double-click a word in a text editor; the word shows
   selected in the next screenshot.
-- **B6 right_click** — right-click an empty area; a context menu appears.
-- **B7 scroll** — scroll a long window down several steps; before/after screenshot
+- **B6 right_click** - right-click an empty area; a context menu appears.
+- **B7 scroll** - scroll a long window down several steps; before/after screenshot
   contrast shows the viewport moved.
-- **B8 drag** — drag a window by its title bar (or a slider); screenshot contrast
+- **B8 drag** - drag a window by its title bar (or a slider); screenshot contrast
   shows it moved.
-- **B9 type_text** — open the text editor, type `vadgr-e2e-<rand>`, save to
+- **B9 type_text** - open the text editor, type `vadgr-e2e-<rand>`, save to
   `~/e2e-b9.txt`; ground-truth: `cat` contains the exact sentinel (keystrokes
   reached the focused field).
-- **B10 key_press** — in that editor, select-all + copy (`ctrl+a`, `ctrl+c`);
+- **B10 key_press** - in that editor, select-all + copy (`ctrl+a`, `ctrl+c`);
   ground-truth: `wl-paste` returns the typed text.
-- **B11 negative** — act on an impossible target (click far outside screen bounds /
-  an op that cannot succeed). Expect a `tool_result` with `is_error: true` — a
+- **B11 negative** - act on an impossible target (click far outside screen bounds /
+  an op that cannot succeed). Expect a `tool_result` with `is_error: true` - a
   raised error, never a silent success.
 
 **Pass for Part B:** every outcome confirmed from the stream **and** the
@@ -148,13 +148,13 @@ being told to; B11 raises.
 
 ## Part C: real-app integration (run after A and B)
 
-Multi-step goal-level tasks on stock apps — the screenshot -> click -> type -> verify
+Multi-step goal-level tasks on stock apps - the screenshot -> click -> type -> verify
 loop on the messy real UI a fixture can't reach.
 
-- **C1 File manager** — open Files, go to Home, report the first folder's name.
-- **C2 Settings lookup** — open Settings -> About, report the OS/desktop version;
+- **C1 File manager** - open Files, go to Home, report the first folder's name.
+- **C2 Settings lookup** - open Settings -> About, report the OS/desktop version;
   cross-check `/etc/os-release`.
-- **C3 Editor write-out** — open the editor, write a given two-line note, save to
+- **C3 Editor write-out** - open the editor, write a given two-line note, save to
   `~/e2e-c3.txt`; ground-truth: `cat` matches the note exactly.
 
 ## Tool-coverage checklist (every non-browser tool has a test)
@@ -173,13 +173,13 @@ loop on the messy real UI a fixture can't reach.
 | `data` | A9 | | `key_press` | B10 |
 | `clipboard` | A10 | | (error path) | B11 |
 
-Out of scope (reused, not run): `browser`, `browser_eval` — see `E2E/0.4.0/e2e.md`.
+Out of scope (reused, not run): `browser`, `browser_eval` - see `E2E/0.4.0/e2e.md`.
 
 ## Backward-compatibility gate (Ubuntu 24.04 / GNOME 46)
 
 On 24.04 the run must additionally prove **no regression**: `doctor` names the
-**same backends 24.04 uses today** — `gnome-screenshot` for capture, Mutter
-RemoteDesktop for input — and **no portal consent dialog appears** during the run.
+**same backends 24.04 uses today** - `gnome-screenshot` for capture, Mutter
+RemoteDesktop for input - and **no portal consent dialog appears** during the run.
 If 24.04 silently switches to the portal or prompts for consent, that is a
 backward-compat **fail** even if the tasks pass.
 
@@ -191,9 +191,9 @@ Legend: pass / fail / blocked / not run
 
 | | Ubuntu 26.04 (GNOME 50) | Ubuntu 24.04.4 (GNOME 46) |
 |---|---|---|
-| Part A — system & info (A1-A10) | pass (10/10) | pass (10/10) |
-| Part B — pixel & input (B1-B11) | pass (11/11) | pass (11/11) |
-| Part C — real-app (C3) | pass | pass |
+| Part A - system & info (A1-A10) | pass (10/10) | pass (10/10) |
+| Part B - pixel & input (B1-B11) | pass (11/11) | pass (11/11) |
+| Part C - real-app (C3) | pass | pass |
 | Backward-compat gate | n/a (forward target) | pass |
 | Resolved backends (capture / input) | portal / mutter-remotedesktop | gnome-screenshot / mutter-remotedesktop |
 | Overall | pass | pass |
@@ -217,7 +217,7 @@ Status notes:
   - Resolved backends (`vadgr-cua doctor`): capture=portal, input=mutter-remotedesktop.
   - Extra live validation (beyond the scripted suite): drew a house on autodraw.com
     via 13 `drag` strokes + tool-select `click`, then closed the browser tab by
-    landing a `click` precisely on the tab's close (×) button — both confirmed from
+    landing a `click` precisely on the tab's close (×) button - both confirmed from
     follow-up portal screenshots. Exercises sustained pointer accuracy on GNOME 50.
 - **Ubuntu 24.04.4 LTS (GNOME Shell 46.0 / Wayland), kernel 6.17.0-14-generic
   x86_64, 2026-06-28.** Backward-compat baseline. Driven by goal-level `claude -p`
@@ -240,15 +240,15 @@ Status notes:
     Mutter with non-error read-backs; negative (`screenshot format=bogus`) raised
     `is_error` ("Unsupported format"). Cold-start note: the first full `screenshot`
     via gnome-screenshot timed out twice at the 10s cap before succeeding, then was
-    clean on re-run — a first-invocation warm-up flake, not a failure.
+    clean on re-run - a first-invocation warm-up flake, not a failure.
   - Part C: C3 editor write-out ground-truthed (`~/e2e-c3.txt` == "hello vadgr c3-ok\n
     second line e2e" after the subagent opened GNOME Text Editor via the overview,
     typed the note, and saved through the real GTK Save dialog). C1/C2 not run as
     separate tasks; the screenshot→click→type→verify loop they exercise is covered by
     C3 + Part B.
   - Backward-compat gate **pass**: `vadgr-cua doctor` resolved capture=gnome-screenshot
-    (portal is `applicable` but correctly not selected — gnome-screenshot wins on
-    priority) and input=mutter-remotedesktop — the same backends 24.04 uses today; no
+    (portal is `applicable` but correctly not selected - gnome-screenshot wins on
+    priority) and input=mutter-remotedesktop - the same backends 24.04 uses today; no
     portal consent dialog appeared during the run.
   - Methodology note (single-listener does NOT apply to the desktop tier): unlike the
     browser tier, the desktop tools talk straight to gnome-screenshot / Mutter D-Bus,
@@ -263,6 +263,6 @@ Status notes:
     capture baseline the gate expects.
   - Extra live validation (beyond the scripted suite): drew a recognizable house on
     autodraw.com via 13 `drag` strokes (square walls, triangular roof, door, window) +
-    tool-select `click`s, no tool errors — confirmed from an independent follow-up
+    tool-select `click`s, no tool errors - confirmed from an independent follow-up
     gnome-screenshot. Mirrors the GNOME 50 run; exercises sustained pointer accuracy
     through Mutter RemoteDesktop on GNOME 46.

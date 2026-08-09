@@ -1,15 +1,15 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// The escalation policy (SRP — one place). An interactive op runs on the DOM
+// The escalation policy (SRP - one place). An interactive op runs on the DOM
 // fast path; if its self-verify read-back says the action did not take
 // (`ok:false`), it escalates to the CDP universal path. Verification IS the
-// routing decision. Pure logic — unit-tested with fake executors.
+// routing decision. Pure logic - unit-tested with fake executors.
 
 import type { Executor, Params } from "./types";
 
 // The escalation trigger: a result whose self-verify read-back failed. Only an
-// `ok === false` envelope qualifies — a missing `ok` (reads, navigations) does
+// `ok === false` envelope qualifies - a missing `ok` (reads, navigations) does
 // not, so non-self-verifying ops never escalate spuriously.
 export function okIsFalse(result: unknown): boolean {
   return (

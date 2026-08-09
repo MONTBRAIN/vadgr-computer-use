@@ -1,4 +1,4 @@
-# vadgr-cua-host.exe — Windows relay shim (WSL browser tier)
+# vadgr-cua-host.exe - Windows relay shim (WSL browser tier)
 
 A tiny stdio↔TCP forwarder Chrome spawns (via `connectNative`) **on Windows**
 when cua runs in **WSL**. There is no Python on the Windows side, so this relay
@@ -11,7 +11,7 @@ is a single static Go binary.
    (WSL2 mirrored networking shares `127.0.0.1` Windows↔WSL).
 3. Sends the auth frame `{"type":"auth","token":...}`.
 4. Pumps length-prefixed native-messaging frames both ways between Chrome's
-   stdio and cua — identical framing to `computer_use/browser/native_host.py`
+   stdio and cua - identical framing to `computer_use/browser/native_host.py`
    (4-byte little-endian length prefix + UTF-8 JSON).
 
 The WSL manifest's `path` points at this `.exe`; `ensure_registered()` on WSL

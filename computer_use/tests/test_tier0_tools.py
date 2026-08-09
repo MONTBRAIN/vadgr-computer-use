@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Tier 0 system tools — registration, dispatch, behavior contract.
+"""Tier 0 system tools - registration, dispatch, behavior contract.
 
 8 tier-0 tools, each grouping a small set of sub-operations dispatched via
 an ``op`` argument. After 0.3.0:
@@ -327,7 +327,7 @@ class TestClipboard:
         except RuntimeError as e:
             pytest.skip(f"no clipboard backend on this host: {e}")
         # If copy succeeded, paste must return our text. Some backends are
-        # asynchronous or owned by the session — accept either the text we
+        # asynchronous or owned by the session - accept either the text we
         # set or a documented "unavailable" sentinel.
         try:
             got = clipboard.clipboard(op="paste")

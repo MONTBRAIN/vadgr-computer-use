@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TargetRegistry — the multi-context model 0.6.0 generalizes the 0.5.0 single
+// TargetRegistry - the multi-context model 0.6.0 generalizes the 0.5.0 single
 // pin into. It holds a Map<tabId, TargetRecord> of KNOWN contexts, a `current`
 // pointer every op resolves to, and an `established` flag that survives an SW
 // idle-termination (persisted). The flag is what splits a COLD start (never
@@ -11,7 +11,7 @@
 // Provenance is who created/adopted a context: `owned` (the agent's automation
 // window / tabs it opened / spawns from an owned tab), `attached` (a user tab
 // the agent explicitly adopted via use_target / tabs.switch), or `user` (every
-// other context enumeration sees — visible, never acted on). `owned` outranks
+// other context enumeration sees - visible, never acted on). `owned` outranks
 // the rest: re-adopting an owned tab never demotes it.
 
 export type Provenance = "owned" | "attached" | "user";
@@ -23,7 +23,7 @@ export interface TargetRecord {
   lastSeenUrl?: string;
 }
 
-// The persistable shape — records + the current pointer + established, so a
+// The persistable shape - records + the current pointer + established, so a
 // woken service worker rebuilds the exact registry (and the cold/mid-task split).
 export interface RegistryState {
   records: TargetRecord[];
@@ -74,7 +74,7 @@ export class TargetRegistry {
     return this._current == null ? undefined : this.targets.get(this._current);
   }
 
-  // Clear `current` WITHOUT clearing `established` — a mid-task loss must stay
+  // Clear `current` WITHOUT clearing `established` - a mid-task loss must stay
   // distinguishable from a cold start so the next resolve() raises loud.
   clearCurrent(): void {
     this._current = null;

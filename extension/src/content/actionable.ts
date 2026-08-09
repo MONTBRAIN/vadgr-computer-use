@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// Actionability precondition for mutating ops — Playwright's model (visible /
+// Actionability precondition for mutating ops - Playwright's model (visible /
 // receives-events / enabled). It makes read-back verification trustworthy: a
 // mutating op refuses a NON-AUTHORITATIVE target (e.g. a hidden form-mirror that
 // shares an aria-label with the real editor, as Gmail's compose body does), so
@@ -49,7 +49,7 @@ export function receivesEvents(el: HTMLElement): boolean {
   // A null hit means the hit-test couldn't resolve, NOT that a DOM element covers
   // the target. A fully-occluded / throttled window (e.g. the agent-owned window,
   // opened unfocused, while the user works elsewhere) is not composited, so
-  // elementFromPoint returns null — but the CDP action still lands there, and no
+  // elementFromPoint returns null - but the CDP action still lands there, and no
   // DOM overlay is blocking it. Only a DIFFERENT, unrelated element at the centre
   // (the hollow-mirror trap) is a real block; that always returns that element,
   // never null. So don't gate on a null hit.
@@ -57,7 +57,7 @@ export function receivesEvents(el: HTMLElement): boolean {
   return hit === el || el.contains(hit) || hit.contains(el);
 }
 
-// Gate a mutating op. Throws OpFailed (so the agent RETARGETS — it must not
+// Gate a mutating op. Throws OpFailed (so the agent RETARGETS - it must not
 // escalate to CDP, which would hit the same non-authoritative element). `force`
 // bypasses the non-essential checks (the standard escape hatch for the rare case
 // where the real control is intentionally a visually-hidden node).
@@ -69,7 +69,7 @@ export function assertActionable(
   if (opts.force) return;
   if (!isVisible(el)) {
     throw new OpFailed(
-      `target not actionable (not visible): ${selector} — act on the visible element, not a hidden mirror`,
+      `target not actionable (not visible): ${selector} - act on the visible element, not a hidden mirror`,
     );
   }
   if (isDisabled(el)) {

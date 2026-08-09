@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// The op router — mirrors cua's core/ops.py OperationGroup. Op name -> handler,
+// The op router - mirrors cua's core/ops.py OperationGroup. Op name -> handler,
 // registered at load. Adding an op is a new handler + registration, never a
 // dispatcher edit. It owns the result/error envelope shaping.
 

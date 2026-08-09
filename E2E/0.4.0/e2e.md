@@ -140,7 +140,7 @@ Status notes:
   back); B6 ran the Flights search from the on-screen origin/destination/date
   fields (no route in the URL) and read back real fares. Methodology note: the
   runbook's `claude -p` runner could not be used as-written because the cua
-  native-host bond is single-listener — the orchestrating session already owned
+  native-host bond is single-listener - the orchestrating session already owned
   the extension, so a subagent's own cua server saw `not_connected`. Each test
   was instead driven by one naive, goal-level Claude subagent at a time, routed
   through the orchestrator's live cua connection, and judged from the subagents'
@@ -165,14 +165,14 @@ Status notes:
   non-matching selector. B1 sent a live Gmail (recipient chip confirmed with
   `data-hovercard-id` before Send, then verified by the Sent row carrying the
   intended subject+body and the inbox count ticking 8.679→8.680 on the round-
-  trip — no hollow send). B2 played the studio "Bohemian Rhapsody" (5:55) with
+  trip - no hollow send). B2 played the studio "Bohemian Rhapsody" (5:55) with
   the player time advancing 0:08→0:22 and the toggle reading "Pausar". B5 the
   actionability gate refused the add-to-cart button while it was covered by
   another element and only succeeded after it was scrolled into view (no
   `force=true`); cart read back the same Contigo bottle (ASIN B0GH96ZLGF). B6
   ran the Flights search from the on-screen origin/destination/date fields (New
   York → Los Angeles, one-way, 2026-07-20; no route in the URL) and read back
-  real fares (American JFK–LAX 681.745 COP; Southwest LGA–BUR 732.601 COP). B7
+  real fares (American JFK-LAX 681.745 COP; Southwest LGA-BUR 732.601 COP). B7
   react/react read back 246,147 stars and JavaScript as the top language. Linux
   build note: this VM shipped without pip/venv/node and without gcc, so cua was
   installed by bootstrapping pip via get-pip.py into a `--without-pip` venv and
@@ -185,7 +185,7 @@ Status notes:
   time, judged from verbatim DOM read-backs).
 - Linux 26.04 (2026-06-28): Ubuntu 26.04 LTS (GNOME Shell 50.1 / Mutter 50.1),
   kernel 7.0.0-27-generic x86_64, Google Chrome with the unpacked extension
-  (re-run of the 0.4.0 browser tier on the 0.4.1 branch — browser tier unchanged).
+  (re-run of the 0.4.0 browser tier on the 0.4.1 branch - browser tier unchanged).
   Driven through the orchestrator's live cua `browser` tool (single-listener),
   judged from DOM read-backs. **Part A nine of nine** (A9 raised `op_failed` on a
   non-matching selector; the actionability gate also refused saucedemo's
@@ -195,14 +195,14 @@ Status notes:
   `.bday` = 1815-12-10); B6 Flights one-way Pasto→Bogotá(BOG) 2026-07-20 from the
   on-screen origin/destination/date fields (no route in the URL; gate refused two
   hidden option-list mirrors) read back real fares (cheapest ~401,140 COP); B7
-  react/react 246,277 stars + JavaScript. **B5 Amazon blocked** — an anti-bot
+  react/react 246,277 stars + JavaScript. **B5 Amazon blocked** - an anti-bot
   "ship to Colombia" interstitial covered the add-to-cart button and the
   actionability gate correctly refused it (blocked ≠ tier failure). **B2 YouTube
-  Music inconclusive** — the play-button click landed (`{clicked:true}`) but
+  Music inconclusive** - the play-button click landed (`{clicked:true}`) but
   playback could not be cleanly verified. Finding (filed as a follow-up): on the
   two heavy, event-noisy SPAs (Amazon, YouTube Music) the `browser` responses
   arrived **off-by-one** (each call returned the previous call's result) while all
-  11 lighter targets were clean — most likely `chrome.debugger` event messages
+  11 lighter targets were clean - most likely `chrome.debugger` event messages
   interleaving with command responses under FIFO matching; the fix is MCP-side
   (correlate by request-id / filter debugger events). `browser_eval` also returns
   null for complex expressions and on strict-CSP pages (e.g. YouTube Music), so

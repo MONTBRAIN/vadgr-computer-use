@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""XDG Desktop Portal screenshot backend — the portable Wayland capture path.
+"""XDG Desktop Portal screenshot backend - the portable Wayland capture path.
 
 Works on any compositor with a portal backend (GNOME, KDE, wlroots), which is
 the only capture route left on GNOME 49+ after gnome-screenshot lost the private

@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for TargetResolver — the single target authority, generalized in 0.6.0
+// TDD for TargetResolver - the single target authority, generalized in 0.6.0
 // from one pin to a registry + `current`. resolve() keeps its signature (every
 // op acts BY ID). The headline regression guard still holds: no code path
 // resolves an op target via query({active,currentWindow}). Owned mode opens a
@@ -75,7 +75,7 @@ function makeResolver(opts: {
   });
 }
 
-describe("TargetResolver — owned mode (default)", () => {
+describe("TargetResolver - owned mode (default)", () => {
   it("opens a dedicated window ONCE when there is no live target and pins it", async () => {
     const { tabs } = fakeTabs({ live: new Set([137]) });
     const { owm, create } = ownedManager({ id: 42, tabs: [{ id: 137 }] });
@@ -96,7 +96,7 @@ describe("TargetResolver — owned mode (default)", () => {
   });
 });
 
-describe("TargetResolver — attach mode", () => {
+describe("TargetResolver - attach mode", () => {
   it("snapshots the active tab of the LAST-FOCUSED window exactly once, then pins by id", async () => {
     const { tabs, queryCalls } = fakeTabs({
       live: new Set([9]),
@@ -116,7 +116,7 @@ describe("TargetResolver — attach mode", () => {
     expect(queryCalls).toEqual([{ active: true, lastFocusedWindow: true }]);
 
     await r.resolve();
-    expect(queryCalls).toHaveLength(1); // ops resolve by id — no further active query
+    expect(queryCalls).toHaveLength(1); // ops resolve by id - no further active query
   });
 
   it("raises target_lost when there is no active tab to attach to", async () => {
@@ -128,7 +128,7 @@ describe("TargetResolver — attach mode", () => {
   });
 });
 
-describe("TargetResolver — use_target by id + provenance", () => {
+describe("TargetResolver - use_target by id + provenance", () => {
   it("pins an explicit {window_id, tab_id} as attached, reporting url, without opening a window", async () => {
     const { tabs } = fakeTabs({ live: new Set([9]), windowOf: () => 3, urlOf: () => "https://p" });
     const { owm, create } = ownedManager({ id: 0, tabs: [{ id: 0 }] });
@@ -153,7 +153,7 @@ describe("TargetResolver — use_target by id + provenance", () => {
   });
 });
 
-describe("TargetResolver — persistence", () => {
+describe("TargetResolver - persistence", () => {
   it("survives a simulated SW idle-termination: re-hydrates the pinned target from the store", async () => {
     const { tabs } = fakeTabs({ live: new Set([137]), windowOf: () => 42 });
     const { owm, create } = ownedManager({ id: 42, tabs: [{ id: 137 }] });

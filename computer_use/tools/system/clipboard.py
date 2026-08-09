@@ -11,10 +11,10 @@
 Each backend is a (copy_argv, paste_argv) pair that uses stdin/stdout to
 move text. The first available pair wins:
 
-1. ``clip.exe`` + ``powershell.exe Get-Clipboard`` — Windows + WSL2.
-2. ``pbcopy`` + ``pbpaste`` — macOS.
-3. ``wl-copy`` + ``wl-paste`` — Wayland.
-4. ``xclip -selection clipboard`` — X11.
+1. ``clip.exe`` + ``powershell.exe Get-Clipboard`` - Windows + WSL2.
+2. ``pbcopy`` + ``pbpaste`` - macOS.
+3. ``wl-copy`` + ``wl-paste`` - Wayland.
+4. ``xclip -selection clipboard`` - X11.
 
 If none are on PATH, the call raises a RuntimeError explaining what to
 install. Tests skip gracefully on hosts without any backend.
@@ -65,7 +65,7 @@ def _copy_detached(copy_cmd: list[str], text: str) -> None:
     The daemon must keep the *data* alive but must not hold our pipes open, so
     stdout/stderr go to ``/dev/null``. We write the text to stdin, close it
     (EOF lets the foreground process hand off to its daemon), then wait only on
-    the foreground process with a bounded timeout — never on the daemon.
+    the foreground process with a bounded timeout - never on the daemon.
     """
     proc = subprocess.Popen(
         copy_cmd,

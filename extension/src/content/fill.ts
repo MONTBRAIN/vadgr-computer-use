@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// FILL primitives — ported from task-extractor/core/fill-utils.js. Fills the
+// FILL primitives - ported from task-extractor/core/fill-utils.js. Fills the
 // way a person would: a native value-set plus dispatched input/change/blur, so
 // React/MUI's value tracker registers the change. No CDP, no debugger.
 
@@ -64,7 +64,7 @@ export function fillField(
  * The reliable cross-editor path is `execCommand("insertText")`: it fires a
  * `beforeinput` event with `inputType: "insertText"`, which is what these editors
  * consume to update their *internal state tree*. Setting `innerText` + a generic
- * `input` event does NOT — the editor re-renders from its own state and overwrites
+ * `input` event does NOT - the editor re-renders from its own state and overwrites
  * the injected text (this is exactly why setting Gmail's body via `eval` came back
  * empty). Falls back to a synthesized `beforeinput`/`input` pair (with the correct
  * inputType) where `execCommand` is unavailable. Returns the chars written.
@@ -87,7 +87,7 @@ export function fillContentEditable(
     sel?.removeAllRanges();
     sel?.addRange(range);
   } catch {
-    /* selection APIs absent in some harnesses — execCommand/fallback still run */
+    /* selection APIs absent in some harnesses - execCommand/fallback still run */
   }
 
   let ok = false;

@@ -3,7 +3,7 @@
 //
 // TDD for content-script self-heal (0.6.0 strand d.3). An UNREACHABLE reply
 // ("Receiving end does not exist") means the message never arrived and the op
-// NEVER RAN — so re-injecting content.js and delivering ONCE is safe for EVERY
+// NEVER RAN - so re-injecting content.js and delivering ONCE is safe for EVERY
 // op, click/fill/type included (0.5.0 excluded mutating ops; 0.6.0 does not,
 // because unreachable => not-executed). A NAV-CLOSE reply (maybe-executed) is
 // reported {navigated} and NEVER redelivered; a genuine ok:false is re-raised.
@@ -20,7 +20,7 @@ function channel(sendImpl: (op: string, p: any) => Promise<unknown>) {
   return { ch, send, reinject };
 }
 
-describe("deliverWithSelfHeal — mutating ops (click / fill)", () => {
+describe("deliverWithSelfHeal - mutating ops (click / fill)", () => {
   it("re-injects ONCE and redelivers a fill after an unreachable reply, then succeeds", async () => {
     let calls = 0;
     const { ch, send, reinject } = channel(async () => {
@@ -34,7 +34,7 @@ describe("deliverWithSelfHeal — mutating ops (click / fill)", () => {
     expect(send).toHaveBeenCalledTimes(2); // first (unreachable) + one redelivery
   });
 
-  it("re-injects for a click too — mutating ops are no longer excluded", async () => {
+  it("re-injects for a click too - mutating ops are no longer excluded", async () => {
     let calls = 0;
     const { ch, reinject, send } = channel(async () => {
       calls += 1;
@@ -47,7 +47,7 @@ describe("deliverWithSelfHeal — mutating ops (click / fill)", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("delivers only ONCE more — a second unreachable after re-inject propagates", async () => {
+  it("delivers only ONCE more - a second unreachable after re-inject propagates", async () => {
     const { ch, send, reinject } = channel(async () => {
       throw new Error("Receiving end does not exist");
     });
@@ -59,7 +59,7 @@ describe("deliverWithSelfHeal — mutating ops (click / fill)", () => {
   });
 });
 
-describe("deliverWithSelfHeal — nav-close + genuine failures", () => {
+describe("deliverWithSelfHeal - nav-close + genuine failures", () => {
   it("reports a nav-close as {navigated} and NEVER redelivers", async () => {
     const { ch, send, reinject } = channel(async () => {
       throw new Error("The message channel is closed before a response was received");
@@ -70,7 +70,7 @@ describe("deliverWithSelfHeal — nav-close + genuine failures", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("re-raises a genuine ok:false — a failure never masquerades as success", async () => {
+  it("re-raises a genuine ok:false - a failure never masquerades as success", async () => {
     const { ch, reinject } = channel(async () =>
       ({ type: "result", id: 1, ok: false, error: { code: "op_failed", message: "no element matches #x" } }),
     );

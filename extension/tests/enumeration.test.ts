@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for enumeration — chrome.windows.getAll({populate}) mapped to the
+// TDD for enumeration - chrome.windows.getAll({populate}) mapped to the
 // window -> tabs -> {tab_id,url,title,active,owned,is_current} tree, with the
 // owned / is_current join against the registry. A window the agent doesn't own
 // is tagged owned:false.

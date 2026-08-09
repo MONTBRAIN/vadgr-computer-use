@@ -12,11 +12,11 @@ Chrome talks to this process over stdio in the native-messaging framing:
 each message is a 4-byte little-endian length prefix followed by that many
 bytes of UTF-8 JSON. This module owns that framing and is the thin
 **stdio<->TCP shim**: it reads the discovery file cua wrote
-(``~/.vadgr-cua/browser.port`` — port + auth token), connects to cua's
+(``~/.vadgr-cua/browser.port`` - port + auth token), connects to cua's
 loopback-TCP listener, sends the auth frame, then pumps native-messaging
 frames both ways between Chrome's stdio and cua.
 
-Loopback TCP (not a unix socket) is deliberate — it is the one transport that
+Loopback TCP (not a unix socket) is deliberate - it is the one transport that
 also crosses the WSL<->Windows boundary (see ``server.py``).
 
 The framing helpers (``read_message`` / ``write_message``) and ``_connect_cua``
@@ -113,8 +113,8 @@ def _pump(src, dst) -> None:
 def _relay(chrome_in, chrome_out, cua_sock_file) -> None:
     """Pump frames both ways between the Chrome stdio pair and the cua socket.
 
-    Two independent pumps (Chrome->cua and cua->Chrome) so the handshake — where
-    both sides may send proactively — and the ordered op stream both work.
+    Two independent pumps (Chrome->cua and cua->Chrome) so the handshake - where
+    both sides may send proactively - and the ordered op stream both work.
     Returns when either direction closes.
     """
     up = threading.Thread(

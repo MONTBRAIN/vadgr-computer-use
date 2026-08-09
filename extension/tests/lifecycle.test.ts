@@ -4,7 +4,7 @@
 // TDD for the target lifecycle listeners (0.6.0 registry model). A tab spawned
 // FROM an OWNED tab (openerTabId is owned: _blank, OAuth popup) re-pins so the
 // agent follows its own flow; a tab whose opener we do NOT own is left alone
-// (stays a `user` context). A closed tab is forgotten — if it was `current`, the
+// (stays a `user` context). A closed tab is forgotten - if it was `current`, the
 // next resolve() raises target_lost (established stays true), never a silent
 // re-open. We NEVER silently grab the user's active tab here.
 
