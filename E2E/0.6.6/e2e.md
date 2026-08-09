@@ -262,9 +262,14 @@ their own exit codes. A green suite is necessary, never sufficient: groups 2 and
     on every module. That is pre-existing and unrelated to `mcp`; the CI matrix
     is Linux and macOS only. What this patch changes on Windows is the install
     resolving 2.x and the entry point importing, and both are shown above.
-  - **Linux - covered by CI, not run by hand.** The `test` workflow runs the
-    suite on Linux across 3.10 / 3.11 / 3.12. WSL2 is the same interpreter and
-    the same code path for everything this patch touches; there is no Linux-only
-    surface in it.
-  - **macOS - not run, no hardware.** Covered by the same CI matrix. Stated
-    rather than claimed: no macOS cell here was watched by anybody.
+  - **Linux and macOS (2026-08-09) - pass, via CI on the PR.** The `test`
+    workflow is green on every matrix row for the first time since 2026-08-04:
+    `ubuntu-latest` and `macos-latest`, each on 3.10 / 3.11 / 3.12, plus `lint`.
+    Those runners build their environment from `pyproject.toml` on every push,
+    so each row is itself a fresh install resolving `mcp` 2.x, which is the
+    defect this patch closes. **The matrix going green is the CI half of the
+    proof**, not a formality: red on this exact `ModuleNotFoundError` is what
+    issue #39 looked like from the outside.
+  - **macOS was not driven by hand** and no macOS live session exists here.
+    Stated rather than claimed. What covers it is the CI row above plus the
+    argument that this patch has no OS-specific surface.
