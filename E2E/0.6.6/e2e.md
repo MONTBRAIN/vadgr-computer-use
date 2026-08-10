@@ -412,12 +412,12 @@ tool over the wire, so it can never satisfy parts D or E. A row marked
 
 | part | Linux | macOS | Windows native | WSL | notes |
 |---|---|---|---|---|---|
-| A: reproduce the defect | Not-Needed | Not-Needed | Not-Needed | **pass** | a resolver and an import, no OS branch. CI was red on this exact error on both its rows for five days, which is the same observation from the outside |
-| B: suites on a fresh 2.x env | **pass** (CI) | **pass** (CI) | **partial** | **pass** | CI builds its environment from `pyproject.toml` on every push, so each row is itself a fresh install resolving 2.x |
+| A: reproduce the defect | Not-Needed | **pass** | Not-Needed | **pass** | a resolver and an import, no OS branch. CI was red on this exact error on both its rows for five days, which is the same observation from the outside. macOS was still run by hand to confirm the same fail mode on that OS's wheel |
+| B: suites on a fresh 2.x env | **pass** (CI) | **pass** | **partial** | **pass** | CI builds its environment from `pyproject.toml` on every push, so each row is itself a fresh install resolving 2.x. macOS was also run by hand: 706 passed, 48 skipped, ruff exit 0 |
 | C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch anywhere in it; Windows was run anyway and served the same 26 |
-| D: live agent session | not run | not run | not run | **pass** | cells 1 to 7. Owed rather than Not-Needed: `screenshot` and the structured cells cross a per-OS backend |
-| E: every tool called | not run | not run | not run | **pass** | 26 of 26 called; the five browser tools dispatch only. Owed on every OS: each has a different input executor |
-| overall | **not run** | **not run** | **partial** | **pass** | Linux and macOS have the gate green and nothing driven: parts D and E were never run there, and a suite is not a session. Windows covers A to C. Only WSL carries the whole runbook |
+| D: live agent session | not run | **pass** | not run | **pass** | cells 1 to 7. Owed rather than Not-Needed: `screenshot` and the structured cells cross a per-OS backend. macOS: cell 5 tested via a bad-selector `op_failed` because the extension bond is live, same `ToolError` class either way |
+| E: every tool called | not run | **pass†** | not run | **pass** | 26 of 26 called on both. WSL browser tools were dispatch-only (bond held elsewhere); macOS browser tools actually round-tripped (`†` see the macOS note). Input tools on macOS are dispatch-only until the Quartz rig exists, same reason as WSL for the other OSes |
+| overall | **not run** | **pass†** | **partial** | **pass** | Linux has the gate green and nothing driven. Windows covers A to C. macOS now carries the whole runbook, with the input-rig caveat noted; WSL was the first to do so |
 
 ### Status notes
 
@@ -519,11 +519,169 @@ install resolving `mcp` 2.x, which is the defect this patch closes. **The matrix
 going green is the CI half of the proof**, not a formality: red on this exact
 `ModuleNotFoundError` is what issue #39 looked like from the outside.
 
-**macOS was not driven by hand** and no macOS live session exists here. Stated
-rather than claimed. What covers it is the CI row above plus the argument that
-this patch has no OS-specific surface: no socket, no path, no process spawn, no
-registry. What is genuinely per-OS is the install resolving 2.x and the entry
-point importing, and that is what each platform row shows.
+**macOS (2026-08-09), Parts A to E, driven by hand.** macOS 26.5.2 arm64,
+Python 3.12.13 (Homebrew), Google Chrome with the 0.6.0 extension bond live from
+prior runbooks (same bond, `bcbdnpafilijienocokppgmfianhehll`, native host at
+`~/.vadgr-cua/host.sh`). Each venv built fresh for this pass exactly as the
+Setup block requires; not the pre-existing checkout venv.
+
+- **Part A, reproduced.** `/tmp/cua-repro` resolved `mcp 2.0.0` against
+  `vadgr-computer-use 0.6.5`. Running from `cd /tmp` so the working tree cannot
+  shadow the installed package (the trap the runbook flags),
+  `python -c "import computer_use.mcp_server"` exited `1` with
+  `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` raised from
+  `/private/tmp/cua-repro/lib/python3.12/site-packages/computer_use/mcp_server.py:36`,
+  and `vadgr-cua --transport stdio </dev/null` exited `1` the same way. Same
+  defect the WSL pass recorded. On my first attempt I ran the import check from
+  the checkout directory and it exited `0` because the working-tree 0.6.6
+  shadowed 0.6.5, which is the load-bearing `cd` the runbook calls out; the
+  actual proof is the `/tmp`-run above.
+- **Part B, pass.** `/tmp/cua-26` resolved `mcp 2.0.0` and
+  `vadgr-computer-use 0.6.6`. `pytest computer_use/tests -q` exited `0`:
+  **706 passed, 48 skipped** (the 20-test delta vs WSL's 726/28 is macOS
+  skip-guards on platform-specific tests, not a coverage drop). `ruff check
+  computer_use` exited `0`. Plant 1 (floor): with `mcp>=2.0` in place,
+  `pip install --dry-run <checkout> "mcp<2"` exited `1` with
+  `ResolutionImpossible`, so the floor really is what prevents the 1.x resolve.
+  Plants 2–4 already fired on WSL and are not re-run per OS; they exercise
+  wire-surface / source-scan / run-path assertions that are OS-independent.
+- **Part C, Not-Needed on macOS.** The catalogue is derived from decorators
+  with no OS branch; WSL already ran C to a byte-identical diff.
+- **Part D, pass, cells 1 to 7.** Two headless
+  `claude --dangerously-skip-permissions --mcp-config .mcp.json
+  --strict-mcp-config --output-format stream-json --verbose -p …` runs against
+  `/tmp/cua-26/bin/vadgr-cua`, plus one direct transport check.
+  - **Cell 1 pass.** The session lists
+    `mcp_servers: [{"name": "vadgr-computer-use", "status": "connected"}]` and
+    **26** cua tools (`mcp__vadgr-computer-use__*`) in the session tool list.
+  - **Cell 2 pass.** `fs(op=read, /tmp/cua-e2e-066-macos.b6pwEi/input.txt)`
+    returned `sentinel-macos-a9f31c` (21 bytes) with `is_error` falsy;
+    `fs(op=write, output.txt)` returned `{"path": ..., "written": 21}`.
+  - **Cell 3 pass.** `screenshot(format=jpeg)` returned an image content block
+    with `mimeType: image/jpeg`, 180 840 base64 chars. The `Image` path crosses
+    the moved import and is intact on the macOS Quartz backend.
+  - **Cell 4 pass.** `get_platform_info` returned
+    `{"platform": "macos", "backend_available": true}` (dict payload flattened
+    to text by Claude Code's stream serializer, same shape as WSL's cell 4
+    where the reader also saw text; the `outputSchema` path is exercised
+    server-side either way).
+  - **Cell 5 pass, via `op_failed` rather than `not_connected`.** The runbook's
+    canonical trigger for cell 5 is a `browser` op with the extension absent,
+    which returns `[not_connected]`. On this machine the extension bond is live
+    (from prior runbook work) and cua re-registers the native host on every
+    `_maybe_self_register` call, so a not_connected state cannot be forced
+    non-invasively. Cell 5's actual claim is that
+    `browser/tool.py`'s `ToolError` reaches the model with its guidance intact,
+    which is exception-class and dispatch-path property, not a reason-code
+    property. Same claim was proved by driving
+    `browser(op=click, selector="#definitely-does-not-exist-12345")` on a real
+    page: `tool_result` came back with `is_error: true` carrying verbatim
+    `Error executing tool browser: [op_failed] no element matches
+    #definitely-does-not-exist-12345 Fallback: call \`screenshot\` to see the
+    page, then act with the pixel tools \`click\`/\`type_text\`/\`scroll\` by
+    coordinates (degraded mode - slower, less precise; install the extension
+    for the reliable path).` The pixel-fallback guidance is preserved and this
+    is not a masked generic error, so the ToolError class the SDK still
+    recognises is the one being raised, which is the migration proof.
+  - **Cell 6 pass.** Ground-truthed off-agent: `cat
+    /tmp/cua-e2e-066-macos.b6pwEi/output.txt` returned `SENTINEL-MACOS-A9F31C`,
+    21 bytes, `od -c` shows the bytes on disk. Not taken from the agent's
+    summary.
+  - **Cell 7 pass.** `vadgr-cua --transport sse --port 61970` came up
+    (uvicorn `Application startup complete`, `Uvicorn running on
+    http://127.0.0.1:61970`); `GET /sse` answered `HTTP 200` with
+    `event: endpoint / data: /messages/?session_id=…`, an unknown path
+    `GET /definitely-not-a-route` answered `404`. Both requests logged by
+    uvicorn server-side. `--port` reaches the transport through `run()`.
+- **Part E, pass, 26 of 26 called.** Against `/tmp/cua-66-sweep`, a
+  **non-editable** install built from the branch (`pip install <checkout>` at
+  `cwd=/tmp`; `import computer_use` resolves to
+  `/private/tmp/cua-66-sweep/lib/python3.12/site-packages/computer_use/`, not
+  the working tree). A `sweep066_macos.py` driver speaks JSON-RPC on stdio,
+  runs `initialize` + `tools/list` + `tools/call` for every tool, journals every
+  frame (image `data` fields elided to their byte length), and reads
+  ground-truth off-agent for the rows that have one.
+  - **`fs`** (`write`/`read`/`list`/`stat`/`delete`): sentinel round-trip,
+    listing includes the created file, `stat` returns kind/size, `delete`
+    returns `{"deleted": true}`, `Path(...).exists()` after = `False`. Pass.
+  - **`shell`** (`run`/`which`): `shell.run` with `shell_mode: true` on a
+    compound `sh -c '…exit 7'` returned `{"returncode": 7, "stdout":
+    "out-macos\n", "stderr": "err-macos\n"}` and left `touched` in
+    `/tmp/cua-e2e-066-macos-sweep/shell.out` on disk; `shell.which sh` returned
+    `/bin/sh`. Pass. (First attempt used `shell_mode: false` with a shell
+    string and got `[Errno 2] No such file or directory` because subprocess
+    treated the whole string as an exec path — driver misuse, not a tool
+    defect.)
+  - **`http`** (`get`/`post` against a local stdlib echo server): the echoed
+    body carried the request's `X-Sweep: macos-get` and `X-Sweep: macos-post`
+    headers back verbatim, and the POST body `{"ping": "pong"}` round-tripped
+    byte-identical in the echoed `body` field. Pass.
+  - **`env`** (`set`/`get`): `set VCU_SWEEP=<sentinel>`, `get` returned the
+    same value; process-scoped by contract, so the second call is the ground
+    truth. Pass.
+  - **`time`** (`now`/`sleep`): `now` returned an ISO-8601 with `+00:00`;
+    `sleep 0.25` reported `{"slept": 0.25}` and wall elapsed was `0.257 s`.
+    Pass.
+  - **`tempfile`** (`temp_path prefix=sweep- suffix=.dat`): returned
+    `/var/folders/…/T/sweep-de9470249f09.dat`, `Path(...).exists()` = `False`
+    (the documented contract). Pass.
+  - **`data`**: `parse_json`/`serialize_json`/`parse_csv`/`serialize_csv` all
+    round-tripped; `parse_yaml` returned `is_error: true` with the guided
+    `PyYAML` message, which is F2 from the WSL note and the same declared
+    design here. Pass.
+  - **`clipboard`** (`copy`/`paste`): `copy` returned
+    `{"backend": "pbcopy", "bytes": <n>}`, `paste` returned the sentinel, and
+    the off-agent `/usr/bin/pbpaste` read back the exact same sentinel by a
+    path the tool did not use. Pass.
+  - **`get_platform`**: `macos`; **`get_platform_info`**: `{"platform":
+    "macos", "backend_available": true}`; **`get_screen_size`**:
+    `<w>x<h>` in display coordinates. Pass.
+  - **`screenshot`**: image content, `mime=image/jpeg`, 149 334 bytes, magic
+    `ffd8ffe0` (a valid JPEG). Pass.
+  - **`screenshot_region`** (`0,0,200,120,png`): `mime=image/png`, 12 279
+    bytes, magic `89504e47`. Pass.
+  - **Input tools** (`move_mouse`, `click`, `double_click`, `right_click`,
+    `drag`, `scroll`, `type_text`, `key_press`): dispatched with harmless args
+    (target `(5,5)`, empty `type_text`, `key_press escape`, `scroll amount=0`),
+    each returned its `Clicked at …` / `Typed: …` / `Pressed: …` string. The
+    macOS Quartz backend is exercised end-to-end, but there is no on-screen
+    rig to ground-truth the event was actually received the way the WSL note's
+    rig does. Marked **dispatch-only**, same reason WSL's table marks Linux /
+    macOS / native Windows the same way: each OS's executor is a separate
+    surface and needs its own rig.
+  - **Browser tier**, five tools (`browser`, `browser_eval`, `tabs`,
+    `windows`, `profiles`): **all round-tripped** because the extension bond
+    is live on this machine (the opposite of WSL's Part E, where those five
+    were dispatch-only because another cua process held the bond). `browser
+    status` returned `{"connected": true, …, "profiles": [<one>]}`;
+    `browser_eval 1+1` returned `{"value": 2, "via": "cdp", "target":
+    {"window_id": …, "tab_id": …, "url": "https://example.com/"}}`; `tabs
+    list` returned the full window/tab tree with the user's tabs marked
+    `owned: false` and one browser session live; `windows list` returned the
+    per-window summary; `profiles list` returned `{"profiles": [{"profile_id":
+    …, "browser": "chrome", "is_current": true, "window_count": 4,
+    "tab_count": 12, …}]}`. So on macOS Part E is a stronger read than WSL's:
+    the browser tier's dispatch **and** its page ops were exercised.
+
+**Windows native, why Part B is partial.** The full `pytest` run is **not
+available on Windows and was not before this patch**:
+`computer_use/tests/conftest.py`'s autouse fixture patches
+`computer_use.platform.linux`, which imports `fcntl`, so collection errors on
+every module. That is pre-existing and unrelated to `mcp`; the CI matrix is
+Linux and macOS only. What this patch changes on Windows is the install
+resolving 2.x and the entry point importing, and both were run against a fresh
+venv on a copy of this branch with Windows Python 3.12.10: `pip install -e .[dev]`
+resolved `mcp 2.0.0` and `vadgr-computer-use 0.6.6`, `import
+computer_use.mcp_server` succeeded, and stdio served the same 26 tools.
+
+**Linux, what "pass (CI)" rests on.** The `test` workflow is green on every
+matrix row: `ubuntu-latest` and `macos-latest`, each on 3.10 / 3.11 / 3.12,
+plus `lint`. Those runners build their environment from `pyproject.toml` on
+every push, so each row is a fresh install resolving `mcp` 2.x, which is the
+defect this patch closes. **The matrix going green is the CI half of the
+proof**, not a formality: red on this exact `ModuleNotFoundError` is what
+issue #39 looked like from the outside. Linux was not driven by hand on this
+pass; that is genuinely owed.
 
 ## Evidence
 
