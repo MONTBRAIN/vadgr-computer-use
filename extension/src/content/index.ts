@@ -52,7 +52,7 @@ if (!w.__vadgrCuaContent) {
     if (msg?.type !== "op") return false;
     router
       .handle({ type: "op", id: 0, op: msg.op, params: msg.params ?? {} })
-      // Send the full result envelope ({ok, result|error}) — it is serializable
+      // Send the full result envelope ({ok, result|error}) - it is serializable
       // and the service worker unwraps it, re-raising on ok:false. (A rejected
       // Promise here is NOT serializable: Chrome turns it into {}, which the SW
       // would read as a successful empty result and silently mask the failure.)

@@ -1,8 +1,8 @@
-# vadgr-computer-use — browser tier (MV3 extension)
+# vadgr-computer-use - browser tier (MV3 extension)
 
 The DOM-first browser half of the 0.4.0 browser tier. It connects to the
 running cua over native messaging and runs selector-based ops in the user's own
-logged-in browser. Shares no code with the Python side — only the wire protocol
+logged-in browser. Shares no code with the Python side - only the wire protocol
 (`src/protocol.ts` mirrors `computer_use/browser/protocol.py`).
 
 ## Build
@@ -40,14 +40,14 @@ unpacked build can each connect.
 
 ## Layout
 
-- `src/background.ts` — service worker: native port, `hello` handshake, op
+- `src/background.ts` - service worker: native port, `hello` handshake, op
   router, Offscreen-Document keep-alive (MV3 ~30s idle termination).
-- `src/ops.ts` — service-worker op handlers (navigate→`chrome.tabs`,
+- `src/ops.ts` - service-worker op handlers (navigate→`chrome.tabs`,
   cookies→`chrome.cookies`) + registration; DOM ops forwarded to the content
   script.
-- `src/router.ts` — the op router (mirrors cua's `OperationGroup`).
-- `src/content/ops.ts` — DOM op handlers (click/query/read_text/get_attribute/
+- `src/router.ts` - the op router (mirrors cua's `OperationGroup`).
+- `src/content/ops.ts` - DOM op handlers (click/query/read_text/get_attribute/
   scroll/select/wait_for/type).
-- `src/content/fill.ts` — native value-setter + input/change/blur (ported from
+- `src/content/fill.ts` - native value-setter + input/change/blur (ported from
   task-extractor).
-- `src/content/index.ts` — content-script entry; answers forwarded op messages.
+- `src/content/index.ts` - content-script entry; answers forwarded op messages.

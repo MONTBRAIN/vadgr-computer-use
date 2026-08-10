@@ -6,7 +6,7 @@
 // matter: on every disconnect we schedule a reconnect with capped exponential
 // backoff, and reset the backoff once a connection succeeds. The controller is
 // pure (injected connect + timer) so the backoff/reconnect logic is unit-tested
-// without chrome.* — background.ts wires it to the real APIs.
+// without chrome.* - background.ts wires it to the real APIs.
 
 export interface ReconnectOptions {
   baseDelayMs?: number;
@@ -41,7 +41,7 @@ export class ReconnectController {
   }
 
   /** Called on a port disconnect: schedule exactly one reconnect, backing off.
-   *  Coalesces — a second disconnect while one is already pending is a no-op. */
+   *  Coalesces - a second disconnect while one is already pending is a no-op. */
   onDisconnect(): void {
     if (this.pending) return;
     this.pending = true;

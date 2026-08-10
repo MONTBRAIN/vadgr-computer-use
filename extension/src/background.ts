@@ -7,7 +7,7 @@
 //
 // MV3 lifetime model (issue #36): Chrome kills this worker after ~30s idle. A
 // later wake re-runs this module's top level but fires NEITHER onStartup NOR
-// onInstalled, so the top level itself must (re)establish the native port —
+// onInstalled, so the top level itself must (re)establish the native port - 
 // connect() is idempotent and is called unconditionally below, plus from a
 // periodic chrome.alarms keep-alive and the offscreen heartbeat, so the port
 // self-heals no matter which event wakes the worker. While a native-messaging
@@ -29,7 +29,7 @@ import { ensureProfileId, buildProfileContext } from "./target/profile";
 import type { WindowsEnumApi } from "./target/enumeration";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.6.5";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.6.6";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();
@@ -52,7 +52,7 @@ function detectBrowser(): string {
 export function connect(): void {
   // IDEMPOTENT: the module top level, onStartup/onInstalled, the reconnect
   // controller, the keep-alive alarm, and the offscreen heartbeat all funnel
-  // here — if a port is already open there is nothing to do (issue #36).
+  // here - if a port is already open there is nothing to do (issue #36).
   if (port !== null) return;
   let p: chrome.runtime.Port;
   try {
@@ -135,7 +135,7 @@ async function onMessage(msg: any): Promise<void> {
 // do is send a heartbeat message every ~20s, which wakes the SW so the
 // top-level / onMessage reconnect paths below run promptly. The thing that
 // actually keeps a LIVE port alive is Chrome >=116 extending SW lifetime while
-// a native-messaging port is open — which only helps after a successful
+// a native-messaging port is open - which only helps after a successful
 // connect; the alarm + heartbeat revive the port after idle death (issue #36).
 export async function ensureOffscreen(): Promise<void> {
   // @ts-ignore - offscreen is present at runtime under the "offscreen" perm.
@@ -155,7 +155,7 @@ export async function ensureOffscreen(): Promise<void> {
 // A tab spawned FROM the pinned tab (OAuth popup, target=_blank) re-pins so the
 // agent follows its own flow; a user-opened tab is left alone. Closing the pinned
 // tab clears it (the next resolve re-establishes in owned mode / raises in attach)
-// — we NEVER silently grab the user's active tab. Shares the resolver instance the
+// - we NEVER silently grab the user's active tab. Shares the resolver instance the
 // op router uses, so re-pins take effect for subsequent ops.
 const lifecycle = new Lifecycle(sharedResolver());
 chrome.tabs?.onCreated?.addListener((tab) => {
@@ -167,7 +167,7 @@ chrome.tabs?.onRemoved?.addListener((tabId) => {
 
 // --- (re)connect wiring (issue #36) ------------------------------------------
 // onStartup fires only at browser launch and onInstalled only at
-// install/update — NOT when an idle-killed worker is woken by some other event.
+// install/update - NOT when an idle-killed worker is woken by some other event.
 // They stay registered (synchronously, as MV3 requires) for those two cases,
 // but the paths below are what make reconnection actually happen in steady
 // state. connect() is idempotent, so the overlapping paths are safe.
@@ -181,7 +181,7 @@ chrome.runtime.onInstalled?.addListener(() => {
 });
 
 // Periodic keep-alive/reconnect. Once the port is gone and the worker is dead,
-// NOTHING else is guaranteed to wake the SW — the alarm is what revives the
+// NOTHING else is guaranteed to wake the SW - the alarm is what revives the
 // port after idle death. 1 minute is Chrome's minimum periodInMinutes.
 export const KEEPALIVE_ALARM = "vadgr-cua-keepalive";
 chrome.alarms?.create?.(KEEPALIVE_ALARM, { periodInMinutes: 1 });
@@ -201,8 +201,8 @@ chrome.runtime.onMessage?.addListener((msg) => {
   }
 });
 
-// EVERY service-worker start — including idle-death wake-ups that fire neither
-// onStartup nor onInstalled — re-creates the offscreen document and
+// EVERY service-worker start - including idle-death wake-ups that fire neither
+// onStartup nor onInstalled - re-creates the offscreen document and
 // re-establishes the native port. This is the primary fix for issue #36.
 void ensureOffscreen();
 connect();

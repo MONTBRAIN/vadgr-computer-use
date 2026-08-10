@@ -12,7 +12,7 @@
 cua-side and the wire stays OS-agnostic. ``DOM.setFileInputFiles`` resolves each
 path in Chrome's own process, so:
 
-- **Native Chrome (Linux / macOS / Windows)** shares cua's filesystem — paths
+- **Native Chrome (Linux / macOS / Windows)** shares cua's filesystem - paths
   pass through unchanged.
 - **WSL** drives *Windows* Chrome over the bridge, so a cua-side WSL path is
   unreadable to it. cua rewrites each entry:
@@ -63,7 +63,7 @@ def translate_upload_path(
         return _mnt_to_windows(path)
     if path.startswith("/"):
         return _rootfs_to_unc(path, distro or _detect_distro())
-    return path  # relative / already-Windows path — leave it alone
+    return path  # relative / already-Windows path - leave it alone
 
 
 def translate_upload_paths(

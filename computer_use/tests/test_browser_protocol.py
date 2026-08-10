@@ -50,7 +50,7 @@ class TestConstants:
 
     def test_the_profiles_op_does_not_bump_the_protocol_version(self):
         # Growing supported_ops (and the additive hello profile fields) is
-        # additive — the envelope integer stays 1 in 0.6.1.
+        # additive - the envelope integer stays 1 in 0.6.1.
         assert P.PROTOCOL_VERSION == 1
 
 

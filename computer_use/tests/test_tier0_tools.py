@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Tier 0 system tools — registration, dispatch, behavior contract.
+"""Tier 0 system tools - registration, dispatch, behavior contract.
 
 8 tier-0 tools, each grouping a small set of sub-operations dispatched via
 an ``op`` argument. After 0.3.0:
@@ -103,16 +103,16 @@ class TestTier0Registration:
         assert breakdown.get(Tier.TWO, 0) == 13
 
 
-class TestFastMCPDispatch:
-    """Every tier-0 tool is exposed through FastMCP, same dispatch path as 0.2.0."""
+class TestMcpServerDispatch:
+    """Every tier-0 tool is exposed through MCPServer, same dispatch path as 0.2.0."""
 
-    def test_fastmcp_exposes_all_tier_zero_tools(self):
-        from computer_use import mcp_server
+    def test_server_exposes_all_tier_zero_tools(self):
+        from computer_use.tests.test_mcp2_surface import _wire_tool_names
 
-        wire_tools = set(mcp_server.mcp._tool_manager._tools.keys())
+        wire_tools = _wire_tool_names()
         for tool_name in TIER0_TOOLS:
             assert tool_name in wire_tools, (
-                f"{tool_name!r} not exposed on FastMCP wire surface"
+                f"{tool_name!r} not exposed on the MCP wire surface"
             )
 
 
@@ -327,7 +327,7 @@ class TestClipboard:
         except RuntimeError as e:
             pytest.skip(f"no clipboard backend on this host: {e}")
         # If copy succeeded, paste must return our text. Some backends are
-        # asynchronous or owned by the session — accept either the text we
+        # asynchronous or owned by the session - accept either the text we
         # set or a documented "unavailable" sentinel.
         try:
             got = clipboard.clipboard(op="paste")

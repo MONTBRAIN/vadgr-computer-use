@@ -17,7 +17,7 @@
 Each desktop backend is wrapped as a provider (name + priority + ``supports`` +
 ``create``) and registered, so the resolver and ``vadgr-cua doctor`` see one
 ordered list. ``describe_backends`` reports, for the live session, which capture
-and input backend is selected and which candidates were applicable — the
+and input backend is selected and which candidates were applicable - the
 "what got picked and why" view, without constructing (and thus without prompting
 for) anything.
 """

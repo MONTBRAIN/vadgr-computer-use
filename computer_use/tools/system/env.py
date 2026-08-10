@@ -8,7 +8,7 @@
 
 """Process-scoped environment variables.
 
-``env.set`` does NOT persist to the user's shell init — it only updates
+``env.set`` does NOT persist to the user's shell init - it only updates
 the running MCP server's ``os.environ``. Documented in the docstring so
 the agent doesn't mistake it for a persistent setter.
 """

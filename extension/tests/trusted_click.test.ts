@@ -48,7 +48,7 @@ describe("CdpExecutor.click", () => {
       "mousePressed",
       "mouseReleased",
     ]);
-    // Coordinates are viewport CSS px straight from getBoundingClientRect —
+    // Coordinates are viewport CSS px straight from getBoundingClientRect - 
     // no DPR or window-chrome correction anywhere.
     for (const m of mouse) {
       expect(m.params.x).toBe(42);

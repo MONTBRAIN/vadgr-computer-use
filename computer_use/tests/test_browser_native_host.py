@@ -98,7 +98,7 @@ class TestEndToEndShim:
     """Drive the real listener with the real shim relay over fake Chrome stdio.
 
     Proves: auth frame sent, full hello, one op round-trips end to end through
-    native_host._relay <-> BrowserServer — no real Chrome, no real cua.
+    native_host._relay <-> BrowserServer - no real Chrome, no real cua.
     """
 
     def test_hello_plus_navigate_through_the_shim(self, tmp_path):

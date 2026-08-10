@@ -33,7 +33,7 @@ class TestTierEnum:
     def test_has_half(self):
         from computer_use.core.tier import Tier
 
-        # Tier 0.5 — CLI wrappers per §5.1
+        # Tier 0.5 - CLI wrappers per §5.1
         assert Tier.HALF.value == 0.5
 
     def test_has_one(self):

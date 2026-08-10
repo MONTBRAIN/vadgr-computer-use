@@ -8,7 +8,7 @@
 // permission (storage is already granted) and survives reloads / SW restarts.
 //
 // Alongside the id, the extension reports recognition context it already has
-// from the 0.6.0 tab enumeration — window/tab counts + a few tab titles — so a
+// from the 0.6.0 tab enumeration - window/tab counts + a few tab titles - so a
 // human or agent can tell profiles apart ("the one with work Gmail and Figma")
 // with no account permission. Both ride in the `hello` handshake (additive).
 
@@ -16,7 +16,7 @@ import type { WindowsEnumApi } from "./enumeration";
 
 const PROFILE_KEY = "vadgr_profile_id";
 
-// The slice of chrome.storage.local we depend on — injectable so minting is
+// The slice of chrome.storage.local we depend on - injectable so minting is
 // testable with no browser.
 export interface ProfileStorageLike {
   get(keys: string): Promise<Record<string, unknown>>;
@@ -45,7 +45,7 @@ export async function ensureProfileId(
 }
 
 // Build the recognition context from the same `chrome.windows.getAll({populate})`
-// the 0.6.0 enumeration uses (a pure extension API, no path boundary — identical
+// the 0.6.0 enumeration uses (a pure extension API, no path boundary - identical
 // on Linux / Windows / macOS / WSL). `sampleLimit` bounds the titles so the hello
 // stays small.
 export async function buildProfileContext(

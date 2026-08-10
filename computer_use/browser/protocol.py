@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""The wire contract — the *only* coupling between cua and the extension.
+"""The wire contract - the *only* coupling between cua and the extension.
 
 A single versioned message schema, defined here and mirrored in
 ``extension/src/protocol.ts``. The two builds share no imports; they agree
@@ -15,10 +15,10 @@ only on this envelope.
 Two version gates, deliberately separate (the extension and cua update on
 different clocks):
 
-- ``PROTOCOL_VERSION`` — one integer for the envelope (handshake, framing,
+- ``PROTOCOL_VERSION`` - one integer for the envelope (handshake, framing,
   error schema). Bumped only on a breaking wire change; negotiated on connect;
   mismatch → no ops run.
-- ``SUPPORTED_OPS`` — the op-level capability list the extension reports in
+- ``SUPPORTED_OPS`` - the op-level capability list the extension reports in
   ``hello``. Adding an op in a later MINOR is additive and does NOT bump
   ``PROTOCOL_VERSION``.
 """
@@ -30,7 +30,7 @@ from enum import Enum
 from typing import Any
 
 # Envelope version. Bump ONLY on a breaking wire change (handshake / framing /
-# error schema). Adding ops does not bump this — see SUPPORTED_OPS.
+# error schema). Adding ops does not bump this - see SUPPORTED_OPS.
 PROTOCOL_VERSION = 1
 
 # The op-level capability list for THIS build. Mirrored in protocol.ts. Later
@@ -52,10 +52,10 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "cookies",
     "status",
     "eval",
-    # CDP universal path (chrome.debugger) — additive (no PROTOCOL_VERSION bump).
+    # CDP universal path (chrome.debugger) - additive (no PROTOCOL_VERSION bump).
     "press",
     "accessibility_tree",
-    # 0.5.0 — session targeting + the remaining interaction ops (additive).
+    # 0.5.0 - session targeting + the remaining interaction ops (additive).
     "use_target",
     "hover",
     "dialog",
@@ -66,10 +66,10 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "clear",
     "get_value",
     "snapshot",
-    # 0.6.0 — window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
+    # 0.6.0 - window/tab management op-groups (additive; no PROTOCOL_VERSION bump).
     "tabs",
     "windows",
-    # 0.6.1 — multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
+    # 0.6.1 - multi-profile enumerate/select (additive; no PROTOCOL_VERSION bump).
     "profiles",
 )
 
@@ -77,7 +77,7 @@ SUPPORTED_OPS: tuple[str, ...] = (
 class BrowserErrorCode(str, Enum):
     """Error taxonomy carried to the LLM.
 
-    The non-retryable codes are terminal-until-the-user-acts — they must not
+    The non-retryable codes are terminal-until-the-user-acts - they must not
     look transient, or the agent loop-retries and burns turns.
     """
 

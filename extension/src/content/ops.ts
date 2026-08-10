@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// DOM op handlers — run in the content script. Selector-first, re-resolved per
+// DOM op handlers - run in the content script. Selector-first, re-resolved per
 // call (the extension holds no element handles between ops, so ops are robust
 // to navigation / DOM churn).
 
@@ -106,7 +106,7 @@ function summarize(el: Element): {
   const attrs: Record<string, string> = {};
   for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
   let text = ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
-  // Per-node text cap — a single huge node must not blow the budget on its own.
+  // Per-node text cap - a single huge node must not blow the budget on its own.
   if (text.length > MAX_NODE_TEXT) text = text.slice(0, MAX_NODE_TEXT) + "…";
   return { tag: el.tagName.toLowerCase(), text, attrs };
 }
@@ -132,7 +132,7 @@ const STATE_ATTRS = [
 ];
 
 // Returns the element's state signature, or null when it carries none of the
-// attributes (no diffable surface — we must not fabricate an `ok`).
+// attributes (no diffable surface - we must not fabricate an `ok`).
 function stateSignature(el: Element): string | null {
   const parts = STATE_ATTRS.filter((n) => el.hasAttribute(n)).map(
     (n) => `${n}=${el.getAttribute(n)}`,
@@ -159,7 +159,7 @@ export async function opClick(p: {
   el.click();
   // Self-verify: for a checkable control, read back the post-click state so the
   // result carries the proof the click took effect (not just that it dispatched).
-  // For other elements the effect is page-level — the agent verifies via a
+  // For other elements the effect is page-level - the agent verifies via a
   // read-back op (or the SW reports {navigated} when the click navigated away).
   const out: { clicked: boolean; checked?: boolean; ok?: boolean } = {
     clicked: true,
@@ -174,7 +174,7 @@ export async function opClick(p: {
     return out;
   }
   // A state-bearing widget that did not flip means the synthetic click was
-  // ignored — the signal that this element needs a trusted event stream. React
+  // ignored - the signal that this element needs a trusted event stream. React
   // flushes discrete events synchronously, so one frame is enough headroom for
   // the rest. Elements with no state signature report no `ok` at all, so plain
   // buttons and links never escalate spuriously.
@@ -210,7 +210,7 @@ export function opQuery(p: {
   // rather than silently skipping or repeating nodes.
   if (cursor > 0 && cursor >= els.length) {
     throw new OpFailed(
-      `cursor_stale: cursor ${cursor} is past the ${els.length} current matches — re-run the query`,
+      `cursor_stale: cursor ${cursor} is past the ${els.length} current matches - re-run the query`,
     );
   }
   const page = els.slice(cursor, cursor + limit);
@@ -265,19 +265,19 @@ export function opType(p: {
   // (the Gmail empty-body trap). Refuse it so the read-back can't be hollow.
   assertActionable(el as HTMLElement, p.selector, { force: p.force });
 
-  // Plain text inputs — native value-setter path.
+  // Plain text inputs - native value-setter path.
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
     const before = el.value;
     const typed = fillField(el, p.text, { clear: p.clear, submit: p.submit });
     // Self-verify: read back the live value and confirm the DOM actually holds
-    // what we typed. (On `submit` the field may reset/navigate — verify the page
+    // what we typed. (On `submit` the field may reset/navigate - verify the page
     // reaction, not the field; `ok` then reflects the field, not the submit.)
     const expected = (p.clear ?? true) ? p.text : before + p.text;
     const value = el.value;
     return { typed, value, ok: value === expected };
   }
 
-  // Rich editors — contenteditable path (execCommand insertText).
+  // Rich editors - contenteditable path (execCommand insertText).
   if (isContentEditableEl(el)) {
     const typed = fillContentEditable(el, p.text, { clear: p.clear });
     if (p.submit) {
@@ -313,7 +313,7 @@ export function opSelect(p: { selector: string; value: string; force?: boolean }
   return { selected: match.value, value: el.value, ok: el.value === match.value };
 }
 
-// The explicit actionability read — the same visible / receives-events / enabled
+// The explicit actionability read - the same visible / receives-events / enabled
 // signals the mutating-op precondition asserts internally, exposed so the agent
 // can CHECK before acting and pick the authoritative (visible) element instead of
 // discovering a non-actionable target only on a thrown op_failed.
@@ -370,7 +370,7 @@ function liveValue(el: Element): string | null {
 export function opGetValue(p: { selector: string; by?: string }) {
   const el = require(p.selector, p.by);
   const value = liveValue(el);
-  // ok:false (value===null) is the escalation trigger — a custom/non-DOM widget
+  // ok:false (value===null) is the escalation trigger - a custom/non-DOM widget
   // has no live DOM value, so the SW re-runs get_value on the CDP path.
   return { value, ok: value !== null };
 }
@@ -392,7 +392,7 @@ export function opClear(p: { selector: string; by?: string; force?: boolean }) {
     const value = ((el as HTMLElement).innerText ?? el.textContent ?? "").trim();
     return { value, ok: value === "" };
   }
-  // Not a clearable DOM control — ok:false so the SW escalates to the CDP path
+  // Not a clearable DOM control - ok:false so the SW escalates to the CDP path
   // (select-all + Delete), rather than masking a no-op as success.
   return { value: null, ok: false };
 }

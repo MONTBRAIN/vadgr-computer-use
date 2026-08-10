@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Linux session detection — the one input the backend resolver needs.
+"""Linux session detection - the one input the backend resolver needs.
 
 Detects the display server (X11 / Wayland / headless), the Wayland compositor
 family (GNOME / KDE / wlroots / unknown), whether ``/dev/uinput`` is writable,

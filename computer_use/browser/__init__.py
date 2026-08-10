@@ -9,6 +9,6 @@
 """Browser tier (Tier 1): MV3 extension + native messaging.
 
 The Python half of the browser tier. It never imports the ``extension/``
-side — the two communicate only over the versioned wire protocol defined in
+side - the two communicate only over the versioned wire protocol defined in
 ``protocol.py`` (mirrored in ``extension/src/protocol.ts``).
 """

@@ -6,14 +6,14 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""cua's loopback-TCP listener — the real browser-tier transport.
+"""cua's loopback-TCP listener - the real browser-tier transport.
 
 The extension calls ``chrome.runtime.connectNative``, so Chrome spawns the
 host shim (``native_host.py``) *on Chrome's own OS*. The shim is a thin
 stdio<->TCP relay: it connects to this listener on ``127.0.0.1:<port>`` and
 pumps length-prefixed native-messaging frames both ways.
 
-Loopback TCP (not a unix socket) is deliberate — it is the one transport that
+Loopback TCP (not a unix socket) is deliberate - it is the one transport that
 also crosses the WSL<->Windows boundary, so cua-in-WSL drives Windows Chrome by
 reusing the bridge-daemon foothold.
 
@@ -22,7 +22,7 @@ On a connection the listener:
 1. reads an optional ``auth`` frame and checks the token (mismatch -> drop);
 2. sends cua's ``hello`` and reads the extension's ``hello`` (proto negotiated);
 3. registers a :class:`TcpBrowserSession` carrying the negotiated capability
-   list — the bridge then routes ops to it; each op is sent over the live
+   list - the bridge then routes ops to it; each op is sent over the live
    connection and the matching ``result`` is awaited.
 
 The chosen port + an auth token are written to a discovery file
@@ -51,10 +51,10 @@ from computer_use.browser.protocol import (
     parse_server_hello,
 )
 
-# Keep in lockstep with the pyproject version — test_release_consistency.py
+# Keep in lockstep with the pyproject version - test_release_consistency.py
 # enforces it (a stale value here misleads handshake debugging; the negotiation
 # itself compares only the integer `proto`).
-CUA_VERSION = "0.6.5"
+CUA_VERSION = "0.6.6"
 
 
 def discovery_path() -> Path:
@@ -143,8 +143,8 @@ class TcpBrowserSession(BrowserSession):
 
     ``request`` sends an op envelope and blocks for the matching ``result``.
     Ops are serialized over the one native port under a per-connection lock, but
-    the reply stream is NOT guaranteed 1:1 — a reconnect ``hello`` or a late
-    result can appear — so ``request`` matches the reply by ``id`` (see
+    the reply stream is NOT guaranteed 1:1 - a reconnect ``hello`` or a late
+    result can appear - so ``request`` matches the reply by ``id`` (see
     ``_read_reply``) rather than trusting arrival order, and a per-op socket
     timeout keeps a stuck tab from hanging the pipe.
     """
@@ -252,11 +252,11 @@ class TcpBrowserSession(BrowserSession):
             if reply is None:
                 return None
             if reply.get("type") != "result":
-                # A control frame (e.g. a reconnect `hello`) — not an op reply.
+                # A control frame (e.g. a reconnect `hello`) - not an op reply.
                 continue
             rid = reply.get("id")
             if rid is not None and rid != msg_id:
-                # A late/duplicate result for an earlier op — drop it.
+                # A late/duplicate result for an earlier op - drop it.
                 continue
             return reply
 

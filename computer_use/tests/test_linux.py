@@ -979,7 +979,7 @@ class TestForegroundWindowWayland:
             result = _query_foreground_window_wayland()
 
         assert result is not None
-        # Last active window wins — terminal is last in tree
+        # Last active window wins - terminal is last in tree
         assert result.pid == 200
 
     def test_returns_none_when_no_active_windows(self):

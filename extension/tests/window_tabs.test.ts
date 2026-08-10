@@ -61,7 +61,7 @@ describe("tabsGroupOp", () => {
     const tabs = { create: vi.fn(), update, remove: vi.fn() } as unknown as TabsMutApi;
     const resolver = fakeControl();
     const out = await tabsGroupOp({ op: "switch", tab_id: 90 }, { tabs, resolver });
-    // Activates within its window — the only mutation is {active:true}. There is
+    // Activates within its window - the only mutation is {active:true}. There is
     // NO windows.update({focused}) here (this group has no windows API at all).
     expect(update).toHaveBeenCalledWith(90, { active: true });
     expect(out).toEqual({ window_id: 61, tab_id: 90, url: "https://hn", is_current: true });
@@ -150,7 +150,7 @@ describe("windowsGroupOp", () => {
   });
 });
 
-describe("wrapWithTarget — the per-op target context", () => {
+describe("wrapWithTarget - the per-op target context", () => {
   const ctx = { window_id: 42, tab_id: 137, url: "https://www.youtube.com/" };
 
   it("wraps an object op result with the resolved target context", async () => {

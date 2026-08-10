@@ -33,12 +33,12 @@ def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
         f.write(data)
     logger.info("Debug screenshot saved: %s", path)
 
-from mcp.server.fastmcp import FastMCP, Image
+from mcp.server.mcpserver import Image, MCPServer
 from PIL import Image as PILImage
 
 from computer_use.core import REGISTRY, Risk, Tier, tool
 
-mcp = FastMCP(
+mcp = MCPServer(
     name="computer-use",
     instructions=(
         "Desktop automation engine. Use screenshot() to see the screen, "
@@ -129,7 +129,7 @@ def _resolve_format(fmt: str) -> str:
 def _encode_image(img: "PILImage.Image", fmt: str) -> tuple[bytes, str]:
     """Encode a PIL image to bytes in the given format.
 
-    Returns (bytes, image_format) where image_format is what FastMCP's
+    Returns (bytes, image_format) where image_format is what MCPServer's
     Image() constructor expects ("jpeg" or "png").
     """
     buf = io.BytesIO()
@@ -582,7 +582,7 @@ def browser(
     - upload(selector, files=[path,...]) -> {uploaded, files, ok}  (paths are on
       cua's OS; cua rewrites them to the browser's OS automatically)
     - dialog(action="accept"|"dismiss", text=None, arm=True) -> {armed}  (ARM
-      BEFORE the op that pops the JS dialog — it pauses the renderer synchronously)
+      BEFORE the op that pops the JS dialog - it pauses the renderer synchronously)
     - snapshot(selector=None, roles=None, cursor=None, limit=50)
       -> {nodes:[{role, name, state, value, ref}], next_cursor?}  (paginated AX,
       pierces shadow DOM + frames; supersedes accessibility_tree)
@@ -593,7 +593,7 @@ def browser(
     - status() -> {connected, browsers, setup, reason, profiles}  (pre-flight; no
       page; `profiles` lists every connected browser profile)
 
-    `screenshot` is NOT a browser op — it is a separate pixel tool. Call the
+    `screenshot` is NOT a browser op - it is a separate pixel tool. Call the
     top-level `screenshot` tool to see the page.
 
     TARGETING: by default the agent acts on its own dedicated window (opened in
@@ -603,10 +603,10 @@ def browser(
     which tab you acted on. Use the `tabs` / `windows` tools to enumerate what is
     open (`tabs(op="list")`) and to open / switch / close windows and tabs. If the
     pinned tab/window is closed mid-task the op fails with `target_lost`
-    (terminal) — it never silently grabs your active tab; run `tabs(op="list")`
+    (terminal) - it never silently grabs your active tab; run `tabs(op="list")`
     then `use_target` to recover.
 
-    VERIFY EVERY MUTATING OP — the DOM is the ground truth; never assume an
+    VERIFY EVERY MUTATING OP - the DOM is the ground truth; never assume an
     action worked (this is the web equivalent of screenshot-before/after):
     - type/fill/clear -> check the returned `ok` (or get_value/get_attribute).
     - checkbox/radio click -> the returned `checked` flipped as intended.
@@ -614,18 +614,18 @@ def browser(
     - upload -> the returned `ok` (input's files.length matched).
     - a click that should change the page -> wait_for the expected element, then
       read_text/query to confirm the new state; a click that navigates returns
-      {navigated, url} — confirm the destination is right.
-    If the read-back does NOT match, the action did NOT take effect — retry or
+      {navigated, url} - confirm the destination is right.
+    If the read-back does NOT match, the action did NOT take effect - retry or
     stop; do not continue on an unverified action.
 
     ACTIONABILITY: a mutating op refuses a non-actionable target (hidden / covered
-    / disabled) with op_failed — act on the VISIBLE element, not a hidden mirror
+    / disabled) with op_failed - act on the VISIBLE element, not a hidden mirror
     (e.g. some pages have a hidden form-field twin of the real editor). Use
     element_state(selector) to check first. Pass force=True only to bypass this
     for a deliberately-hidden real control.
 
     On a terminal browser error (not set up / not connected / op unsupported /
-    target lost) the tool raises with a guided pixel fallback — prefer this tool;
+    target lost) the tool raises with a guided pixel fallback - prefer this tool;
     degrade to the pixel tools only when it says so.
     """
     params = {
@@ -689,7 +689,7 @@ def tabs(
       window over your foreground)
     - close(tab_id, force=False) -> {closed, tab_id}  (refuses one of YOUR tabs
       unless force=True; closing the current tab makes the next op raise
-      target_lost — run list then use_target to recover)
+      target_lost - run list then use_target to recover)
 
     Every result also carries `target: {window_id, tab_id, url}` so you always
     see which tab you are on.
@@ -716,7 +716,7 @@ def windows(
       (READ_ONLY; the thin variant of tabs.list)
     - open(url=None, focused=False) -> {window_id, tab_id, created}  (a new OWNED
       window, unfocused by default; sets the target)
-    - focus(window_id) -> {focused, window_id}  (the EXPLICIT raise — the agent
+    - focus(window_id) -> {focused, window_id}  (the EXPLICIT raise - the agent
       never brings a window forward automatically, so it never steals your
       screen)
     - close(window_id, force=False) -> {closed, window_id}  (owned only unless
@@ -967,7 +967,7 @@ def _start_browser_tier() -> None:
     """Best-effort: self-register the native host and start the TCP listener.
 
     Registering at startup (not only lazily on first browser use) means the
-    extension's load order never matters — Chrome can spawn the host shim and
+    extension's load order never matters - Chrome can spawn the host shim and
     reach a live listener whenever the user enables the extension. Wrapped so a
     transport/registration failure never blocks the MCP server from coming up.
     """
@@ -975,7 +975,7 @@ def _start_browser_tier() -> None:
         from computer_use.setup.extension_setup import ensure_registered
 
         ensure_registered()
-    except Exception as e:  # best-effort — never break startup
+    except Exception as e:  # best-effort - never break startup
         logger.debug("browser-tier self-registration skipped: %s", e)
     try:
         from computer_use.browser import tool as browser_tool
@@ -989,7 +989,7 @@ def _start_browser_tier() -> None:
 
 
 def _run_mcp_server(args) -> int:
-    """Run the FastMCP server with the parsed CLI args."""
+    """Run the MCPServer with the parsed CLI args."""
     global _MAX_WIDTH
     _MAX_WIDTH = args.max_width
 
@@ -1001,11 +1001,15 @@ def _run_mcp_server(args) -> int:
 
     _start_browser_tier()
 
+    # mcp 2.x takes the transport's options on run() instead of on a settings
+    # object, so the port travels with the call that uses it. run() is
+    # overloaded per transport and the stdio arm ignores any keyword it is
+    # given, so each branch passes only what its own overload documents.
     if args.transport == "sse":
-        mcp.settings.port = args.port
         logger.info("SSE server on port %d", args.port)
-
-    mcp.run(transport=args.transport)
+        mcp.run(transport="sse", port=args.port)
+    else:
+        mcp.run(transport="stdio")
     return 0
 
 

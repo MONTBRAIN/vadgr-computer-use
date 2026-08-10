@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// TDD for TargetRegistry — the multi-context model. Provenance tracks who
+// TDD for TargetRegistry - the multi-context model. Provenance tracks who
 // created/adopted each context (owned / attached / user); `current` is the one
 // the agent acts on; `established` splits cold start from mid-task loss and must
 // survive persist + re-hydrate.
@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { TargetRegistry } from "../src/target/registry";
 
-describe("TargetRegistry — provenance", () => {
+describe("TargetRegistry - provenance", () => {
   it("tags a created context owned and an unrelated tab user", () => {
     const reg = new TargetRegistry();
     reg.upsert({ windowId: 42, tabId: 137, provenance: "owned" });
@@ -45,7 +45,7 @@ describe("TargetRegistry — provenance", () => {
   });
 });
 
-describe("TargetRegistry — current + established", () => {
+describe("TargetRegistry - current + established", () => {
   it("setCurrent moves the pointer and establishes the session", () => {
     const reg = new TargetRegistry();
     expect(reg.established).toBe(false);
@@ -90,7 +90,7 @@ describe("TargetRegistry — current + established", () => {
   });
 });
 
-describe("TargetRegistry — persistence", () => {
+describe("TargetRegistry - persistence", () => {
   it("provenance + current + established survive snapshot -> restore", () => {
     const reg = new TargetRegistry();
     reg.upsert({ windowId: 42, tabId: 137, provenance: "owned", lastSeenUrl: "https://a" });

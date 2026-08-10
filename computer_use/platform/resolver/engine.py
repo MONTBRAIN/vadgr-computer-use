@@ -60,4 +60,4 @@ def _remediation(skips: list[Skip]) -> str:
     if not skips:
         return "No backend providers are registered for this session."
     tried = "; ".join(f"{s.name}: {s.reason}" for s in skips)
-    return f"No working backend for this session. Tried — {tried}."
+    return f"No working backend for this session. Tried - {tried}."

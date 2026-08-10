@@ -63,7 +63,7 @@ def _patch_engine(mock_engine):
 
 class TestScreenshotTools:
     def test_screenshot_returns_image(self, mock_engine):
-        from mcp.server.fastmcp import Image
+        from mcp.server.mcpserver import Image
 
         from computer_use.mcp_server import screenshot
 
@@ -111,7 +111,7 @@ class TestScreenshotTools:
         assert mod._offset_y == 50
 
     def test_screenshot_region_returns_image(self, mock_engine):
-        from mcp.server.fastmcp import Image
+        from mcp.server.mcpserver import Image
 
         from computer_use.mcp_server import screenshot_region
 
@@ -396,7 +396,7 @@ class TestImageEncoding:
 
         result = screenshot()
         assert self._decode_format(result.data) == "jpeg"
-        # FastMCP uses _format to derive the MIME type sent over MCP.
+        # MCPServer uses _format to derive the MIME type sent over MCP.
         assert result._mime_type == "image/jpeg"
 
     def test_screenshot_png_mode_keeps_png(self, mock_engine):

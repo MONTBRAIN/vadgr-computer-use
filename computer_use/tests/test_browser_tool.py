@@ -9,7 +9,7 @@
 """The browser / browser_eval MCP tools against a FakeBridge (no browser)."""
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from computer_use.browser import tool as T
 from computer_use.browser.bridge import BridgeStatus, FakeBridge

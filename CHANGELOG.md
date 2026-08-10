@@ -2,6 +2,61 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.6.6] - 2026-08-09
+
+Fixes #39: a fresh `pip install vadgr-computer-use` could not start. `mcp` 2.0.0
+removed `mcp.server.fastmcp`, this package declared `mcp>=1.0` with no upper
+bound, so a new install resolved 2.0.0 and `vadgr-cua` died at import with
+`ModuleNotFoundError: No module named 'mcp.server.fastmcp'`. The `test` workflow
+has been red on the same error since 2026-08-04.
+
+**The tool surface is unchanged.** The 26 tools keep their names, their derived
+input and output schemas and their result shapes; both majors were snapshotted
+over a live stdio `tools/list` and the diff is empty. **Every one of the 26 was
+then called** over the wire from a fresh, non-editable install and each returned
+its declared shape, so the claim covers what the tools do and not only how they
+are declared. Nothing else in this release changes behaviour.
+
+### Fixed
+- **The MCP server builds on `mcp.server.mcpserver`.** `FastMCP` becomes
+  `MCPServer` and `mcp.server.fastmcp.exceptions.ToolError` becomes
+  `mcp.server.mcpserver.exceptions.ToolError`, at the same position in the
+  exception hierarchy, so the browser tier's page reason, remediation and guided
+  pixel fallback still reach the model verbatim. `Image` comes from the same new
+  module and serializes the same content block.
+- **The `--port` flag reaches the SSE transport again.** 2.x's settings object
+  has no `host` or `port`; the transport takes its options on `run()`. The start
+  path now branches on the transport and passes each call only what its own
+  overload accepts, so `--transport sse --port N` binds to N as it did before.
+  Nothing on the SSE path changes otherwise: the host, `sse_path`,
+  `message_path` and the loopback rebinding protection all keep their previous
+  defaults.
+
+### Changed
+- **The `mcp` dependency is now `mcp>=2.0`.** The floor moves because
+  `mcp.server.mcpserver` exists in no 1.x release, so without it a resolver
+  reaching 1.x would rebuild the same broken install from the other side. There
+  is deliberately no upper bound: this package tracks the current `mcp`.
+- The three tests that read the tool surface now read it from the public
+  `list_tools()` instead of a private tool-manager dictionary, and the one that
+  could `pytest.skip` itself when that dictionary moved no longer can. Two new
+  tests hold the surface as a total: the exact 26 names as set equality, and a
+  source scan proving no module reaches for the removed package.
+- Version bumped to 0.6.6 across the package, the extension manifest, the
+  extension package and lockfile, `CUA_VERSION` and the `background.ts` version
+  fallback.
+
+### Notes
+- No new tools, no changed tools, no behaviour change on any tool, and no new
+  transport: 2.x's `streamable-http` is not offered, `--transport` still takes
+  `stdio` and `sse`.
+- The Python floor is unchanged. `mcp` 2.0.0 requires >=3.10, the same floor
+  this package declares, so the 3.10 / 3.11 / 3.12 matrix is untouched.
+- One difference worth knowing about even though nothing here depends on it:
+  1.x read the SSE bind from `FASTMCP_HOST` and `FASTMCP_PORT`, and 2.x does
+  not. This package never read them, never documented them and has its own
+  `--port`.
+
 ## [0.6.5] - 2026-07-24
 
 Fixes #36: a Chrome Web Store install of the extension could never connect to
@@ -12,7 +67,7 @@ had no path left to retry.
 - **Native-host manifest now allowlists the Web Store extension ID.** The
   store build has a different ID than the unpacked dev build (the store strips
   the pinned `key`), but `extension_setup.py` wrote
-  `allowed_origins: ["chrome-extension://<dev id>/"]` only — so Chrome refused
+  `allowed_origins: ["chrome-extension://<dev id>/"]` only - so Chrome refused
   `connectNative` for every Web Store install before the host ever spawned,
   with nothing logged. The manifest now always carries BOTH origins
   (`EXTENSION_ID` dev + `WEBSTORE_EXTENSION_ID` store), on every platform the
@@ -24,7 +79,7 @@ had no path left to retry.
   while both known IDs are always guaranteed present.
 - **The service worker can now (re)establish the native port after MV3 idle
   termination.** `connect()` was reachable only from `onStartup`, `onInstalled`
-  and the in-memory reconnect controller — none of which fire when an
+  and the in-memory reconnect controller - none of which fire when an
   idle-killed worker is woken by any other event, so a dropped port stayed dead
   until a full browser restart. Now: `connect()` is idempotent (no-op while a
   port is open, and a synchronous `connectNative` throw backs off instead of
@@ -34,7 +89,7 @@ had no path left to retry.
   after idle death, and the offscreen document's ~20s heartbeat message is now
   answered with a reconnect check as a faster-cadence path.
 - The offscreen-document comments/justification no longer claim it "holds the
-  native-messaging port alive" — it cannot (the port belongs to the service
+  native-messaging port alive" - it cannot (the port belongs to the service
   worker); its heartbeat wakes the worker so the reconnect paths run.
 - Stale version strings: `CUA_VERSION` in `computer_use/browser/server.py` and
   the `background.ts` fallback both read `"0.6.1"`; both now track the release
@@ -86,7 +141,7 @@ Trusted-click fix for pointer-driven widgets.
   `mousedown`/`mouseup` at all. Component libraries that open on `pointerdown` and
   act on `pointerup` (menus, selects, popovers, custom radio/scale groups, and the
   dismissable-layer pattern generally) ignored it completely, while the op still
-  returned `{clicked: true}` — a silent no-op reported as success. Clicking such a
+  returned `{clicked: true}` - a silent no-op reported as success. Clicking such a
   control now falls back to real input:
   - `click` self-verifies by diffing a widget-state signature (`data-state`,
     `aria-expanded`, `aria-checked`, `aria-pressed`, `aria-selected`,
@@ -115,7 +170,7 @@ Trusted-click fix for pointer-driven widgets.
 
 ### Notes
 - Coordinates are viewport CSS pixels taken straight from `getBoundingClientRect()`,
-  which is what `Input.dispatchMouseEvent` expects — no DPR correction and no
+  which is what `Input.dispatchMouseEvent` expects - no DPR correction and no
   window-chrome offset, so the pixel coordinate-mismatch class does not apply, and
   the click works with the window unfocused or occluded.
 - Additive and wire-compatible: `click` was already in `SUPPORTED_OPS` on both
@@ -274,7 +329,7 @@ version bump: the new ops grow the capability list only.
   cookies/logins), kept separate so it never fights your foreground tab. The
   pinned target survives service-worker idle-termination (`chrome.storage.session`)
   and follows tabs the agent itself spawns (OAuth popups, `target=_blank`).
-- `use_target(mode="owned"|"attach", window_id=None, tab_id=None)` browser op —
+- `use_target(mode="owned"|"attach", window_id=None, tab_id=None)` browser op - 
   explicitly pin the session target. Attach mode snapshots the tab you are
   currently looking at once, then pins it by id.
 - New browser ops on the `chrome.debugger` path: `hover` (with an optional
@@ -329,7 +384,7 @@ version bump: the new ops grow the capability list only.
   relay hits EOF, and the extension reconnects with a fresh session.
 
 ### Notes
-- No `PROTOCOL_VERSION` bump — every new op is additive and gated on the
+- No `PROTOCOL_VERSION` bump - every new op is additive and gated on the
   extension's `supported_ops`; an older extension returns a precise
   `op_unsupported` for a 0.5.0 op.
 
@@ -339,8 +394,8 @@ version bump: the new ops grow the capability list only.
 - Restore the desktop screenshot tier on GNOME 49/50 (Ubuntu 25.10/26.04): add an
   XDG Desktop Portal screenshot backend as the portable Wayland capture path. It
   is tried after the no-dialog CLI tools, so GNOME 46 / Ubuntu 24.04 keeps using
-  `gnome-screenshot` unchanged (no new consent dialog) while GNOME 49+ — where the
-  CLI tools no longer work — transparently falls through to the portal.
+  `gnome-screenshot` unchanged (no new consent dialog) while GNOME 49+ - where the
+  CLI tools no longer work - transparently falls through to the portal.
 
 ### Added
 - Provider/resolver backend abstraction (`SessionContext` + `CaptureProvider` /
@@ -351,7 +406,7 @@ version bump: the new ops grow the capability list only.
   executor via `python-xlib` (no `xdotool`).
 - `vadgr-cua install-deps`: distro-aware provisioning (apt/dnf/pacman/zypper) for
   `wl-clipboard` and the `/dev/uinput` udev rule. Prints the plan; `--yes` runs the
-  whole plan under a single privilege prompt — `pkexec` (graphical polkit auth, no
+  whole plan under a single privilege prompt - `pkexec` (graphical polkit auth, no
   terminal sudo) when a display is present, falling back to `sudo`. This is the
   second of the two install commands: `pip install` then `vadgr-cua install-deps`.
 
@@ -408,7 +463,7 @@ version bump: the new ops grow the capability list only.
   `tier_breakdown` now reports `{"0": 8, "0.5": 0, "1": 2, "2": 13}`.
 
 ### Notes
-- cua and `extension/` are independent builds that share no imports — only the
+- cua and `extension/` are independent builds that share no imports - only the
   versioned wire protocol (`protocol.py` / `protocol.ts`).
 - Validated end-to-end on real logged-in sites via the agent-driven runbook in
   `E2E/0.4.0/` (see its per-OS results table); the framing, routing, error
@@ -455,7 +510,7 @@ version bump: the new ops grow the capability list only.
 - All 13 existing pixel-layer MCP tools (`screenshot`, `screenshot_region`, `click`, `double_click`, `right_click`, `move_mouse`, `drag`, `scroll`, `type_text`, `key_press`, `get_screen_size`, `get_platform`, `get_platform_info`) are now registered through `@tool` in addition to `@mcp.tool()`. Tier 2 for all; read-only risk for query tools, medium risk for input-mutating tools.
 
 ### Notes
-- Pure refactor — no functional change to any MCP tool. The wire surface is identical to 0.1.5.
+- Pure refactor - no functional change to any MCP tool. The wire surface is identical to 0.1.5.
 - Scope is strict: `vadgr-computer-use` drives the local machine, exposes `tier` + `risk` metadata, and emits telemetry. Authorization, denylist, log redaction, approval prompts, and auth-mode policy are not cua concerns and live in the host's agent loop.
 
 ## [0.1.5] - 2026-04-26

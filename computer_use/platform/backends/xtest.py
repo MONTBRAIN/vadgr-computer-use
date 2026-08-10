@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""X11 input via XTEST (python-xlib) — the pure-python X11 input path.
+"""X11 input via XTEST (python-xlib) - the pure-python X11 input path.
 
 XTEST is the universal X11 input-synthesis extension every X11 WM honours
-(xdotool/PyAutoGUI use it too), and python-xlib is a pure wheel — so X11 input
+(xdotool/PyAutoGUI use it too), and python-xlib is a pure wheel - so X11 input
 needs no ``xdotool`` system package. The real Xlib calls sit behind ``XlibInput``
 so the executor mechanics (click = move+press+release, shift handling, scroll,
 drag) are unit-tested with a fake seam; the live X server is e2e territory.

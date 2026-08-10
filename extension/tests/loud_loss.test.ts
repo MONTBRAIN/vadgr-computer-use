@@ -52,7 +52,7 @@ function ownedManager(win: any) {
   return { owned, create };
 }
 
-describe("loud loss — cold start vs mid-task", () => {
+describe("loud loss - cold start vs mid-task", () => {
   it("cold start (never established) auto-opens the owned window exactly once", async () => {
     const { owned, create } = ownedManager({ id: 42, tabs: [{ id: 137 }] });
     const r = new TargetResolver({
@@ -68,7 +68,7 @@ describe("loud loss — cold start vs mid-task", () => {
     expect(create).toHaveBeenCalledTimes(1); // reused, never re-opened
   });
 
-  it("a closed current tab makes the next resolve() raise target_lost — NEVER re-opens", async () => {
+  it("a closed current tab makes the next resolve() raise target_lost - NEVER re-opens", async () => {
     const live = new Set([137]);
     const { owned, create } = ownedManager({ id: 42, tabs: [{ id: 137 }] });
     const r = new TargetResolver({
@@ -102,7 +102,7 @@ describe("loud loss — cold start vs mid-task", () => {
     // The SW idle-terminates; the current tab is closed while it slept.
     live.delete(137);
     // A fresh resolver wakes, re-hydrates from the store, and must STILL raise
-    // loud — the persisted `established` proves this is not a cold start.
+    // loud - the persisted `established` proves this is not a cold start.
     const r2 = new TargetResolver({
       tabs: fakeTabs(live),
       owned,

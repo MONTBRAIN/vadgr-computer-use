@@ -1,7 +1,7 @@
 // Copyright 2026 Victor Santiago Montaño Diaz
 // Licensed under the Apache License, Version 2.0.
 //
-// Service-worker (re)connect wiring — issue #36 defect 2. The MV3 worker is
+// Service-worker (re)connect wiring - issue #36 defect 2. The MV3 worker is
 // idle-terminated (~30s); a later wake re-runs the module top level but fires
 // neither onStartup nor onInstalled, so the module top level itself, a periodic
 // chrome.alarms keep-alive, and the offscreen heartbeat message must all reach
@@ -84,7 +84,7 @@ beforeEach(() => {
 });
 
 describe("service-worker start (module top level)", () => {
-  it("calls connect() unconditionally — not just from onStartup/onInstalled", async () => {
+  it("calls connect() unconditionally - not just from onStartup/onInstalled", async () => {
     const { connectNative } = await importBackground();
     // The import itself (any SW start, including an idle-death wake) connects.
     expect(connectNative).toHaveBeenCalledTimes(1);

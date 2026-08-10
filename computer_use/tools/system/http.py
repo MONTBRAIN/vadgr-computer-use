@@ -8,7 +8,7 @@
 
 """HTTP GET / POST via the standard library.
 
-No third-party HTTP dep — ``urllib.request`` covers both verbs and lets
+No third-party HTTP dep - ``urllib.request`` covers both verbs and lets
 us bind the result schema cleanly.
 """
 
@@ -34,7 +34,7 @@ def _request(method: str, url: str, body: str | None, headers: dict | None, time
             status = resp.status
             response_headers = dict(resp.headers.items()) if hasattr(resp.headers, "items") else {}
     except urllib.error.HTTPError as e:
-        # 4xx / 5xx still carry a usable body — return it instead of raising.
+        # 4xx / 5xx still carry a usable body - return it instead of raising.
         return {
             "status": e.code,
             "headers": dict(e.headers.items()) if e.headers else {},

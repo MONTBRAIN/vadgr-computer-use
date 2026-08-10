@@ -6,7 +6,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""The ``browser`` + ``browser_eval`` MCP tools — thin clients over the bridge.
+"""The ``browser`` + ``browser_eval`` MCP tools - thin clients over the bridge.
 
 ``browser`` is op-routed through ``OperationGroup`` (like the Tier-0 ``fs`` /
 ``clipboard`` tools): each op is a small handler that shapes params and calls
@@ -14,7 +14,7 @@
 dispatcher edit.
 
 A ``BrowserError`` from the bridge is mapped to a ``ToolError`` whose message
-carries the page reason / remediation and the guided pixel fallback — FastMCP
+carries the page reason / remediation and the guided pixel fallback - MCPServer
 forwards ``ToolError`` text to the LLM verbatim (generic exceptions get
 masked), so the guidance actually reaches the model.
 """
@@ -24,7 +24,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from computer_use.browser.bridge import (
     PIXEL_FALLBACK,
@@ -35,11 +35,11 @@ from computer_use.browser.protocol import BrowserError
 from computer_use.browser.upload import translate_upload_paths
 from computer_use.core.ops import OperationGroup
 
-# `screenshot` is a PIXEL tool, not a browser op — the agent mis-tried
+# `screenshot` is a PIXEL tool, not a browser op - the agent mis-tried
 # `browser(op="screenshot")`. Redirect it explicitly (browser-native capture is
 # a later MINOR).
 _SCREENSHOT_HINT = (
-    "`screenshot` is not a `browser` op — it is a separate pixel tool. Call the "
+    "`screenshot` is not a `browser` op - it is a separate pixel tool. Call the "
     "top-level `screenshot` tool to see the page; browser-native capture is not "
     "available yet."
 )
@@ -191,14 +191,14 @@ def _scroll(
 
 @_ops.operation("press")
 def _press(bridge: BrowserBridge, key: str, selector: str | None = None) -> Any:
-    # A *trusted* key event (via chrome.debugger Input) — for chords / keys that
+    # A *trusted* key event (via chrome.debugger Input) - for chords / keys that
     # DOM-dispatched events can't trip (Enter on a custom widget, isTrusted-gated).
     return bridge.send("press", key=key, selector=selector)
 
 
 @_ops.operation("accessibility_tree")
 def _accessibility_tree(bridge: BrowserBridge) -> Any:
-    # The browser's own semantic model — every control normalized to role/name/
+    # The browser's own semantic model - every control normalized to role/name/
     # value regardless of HTML/framework (via chrome.debugger Accessibility).
     # Deprecated in favor of `snapshot` (paginated + shadow/frame piercing).
     return bridge.send("accessibility_tree")
@@ -243,14 +243,14 @@ def _dialog(
     text: str | None = None,
     arm: bool = True,
 ) -> Any:
-    # Arm a one-shot JS-dialog handler BEFORE the op that triggers it — a JS
+    # Arm a one-shot JS-dialog handler BEFORE the op that triggers it - a JS
     # dialog pauses the renderer synchronously, so there is no post-hoc catch.
     return bridge.send("dialog", action=action, text=text, arm=arm)
 
 
 @_ops.operation("upload")
 def _upload(bridge: BrowserBridge, selector: str, files: list[str]) -> Any:
-    # Rewrite each path to a Chrome-OS path BEFORE it crosses the wire — on WSL
+    # Rewrite each path to a Chrome-OS path BEFORE it crosses the wire - on WSL
     # Chrome is Windows Chrome and cannot read a cua-side WSL path. Native Chrome
     # shares cua's filesystem, so paths pass through unchanged.
     chrome_files = translate_upload_paths(files, platform=_upload_platform())
@@ -260,7 +260,7 @@ def _upload(bridge: BrowserBridge, selector: str, files: list[str]) -> Any:
 @_ops.operation("element_state")
 def _element_state(bridge: BrowserBridge, selector: str, by: str = "css") -> Any:
     # The explicit actionability read (visible / receives_events / enabled /
-    # focused / editable / checked? / value? / bbox) — check before acting.
+    # focused / editable / checked? / value? / bbox) - check before acting.
     return bridge.send("element_state", selector=selector, by=by)
 
 
@@ -328,7 +328,7 @@ def _raise_tool_error(err: BrowserError) -> None:
 def browser(op: str, bridge: BrowserBridge | None = None, **params) -> Any:
     """Dispatch a browser sub-operation through the active bridge."""
     if op == "screenshot":
-        # A common agent mistake — redirect to the pixel tool with clear guidance.
+        # A common agent mistake - redirect to the pixel tool with clear guidance.
         raise ToolError(_SCREENSHOT_HINT)
     b = bridge if bridge is not None else _default_bridge()
     try:
@@ -353,7 +353,7 @@ def browser_eval(expression: str, bridge: BrowserBridge | None = None) -> Any:
 #
 # `tabs` and `windows` are op-routed the same way the Tier-0 `fs`/`shell` tools
 # are: one tool, a sub-op `op`, and only the params that sub-op needs. The SW
-# owns the registry — no windowId/tabId selection crosses to cua; these tools
+# owns the registry - no windowId/tabId selection crosses to cua; these tools
 # just map params/returns and surface `target_lost` like every other op. The
 # per-op `target` context the extension adds to each result is passed through
 # verbatim (an additive field an older cua tolerates).
@@ -371,7 +371,7 @@ def tabs(
 
     - list -> {windows:[{window_id, focused, owned, tabs:[{tab_id, url, title,
       active, owned, is_current}]}]}  (READ_ONLY; the agent's owned window AND
-      the user's — the awareness + recovery map)
+      the user's - the awareness + recovery map)
     - open(url=None, window_id=None, background=True)
       -> {window_id, tab_id, url, created}  (a new OWNED tab; sets current)
     - switch(tab_id, window_id=None) -> {window_id, tab_id, url, is_current}
@@ -437,7 +437,7 @@ def windows(
     - open(url=None, focused=False) -> {window_id, tab_id, created}  (a new OWNED
       window; unfocused by default; sets current)
     - focus(window_id) -> {focused, window_id}  (the EXPLICIT, agent-intended
-      raise — routing attention never steals the user's screen automatically)
+      raise - routing attention never steals the user's screen automatically)
     - close(window_id, force=False) -> {closed, window_id}  (owned only unless
       force)
     """
