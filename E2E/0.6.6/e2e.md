@@ -403,6 +403,13 @@ owed. `Not-Needed` means there is genuinely no OS-specific surface in that
 part, and it is only ever written with its reason. A cell is marked from
 observation, never expectation.
 
+**`(CI)` is the automated gate, and the automated gate is not an e2e pass.**
+CI builds a fresh environment and runs the unit suites, which is exactly
+what part B asks for and nothing more. It drives no MCP session and calls no
+tool over the wire, so it can never satisfy parts D or E. A row marked
+`(CI)` says a suite ran, never that the product was exercised, and the
+`overall` row says so by refusing to inherit it.
+
 | part | Linux | macOS | Windows native | WSL | notes |
 |---|---|---|---|---|---|
 | A: reproduce the defect | Not-Needed | Not-Needed | Not-Needed | **pass** | a resolver and an import, no OS branch. CI was red on this exact error on both its rows for five days, which is the same observation from the outside |
@@ -410,7 +417,7 @@ observation, never expectation.
 | C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch anywhere in it; Windows was run anyway and served the same 26 |
 | D: live agent session | not run | not run | not run | **pass** | cells 1 to 7. Owed rather than Not-Needed: `screenshot` and the structured cells cross a per-OS backend |
 | E: every tool called | not run | not run | not run | **pass** | 26 of 26 called; the five browser tools dispatch only. Owed on every OS: each has a different input executor |
-| overall | **pass** (CI) | **pass** (CI) | **pass** for what it covers | **pass** | no defect found beyond the one being fixed |
+| overall | **not run** | **not run** | **partial** | **pass** | Linux and macOS have the gate green and nothing driven: parts D and E were never run there, and a suite is not a session. Windows covers A to C. Only WSL carries the whole runbook |
 
 ### Status notes
 
