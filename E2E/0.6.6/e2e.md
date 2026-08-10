@@ -177,7 +177,8 @@ says so here, because silence reads as covered.
 | `click double_click right_click move_mouse drag scroll type_text key_press` | E |
 | `browser browser_eval tabs windows profiles` | E, **dispatch only**, see the part |
 | the browser tier's page ops | **uncovered**, see what this runbook cannot prove |
-| the Linux, macOS and native Windows input backends | **uncovered**, see what this runbook cannot prove |
+| the WSL2 and native Windows input backends | E (native Windows added 2026-08-09 via a full-screen rig; F8 high-DPI caveat) |
+| the Linux and macOS input backends | **uncovered** (macOS input was dispatch-only), see what this runbook cannot prove |
 
 ## Part A: reproduce the defect before changing anything
 
@@ -412,12 +413,12 @@ tool over the wire, so it can never satisfy parts D or E. A row marked
 
 | part | Linux | macOS | Windows native | WSL | notes |
 |---|---|---|---|---|---|
-| A: reproduce the defect | Not-Needed | **pass** | Not-Needed | **pass** | a resolver and an import, no OS branch. CI was red on this exact error on both its rows for five days, which is the same observation from the outside. macOS was still run by hand to confirm the same fail mode on that OS's wheel |
-| B: suites on a fresh 2.x env | **pass** (CI) | **pass** | **partial** | **pass** | CI builds its environment from `pyproject.toml` on every push, so each row is itself a fresh install resolving 2.x. macOS was also run by hand: 706 passed, 48 skipped, ruff exit 0 |
-| C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch anywhere in it; Windows was run anyway and served the same 26 |
-| D: live agent session | not run | **pass** | not run | **pass** | cells 1 to 7. Owed rather than Not-Needed: `screenshot` and the structured cells cross a per-OS backend. macOS: cell 5 tested via a bad-selector `op_failed` because the extension bond is live, same `ToolError` class either way |
-| E: every tool called | not run | **pass†** | not run | **pass** | 26 of 26 called on both. WSL browser tools were dispatch-only (bond held elsewhere); macOS browser tools actually round-tripped (`†` see the macOS note). Input tools on macOS are dispatch-only until the Quartz rig exists, same reason as WSL for the other OSes |
-| overall | **not run** | **pass†** | **partial** | **pass** | Linux has the gate green and nothing driven. Windows covers A to C. macOS now carries the whole runbook, with the input-rig caveat noted; WSL was the first to do so |
+| A: reproduce the defect | Not-Needed | **pass** | **pass** | **pass** | a resolver and an import, no OS branch. CI was red on this exact error for five days, the same observation from the outside. macOS was run by hand to confirm the fail mode on that wheel; Windows too: `mcp 2.0.0` resolved vs `0.6.5`, and both the import (from a neutral cwd) and the console script exited `1` with `ModuleNotFoundError` at `mcp_server.py:36` |
+| B: suites on a fresh 2.x env | **pass** (CI) | **pass** | **partial** | **pass** | CI builds its environment from `pyproject.toml` on every push, so each row is itself a fresh install resolving 2.x. macOS was also run by hand: 706 passed, 48 skipped, ruff exit 0. Windows: `mcp 2.0.0` resolved, `ruff` `0`, entry point imports, stdio serves 26 tools, floor plant (`mcp<2` -> `ResolutionImpossible`) holds; but full `pytest` cannot collect on Windows (`fcntl`), pre-existing and unrelated to `mcp`, hence `partial` |
+| C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch. Windows: 26 tools both majors, names + `inputSchema` + `outputSchema` byte-identical across `mcp` 1.29.0 and 2.0.0 (contract sha256 `1b7534438d64090d`), `2024-11-05` handshake, no module names the removed package. The raw before/after file diff is non-empty only because of the branch's own `cf25631` em-dash->hyphen sweep in 3 tool descriptions (cosmetic, F7), not an across-majors divergence |
+| D: live agent session | not run | **pass** | **pass** | **pass** | cells 1 to 7. `screenshot` and the structured cells cross a per-OS backend. macOS: cell 5 via a bad-selector `op_failed` (bond live). Windows: cell 5 via `browser(navigate)` returning `[not_connected]` + pixel fallback (bond held elsewhere); `get_platform_info` reported `platform: windows` |
+| E: every tool called | not run | **pass†** | **pass** | **pass** | 26 of 26 called on all three. WSL browser tools dispatch-only (bond held elsewhere); macOS browser tools round-tripped (`†` see the macOS note); macOS input tools dispatch-only until the Quartz rig exists. **Windows drove all 8 input tools against a full-screen event-logging rig** (real clicks, held drag, wheel notches, double-click word-select, real keystrokes); Windows browser tools dispatch-only. Findings F8 (high-DPI coordinate mismatch) and F9 (`type_text` real keystrokes) |
+| overall | **not run** | **pass†** | **pass** | **pass** | Linux has the gate green and nothing driven. **macOS, Windows and WSL now each carry the whole runbook A to E** (WSL first): macOS's caveat is the input rig, Windows's is Part B's `pytest` collection (`fcntl`, pre-existing infra) plus the pre-existing findings F8/F9. Only Linux's D and E remain owed |
 
 ### Status notes
 
@@ -499,25 +500,6 @@ Python 3.12.3, real Windows desktop behind the PowerShell bridge.
   part's table above is marked from that journal and from a ground-truth read
   taken outside the session. Four findings came out of it, F2 to F4 from the
   tools and F6 from the pointer, and none is a regression from this patch.
-
-**Windows native, why Part B is partial.** The full `pytest` run is **not
-available on Windows and was not before this patch**:
-`computer_use/tests/conftest.py`'s autouse fixture patches
-`computer_use.platform.linux`, which imports `fcntl`, so collection errors on
-every module. That is pre-existing and unrelated to `mcp`; the CI matrix is
-Linux and macOS only. What this patch changes on Windows is the install
-resolving 2.x and the entry point importing, and both were run against a fresh
-venv on a copy of this branch with Windows Python 3.12.10: `pip install -e .[dev]`
-resolved `mcp 2.0.0` and `vadgr-computer-use 0.6.6`, `import
-computer_use.mcp_server` succeeded, and stdio served the same 26 tools.
-
-**Linux and macOS, what "pass (CI)" rests on.** The `test` workflow is green on
-every matrix row for the first time since 2026-08-04: `ubuntu-latest` and
-`macos-latest`, each on 3.10 / 3.11 / 3.12, plus `lint`. Those runners build
-their environment from `pyproject.toml` on every push, so each row is a fresh
-install resolving `mcp` 2.x, which is the defect this patch closes. **The matrix
-going green is the CI half of the proof**, not a formality: red on this exact
-`ModuleNotFoundError` is what issue #39 looked like from the outside.
 
 **macOS (2026-08-09), Parts A to E, driven by hand.** macOS 26.5.2 arm64,
 Python 3.12.13 (Homebrew), Google Chrome with the 0.6.0 extension bond live from
@@ -610,7 +592,7 @@ Setup block requires; not the pre-existing checkout venv.
     `/tmp/cua-e2e-066-macos-sweep/shell.out` on disk; `shell.which sh` returned
     `/bin/sh`. Pass. (First attempt used `shell_mode: false` with a shell
     string and got `[Errno 2] No such file or directory` because subprocess
-    treated the whole string as an exec path — driver misuse, not a tool
+    treated the whole string as an exec path -- driver misuse, not a tool
     defect.)
   - **`http`** (`get`/`post` against a local stdlib echo server): the echoed
     body carried the request's `X-Sweep: macos-get` and `X-Sweep: macos-post`
@@ -663,16 +645,63 @@ Setup block requires; not the pre-existing checkout venv.
     "tab_count": 12, …}]}`. So on macOS Part E is a stronger read than WSL's:
     the browser tier's dispatch **and** its page ops were exercised.
 
-**Windows native, why Part B is partial.** The full `pytest` run is **not
-available on Windows and was not before this patch**:
-`computer_use/tests/conftest.py`'s autouse fixture patches
-`computer_use.platform.linux`, which imports `fcntl`, so collection errors on
-every module. That is pre-existing and unrelated to `mcp`; the CI matrix is
-Linux and macOS only. What this patch changes on Windows is the install
-resolving 2.x and the entry point importing, and both were run against a fresh
-venv on a copy of this branch with Windows Python 3.12.10: `pip install -e .[dev]`
-resolved `mcp 2.0.0` and `vadgr-computer-use 0.6.6`, `import
-computer_use.mcp_server` succeeded, and stdio served the same 26 tools.
+**Windows native (2026-08-09), Parts A to E, driven on real hardware.** Windows
+11 Pro 25H2 (build 26200.8655, x64), Python 3.12.10, physical display 3840x2160.
+Every environment built fresh from the branch; each check read from its own exit
+code.
+
+- **Part A, reproduced.** `/tmp/cua-repro` installed `0.6.5` and resolved
+  `mcp 2.0.0`. From a **neutral cwd** (so `import computer_use` resolves to
+  site-packages, not the working tree, the trap the Setup block names)
+  `python -c "import computer_use.mcp_server"` exited `1` with
+  `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` at
+  `mcp_server.py:36`, and `vadgr-cua --transport stdio </dev/null` exited `1` the
+  same way. My first import check ran from the checkout and exited `0` because the
+  working-tree 0.6.6 shadowed 0.6.5 -- exactly the load-bearing `cd` the runbook
+  flags.
+- **Part B, partial.** Fresh `pip install -e .[dev]` resolved `mcp 2.0.0` and
+  `0.6.6`. `ruff check computer_use` exited `0`; the entry point imports from a
+  neutral cwd; stdio comes up clean and serves 26 tools; the floor plant
+  (`pip install --dry-run . "mcp<2"` -> `ResolutionImpossible`) holds. The one gap
+  is the full `pytest`, which cannot collect on Windows and could not before this
+  patch: `test_linux.py` / `test_uinput.py` import the Linux backend which imports
+  `fcntl`, so collection errors (exit `2`). Pre-existing, unrelated to `mcp`.
+- **Part C, pass.** `before.json` (`0.6.5` on `mcp 1.29.0`) vs `after.json` (branch
+  on `mcp 2.0.0`), both over raw JSON-RPC on stdio: 26 tools both sides, names +
+  `inputSchema` + `outputSchema` byte-identical (contract sha256
+  `1b7534438d64090d`), the `2024-11-05` handshake completes, no module names the
+  removed package. The raw whole-file diff is non-empty only from the branch's own
+  `cf25631` em-dash sweep (F7) -- description prose, not schema.
+- **Part D, pass, cells 1 to 7.** Two headless `claude -p` sessions plus a direct
+  SSE check. Cell 1 `vadgr-computer-use: connected`; cell 2 `fs read` ->
+  `sentinel-a9f31c`; cell 3 `screenshot` -> an `image/jpeg` block; cell 4
+  `get_platform_info` -> `{"platform":"windows","backend_available":true}` (the
+  Windows backend, not WSL); cell 5 `browser(navigate)` -> `is_error: true`
+  carrying the verbatim `[not_connected]` reason + remediation + pixel fallback,
+  so the migrated `ToolError` is the class the SDK still recognises; cell 6
+  `output.txt` read back off-agent held `SENTINEL-A9F31C` (15 bytes on disk); cell
+  7 `--transport sse --port 8899` came up (`uvicorn`), `GET /sse` -> `200` with
+  `event: endpoint / data: /messages/?session_id=...`, an unknown path -> `404`.
+- **Part E, pass, 26 of 26 called.** Against a non-editable `pip install .` build.
+  Tier 0 ground-truthed off-session: `fs` (16 bytes via `od -c`), `shell`
+  (returncode 7, both streams, the file it wrote on disk), `http` (a local echo
+  logged the GET and the POST body byte-identical), `env` (the process-scoped
+  second `get`), `time` (ISO parses as UTC), `tempfile` (the path does not exist),
+  `data` (JSON/CSV round trips; YAML returns the guided `PyYAML` error, F2),
+  `clipboard` (`Get-Clipboard` by a path the tool did not use). Tier 2:
+  `get_platform`=`windows`, `get_screen_size`=`1366x768`, `screenshot` (magic
+  `ffd8ffe0`, JPEG 1366x768), `screenshot_region` (magic `89504e47`, PNG 337x225,
+  the 120x80 region un-downscaled at the ~2.81 factor, as WSL). **All eight input
+  tools were ground-truthed against a full-screen, always-on-top event-logging
+  rig** (so nothing leaked to the operator's windows): `click`/`right_click`
+  logged the right button, `drag` held Left start->end, `double_click` logged one
+  `MouseDoubleClick` selecting a whole word (`selLen=6`), `scroll` logged
+  `MouseWheel delta=-360` (3x `WHEEL_DELTA`), `key_press ctrl+a` logged
+  `ControlKey`+`A` with the modifier, `type_text` logged real per-character
+  keystrokes with the clipboard left untouched (F9), and `move_mouse` moved the
+  physical cursor. The four browser tools returned `[not_connected]` (dispatch
+  only, no extension bonded to this listener) and `profiles(list)` returned
+  `{"profiles":[]}`. Two findings, F8 and F9, both pre-existing.
 
 **Linux, what "pass (CI)" rests on.** The `test` workflow is green on every
 matrix row: `ubuntu-latest` and `macos-latest`, each on 3.10 / 3.11 / 3.12,
@@ -790,17 +819,66 @@ and recorded only so a future run that sees a larger drift has a baseline to
 compare against. `move_mouse` on its own landed exactly, so the jitter is in the
 click path's move rather than in the coordinate mapping.
 
+### F7 (observation): the Windows surface diff is non-empty against `0.6.5`, by a style sweep
+
+The Windows Part C `diff -u before.json after.json` is **not** empty: the
+`browser`, `tabs` and `windows` descriptions differ between the published `0.6.5`
+and this branch. The only difference is the em-dash (`U+2014`) rewritten to ASCII
+hyphen, from `cf25631 style: no em dashes`, which landed after the WSL Part C run
+(where the diff was empty and the two files hashed identically). It is
+description prose, not schema: names, counts (26) and `inputSchema`/`outputSchema`
+are byte-identical across the majors (contract sha256 `1b7534438d64090d`), which
+is the property Part C actually claims. Recorded because a non-empty diff is a
+finding by the part's own rule; the honest disposition is "cosmetic source edit
+on the branch, not an across-majors divergence." No fix owed.
+
+### F8 (open, out of scope): input and screenshot coordinates disagree on a high-DPI native Windows display
+
+On this 3840x2160 display, `get_screen_size` and `screenshot` report the
+max-width-capped `1366x768`, but the input tools do **not** map a `1366`-space
+coordinate onto that screen the way the screenshot implies. `move_mouse(683,384)`
+-- the centre of the `1366x768` screenshot, which should land at the physical
+centre `1920,1080` -- put the physical cursor (read by `GetPhysicalCursorPos`) at
+`455,256`, the top-left region, a consistent `x/1.5` on both axes; a DPI-aware rig
+logged `click` events at the same numeric coordinate they were given, not at the
+screenshot-implied physical point. So an agent that reads a coordinate off the
+screenshot and feeds it to `click`/`move_mouse` misses on a scaled native Windows
+display. This is the counterpart to F6, where the WSL2 bridge maps the same
+display coordinate onto the physical pixel correctly; the native Windows executor
+does not.
+
+**Provably pre-existing and not this patch's:** `0.6.6` moves the `mcp` import
+layer only and touches no Windows input or screenshot-scaling code. This is the
+"native Windows input backend" surface the runbook already marks uncovered and
+owed a per-OS run; the Windows run is that run, and this is what it found.
+**Disposition:** not fixed here (a coordinate-mapping change is an unrelated
+regression risk inside a no-behaviour-change patch), owed a minor of its own with
+a proper per-monitor-DPI calibration.
+
+### F9 (observation): `type_text` uses real keystrokes on native Windows, unlike WSL
+
+Driven against the rig, `type_text` arrived as real per-character `KeyDown`
+events spelling the string, and the system clipboard was **unchanged** afterwards
+(`Get-Clipboard` still held the earlier sweep value). So F3 -- the WSL2 bridge
+routing `type_text` through the clipboard as `Ctrl+V`, clobbering the operator's
+clipboard -- **does not reproduce** on the native Windows backend, which
+synthesizes characters directly. Recorded as the per-OS counterpart to F3: the
+two backends do the same job by different means, and only the WSL one has the
+clipboard side effect.
+
 ## What this runbook cannot prove
 
 - **That the browser tier still drives a page.** Five tools dispatch correctly
   and return their own guided error, and that is all this pass shows of them.
   The reason is the single-listener bond, not the migration, and the run that
   would settle it is described in Part E.
-- **That the input tools work anywhere but WSL.** The rig proves the WSL2
-  PowerShell bridge carries clicks, drags, wheel notches and keystrokes with
-  their parameters intact. It says nothing about the Linux X11 and uinput paths,
-  the macOS Quartz path, or native Windows, each of which is a different
-  executor.
+- **That the input tools work on Linux or macOS.** Two rigs now carry input: the
+  WSL2 PowerShell bridge and, added this pass, the **native Windows** backend (a
+  full-screen event-logging rig confirmed the clicks, the held drag, the wheel
+  notch count, the double-click word-select and real keystrokes, with the F8
+  coordinate-mapping caveat on high-DPI). It still says nothing about the Linux
+  X11 / uinput paths or the macOS Quartz path, each a different executor and a
+  different per-OS run.
 - **That macOS works beyond installing and importing.** No macOS hardware was
   held for this pass.
 - **That the full suite passes on native Windows.** It does not collect there
