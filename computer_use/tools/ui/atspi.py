@@ -123,15 +123,22 @@ _TEXT_ROLES = frozenset({
     "label", "static", "document text", "terminal", "document web",
 })
 
-# After an action, the toolkit updates the element's state asynchronously: a GTK
-# toggle reads its old state for tens of milliseconds after DoAction returns
-# (observed: pressed still false immediately, true 150 ms later). So the re-read
-# is a bounded poll that returns the moment an observable field changes, which is
-# what lets a toggle confirm itself from its own response rather than three turns
-# later. If nothing changes within the window (a click that acts elsewhere), the
-# last read is returned rather than waiting the whole time for nothing.
-_ACT_SETTLE_SECONDS = 0.6
+# After a state-changing action, the toolkit updates the element asynchronously:
+# a GTK toggle reads its old state for tens of milliseconds after DoAction returns
+# (observed: pressed still false immediately, true about 150 ms later). So for the
+# verbs whose whole point is the element's own new state, the re-read is a bounded
+# poll that returns the moment an observable field changes. A plain click is
+# different: its effect is almost always elsewhere (a digit lands in a display, a
+# dialog opens), so waiting for the clicked button's own state to change is a pure
+# penalty, and click re-reads once instead. The window is short: 150 ms was the
+# observed lag, so 400 ms is margin, not a stall.
+_ACT_SETTLE_SECONDS = 0.4
 _ACT_SETTLE_POLL = 0.03
+
+# Verbs whose signal is the element's own field, so the re-read settles. A plain
+# click is deliberately absent: it re-reads once and lets the caller observe the
+# effect where it actually lands.
+_SETTLE_VERBS = frozenset({"toggle", "expand", "focus", "set_text"})
 
 
 def _sane_extents(ext: tuple[int, int, int, int] | None):
@@ -445,21 +452,26 @@ class AtspiBackend:
         text = self._client.text(node) if _role_reads_text(role) else None
         return (frozenset(self._client.states(node)), text)
 
+    def _observable(self, node: Node) -> tuple[frozenset, str | None]:
+        """Just the fields the settle-poll compares, kept cheap for a tight loop."""
+        role = self._client.role_name(node)
+        text = self._client.text(node) if _role_reads_text(role) else None
+        return (frozenset(self._client.states(node)), text)
+
     def _reread_after_act(self, node: Node, before: tuple) -> Element:
         """Re-read the element, waiting out the toolkit's async state update.
 
-        Returns as soon as an observable field differs from ``before`` (the
-        common case: a toggle flips, a field's text changes, focus lands), and
-        otherwise returns the last read once the settle window elapses, so an
-        action whose effect is not on this element does not stall.
+        Polls only the cheap observable fields (states, and text where it
+        applies) so the loop is a couple of round trips per iteration, and
+        returns a full read the moment they differ from ``before`` (the common
+        case: a toggle flips, a field's text changes, focus lands). If nothing
+        changes within the short window, the last read is returned rather than
+        stalling.
         """
         deadline = time.monotonic() + _ACT_SETTLE_SECONDS
-        while True:
-            element = self._element(node)
-            after = (frozenset(element.states), element.text)
-            if after != before or time.monotonic() >= deadline:
-                return element
+        while self._observable(node) == before and time.monotonic() < deadline:
             time.sleep(_ACT_SETTLE_POLL)
+        return self._element(node)
 
     def act(self, ref: str, action: str, text: str) -> dict:
         self._require_bus()
@@ -503,10 +515,14 @@ class AtspiBackend:
 
         # The re-read is the point of the tier: return what the element became,
         # so a toggle that did not toggle is visible now, not three turns later.
-        # It waits out the toolkit's async update rather than reading the stale
-        # pre-action state back.
+        # State-changing verbs wait out the toolkit's async update; a plain click
+        # re-reads once, because its effect lands elsewhere and polling the
+        # button's own state would only stall.
         try:
-            state = self._reread_after_act(node, before).as_dict()
+            if verb in _SETTLE_VERBS:
+                state = self._reread_after_act(node, before).as_dict()
+            else:
+                state = self._element(node).as_dict()
         except ElementGone:
             raise StructuredError(ELEMENT_GONE, "element gone after acting")
         return {"action": verb, "state": state}

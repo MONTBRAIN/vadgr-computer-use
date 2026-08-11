@@ -66,6 +66,7 @@ class FakeClient:
         self._reachable = reachable
         self._enabled = enabled
         self._act_lag = act_lag
+        self.states_reads = 0  # how many times states() was asked, for latency tests
 
     def _n(self, node) -> FakeNode:
         fake = self._nodes.get(node)
@@ -92,6 +93,7 @@ class FakeClient:
         return self._n(node).name
 
     def states(self, node):
+        self.states_reads += 1
         fake = self._n(node)
         # Reveal a queued change once its countdown elapses, so an eager re-read
         # sees the pre-action value and a settling one sees the post-action value.
@@ -369,6 +371,19 @@ class TestActReReadIsPostAction:
         ref = backend.find("toggle button", "")[0].ref
         result = backend.act(ref, "toggle", "")
         assert "pressed" in result["state"]["states"]
+
+    def test_a_plain_click_does_not_settle_poll(self):
+        # A digit-style click's effect lands elsewhere (a display), so ui_act must
+        # not stall polling the button's own unchanging state. Compared to a
+        # settling verb it does far fewer state reads.
+        nodes = _tree_with_button()
+        client = FakeClient(nodes)
+        backend = AtspiBackend(client, _session())
+        ref = backend.find("push button", "")[0].ref
+        reads_before = client.states_reads
+        backend.act(ref, "click", "")
+        # find + snapshot + one re-read, not a poll loop of a dozen reads.
+        assert client.states_reads - reads_before <= 3
 
 
 class TestSetTextIsConfirmable:
