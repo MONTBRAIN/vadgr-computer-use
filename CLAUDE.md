@@ -68,6 +68,44 @@ there is genuinely no OS-specific surface, always stated with its reason.
 small text; pixels are the fallback, never the default. A change that quietly
 moves work down a tier makes every agent loop more expensive.
 
+**A tier is an abstraction, not one implementation.** Capture, input and the
+structured reads are provider-plus-resolver seams: detect the session (display
+server, compositor, session type), let each provider declare whether it applies
+and either build a validated backend or step aside, and take the highest that
+works. A new OS or desktop joins as one more provider and never forks the tool
+surface; a target no one has exercised yet degrades to a reported capability
+level rather than a crash. The matrix of distro, desktop, session type, toolkit
+and sandbox is too large for static rules, so capability is probed at runtime
+and reported, never assumed.
+
+**A tier designed on another OS is a hypothesis until it runs on the real
+target.** The facts an off-target author gets wrong are the runtime ones no unit
+suite reaches: which binding actually loads, whether element coordinates are
+real or withheld by the session (a Wayland client is told its own window sits at
+0,0, so accessibility bounds are not screen pixels there and a pixel-grounding
+step has nothing to aim at), how the native accessibility action model maps onto
+the tool's verbs, and how the capability is switched on - the bus first, then
+each app. Prove these on real glass before the design is trusted and before code
+starts.
+
+**Within Linux, the popular desktops are each first-class, the same way the four
+OSes are.** A Linux tier is not finished on the box it was built on: GNOME on
+Wayland and on X11, KDE Plasma (Qt), the minimal install (nothing pre-installed),
+and the wlroots compositors (Sway, Hyprland) are all targets it resolves for,
+each to a reported capability level - full, tree-only, or
+unavailable-with-a-remedy - never a crash. Their OS stacks are provisioned
+through `vadgr-cua install-deps`; capability is probed at runtime and reported. A
+Linux tier that only considered the developer's own desktop is not done.
+
+**This is a standing rule for every Linux minor, not a one-off.** A Linux minor
+that touches a tier reports its results as a per-desktop matrix across those
+targets - each row a `pass` or a `not run` with its reason - so Linux is never
+collapsed into a single verdict. The dev desktop that got driven is one desktop,
+never the platform; the rest are `not run` until driven on real hardware there,
+never `pass` by inheritance. Closing a `not run` is running `install-deps` plus
+the runbook on that desktop, not writing code - so there is no excuse to leave
+the matrix collapsed.
+
 **5. Design comes before code** for anything carrying a minor:
 
 ```bash
@@ -256,6 +294,15 @@ that name. Nothing here assumes a particular machine, user or absolute path.
 
 - Comments explain **why**, not what.
 - Branch, then PR. Never commit to `master`.
+- **`vadgr-cua install-deps` is the one cross-distro provisioner.** Every tier's
+  OS-level prerequisite - the accessibility stack for the structured reads, the
+  clipboard backend, `/dev/uinput` access - is registered there, and it already
+  maps apt, dnf, pacman and zypper and runs the whole plan under a single pkexec
+  or sudo prompt. A new system requirement is added to it, never left as a manual
+  package line the user has to find, and an error path points at
+  `vadgr-cua install-deps`, not a hand-typed `apt install`. Easy to install is a
+  contract: one command provisions every tier on every distro. The Python side
+  stays pip-only (pure-python, no system libs), so the two never overlap.
 - `CHANGELOG.md` is updated **in the PR**; CD publishes the extension keylessly
   on tag.
 - **`README.md` is updated in the same PR when the minor changed what it says**,
