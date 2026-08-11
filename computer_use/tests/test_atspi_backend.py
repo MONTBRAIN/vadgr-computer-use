@@ -462,6 +462,26 @@ class TestTreeReachesControls:
         leaves = set(self._leaf_names(backend.tree(depth=6)["root"]))
         assert found and found <= leaves
 
+    def _all_roles(self, tree_node):
+        roles = []
+        stack = [tree_node]
+        while stack:
+            n = stack.pop()
+            roles.append(n["role"])
+            stack.extend(n["children"])
+        return roles
+
+    def test_tree_omits_anonymous_wrappers(self):
+        # ui_tree is the screenshot alternative, so it must stay small text: the
+        # sixteen anonymous generic wrappers between the window and the button
+        # carry nothing and must not appear in the output, only the meaningful
+        # nodes (the window and the control).
+        backend = _backend(self._deeply_nested(16))
+        roles = self._all_roles(backend.tree(depth=6)["root"])
+        assert "generic" not in roles
+        assert roles.count("push button") == 1
+        assert "Deep Save" in self._leaf_names(backend.tree(depth=6)["root"])
+
 
 class TestBoundsAreSane:
     """D4: garbage extents (unrealised widgets) must not surface as bounds."""

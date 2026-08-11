@@ -346,19 +346,29 @@ class AtspiBackend:
         )
 
     def _node_dict(self, node: Node, depth: int, budget: list[int]) -> dict:
-        """A tree node as a plain dict, its meaningful children recursed to ``depth``.
+        """A tree node as a plain dict, with only its meaningful descendants.
 
-        ``depth`` counts meaningful nodes only: the anonymous wrappers GTK stacks
-        between a window and its controls are transparent, so a shallow depth
-        still reaches the controls. Non-showing children are pruned, which is how
-        an off-screen dialog's widgets never surface as if they were on screen.
+        The anonymous wrappers GTK stacks between a window and its controls carry
+        nothing a caller acts on and would bloat the tree past the point of being
+        small text (a real file manager returned a quarter of a megabyte before
+        this). They are collapsed out: their meaningful descendants are hoisted to
+        the same level, so the output is the window and its actual controls.
+        ``depth`` counts meaningful nodes only, and non-showing subtrees are
+        pruned so an off-screen dialog never surfaces.
         """
         out = self._element(node).as_dict()
-        children: list[dict] = []
+        out["children"] = self._collapsed_children(node, depth, budget)
+        return out
+
+    def _collapsed_children(
+        self, node: Node, depth: int, budget: list[int]
+    ) -> list[dict]:
+        """Meaningful children of ``node``, hoisting through anonymous wrappers."""
+        result: list[dict] = []
         try:
             kids = self._client.children(node)
         except ElementGone:
-            kids = []
+            return result
         for child in kids:
             if budget[0] <= 0:
                 break
@@ -369,17 +379,19 @@ class AtspiBackend:
                 cname = self._client.name(child)
             except ElementGone:
                 continue
-            meaningful = _is_meaningful(crole, cname)
-            if meaningful and depth <= 0:
-                continue  # a meaningful child past the depth cap
-            budget[0] -= 1
-            child_depth = depth - 1 if meaningful else depth
-            try:
-                children.append(self._node_dict(child, child_depth, budget))
-            except ElementGone:
-                continue
-        out["children"] = children
-        return out
+            if _is_meaningful(crole, cname):
+                if depth <= 0:
+                    continue  # a meaningful node past the depth cap
+                budget[0] -= 1
+                try:
+                    result.append(self._node_dict(child, depth - 1, budget))
+                except ElementGone:
+                    continue
+            else:
+                # A structural wrapper: emit nothing for it, hoist its meaningful
+                # descendants at this same depth.
+                result.extend(self._collapsed_children(child, depth, budget))
+        return result
 
     def tree(self, depth: int) -> dict:
         self._require_bus()
