@@ -147,6 +147,55 @@ reached.
 Fixing, re-checking, finding one more and repeating reads as an endless stream
 of problems and is really one incomplete sweep.
 
+**A result you did not produce is not a result.** Never write a number, a
+status, a timing, a token count or a table row that no command printed. Evidence
+is the artifact - the log, the record, the exit code - and the prose is a reading
+of it, never a substitute for it. **A coverage table is generated from a recorded
+sweep, never typed.** The failure this stops is not laziness: it is an agent that
+could not run a step and wrote what the step would plausibly have said, which is
+unfalsifiable at review and makes every real result in the same document worth
+nothing. **`not run`, `blocked` and `partial` are always available and always
+acceptable**; a fabricated pass never is. If a step could not run, say which,
+why, and what would let it run.
+
+**Implementation is delegated and driven to a finished PR, not hand-held slice
+by slice.** A minor's build runs the steps end to end and does not come back
+until the PR is review-ready: every slice implemented, the unit suites green,
+the README, CHANGELOG and version updated, and the e2e runbook drafted. Breaking
+the work into internal increments is correct engineering; stopping after one to
+ask "should I continue?" is not, because the increments are the builder's to
+sequence rather than the owner's to approve one at a time. **Stop for exactly
+two things**: a genuine decision only the owner can make - surfaced with the
+options and a recommendation - or a defined approval gate, which is running the
+e2e (its runbook is approved before it runs) and merge, tag and release.
+
+**Write your replies to the owner in Simplified Technical English, ASD-STE100.**
+Set the Claude Code output style to it. This applies on every machine and in
+every repo, so it is written in each entry point and not in one person's local
+settings.
+
+The rules:
+
+- Use short sentences. Use 20 words or less for an instruction. Use 25 words or
+  less for a description.
+- Write one instruction in one sentence.
+- Use the active voice. Write "the check found three defects", not "three
+  defects were found".
+- Use simple and common words. Do not use a technical word when a common word
+  is correct.
+- Do not use metaphors, idioms or jokes. They are the most frequent defect in
+  this project's replies.
+- Use the articles "a", "an" and "the".
+- Do not use more than three nouns together.
+- Use the same word for the same thing every time. Do not use synonyms for
+  variety.
+- Keep paragraphs short. Use a list when you give more than two items.
+
+**What this applies to and what it does not.** It applies to what you write to
+the owner: replies, status reports, and summaries. **It does not change the
+documents this project ships.** Their voice is deliberate, and a rewrite of them
+is a separate decision that nobody has made.
+
 **No em dashes and no en dashes**, anywhere this project ships: markdown, code
 comments, commit messages, PR bodies, and the words on the screen. A colon, a
 full stop, brackets or a spaced hyphen does every job. It is checked rather than
