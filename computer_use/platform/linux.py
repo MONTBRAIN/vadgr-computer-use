@@ -1593,3 +1593,12 @@ class LinuxBackend(PlatformBackend):
     def get_foreground_window(self) -> ForegroundWindow | None:
         return _get_foreground_window_linux()
 
+    def structured_capability(self) -> dict:
+        # The AT-SPI tier's own report: bus reachability, whether it is enabled,
+        # the coordinate trust (real on X11, none on Wayland) and the toolkits
+        # seen. Imported here so a box with no accessibility stack still loads
+        # the backend and answers, rather than failing at import.
+        from computer_use.tools.ui.backend import structured_capability
+
+        return structured_capability()
+

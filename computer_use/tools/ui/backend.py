@@ -143,3 +143,23 @@ def resolve_backend() -> StructuredBackend | None:
     except Exception:
         _CACHED_BACKEND = None
     return _CACHED_BACKEND
+
+
+def structured_capability() -> dict:
+    """The structured tier's capability, for get_platform_info to report.
+
+    Always a dict, never a raise: a box with no structured tier answers
+    ``available: False`` with a reason rather than an error, so the capability is
+    discoverable in one read. ``available`` tracks bus reachability, because a
+    resolved backend whose bus is down still cannot drive the tier.
+    """
+    backend = resolve_backend()
+    if backend is None:
+        return {
+            "available": False,
+            "backend": None,
+            "reason": "no structured tier on this platform",
+        }
+    cap = dict(backend.capability())
+    cap["available"] = bool(cap.get("bus_reachable", False))
+    return cap

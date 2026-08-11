@@ -153,6 +153,18 @@ class TestPlatformInfo:
         assert info["backend_available"] is True
         assert "accessibility" not in info
 
+    def test_get_platform_info_carries_the_structured_block(self, engine, mock_backend):
+        # The structured tier's capability is reported, never assumed: a catalogue
+        # that lists ui_find where it cannot work is the dead-control rule one
+        # layer down, so get_platform_info surfaces the backend's own answer.
+        backend, _, _ = mock_backend
+        backend.structured_capability.return_value = {
+            "backend": "atspi", "available": True, "coordinate_trust": "none",
+        }
+        info = engine.get_platform_info()
+        assert info["structured"]["backend"] == "atspi"
+        assert info["structured"]["coordinate_trust"] == "none"
+
 
 class TestAutonomousSurfaceGone:
     """These symbols were removed when autonomous mode was dropped. If any

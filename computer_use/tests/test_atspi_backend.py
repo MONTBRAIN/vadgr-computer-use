@@ -346,3 +346,51 @@ class TestBuildBackend:
     def test_off_linux_there_is_no_backend(self, monkeypatch):
         monkeypatch.setattr(atspi.sys, "platform", "darwin")
         assert atspi.build_atspi_backend() is None
+
+
+class TestStructuredCapabilityHelper:
+    """tools.ui.backend.structured_capability is what get_platform_info reads."""
+
+    def test_reports_unavailable_when_no_backend_resolves(self, monkeypatch):
+        from computer_use.tools.ui import backend as be
+
+        monkeypatch.setattr(be, "resolve_backend", lambda: None)
+        cap = be.structured_capability()
+        assert cap["available"] is False
+        assert cap["backend"] is None
+
+    def test_reports_the_backends_capability_when_resolved(self, monkeypatch):
+        from computer_use.tools.ui import backend as be
+
+        b = _backend(_tree_with_button(), server="x11")
+        monkeypatch.setattr(be, "resolve_backend", lambda: b)
+        cap = be.structured_capability()
+        assert cap["backend"] == "atspi"
+        assert cap["coordinate_trust"] == "real"
+        # available tracks bus reachability: a resolved backend on a reachable
+        # bus is usable, which is what a caller checks before choosing the tier.
+        assert cap["available"] is True
+
+
+class TestPlatformDefaultIsHonest:
+    """The other three platforms answer 'no structured tier', never a stub."""
+
+    def test_base_backend_reports_no_structured_tier(self):
+        from computer_use.platform.base import PlatformBackend
+
+        class _Bare(PlatformBackend):
+            def get_screen_capture(self):
+                raise NotImplementedError
+
+            def get_action_executor(self):
+                raise NotImplementedError
+
+            def is_available(self):
+                return True
+
+            def get_foreground_window(self):
+                return None
+
+        cap = _Bare().structured_capability()
+        assert cap["available"] is False
+        assert cap["backend"] is None
