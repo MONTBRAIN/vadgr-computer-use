@@ -427,6 +427,17 @@ class _AtspiBus:
         loop = self._ensure_loop()
         return asyncio.run_coroutine_threadsafe(coro, loop).result(self._timeout)
 
+    def close(self) -> None:
+        # For one-shot probes (reachability, enable) that must not leave a loop
+        # thread running for the life of the process. The persistent backend
+        # never calls this: it wants its connections kept warm.
+        with self._lock:
+            if self._loop is not None:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+                self._loop = None
+                self._session = None
+                self._a11y = None
+
     async def _ensure_connected(self) -> None:
         if self._a11y is not None:
             return
@@ -634,6 +645,85 @@ class _DbusClient:
             if toolkit and toolkit not in seen:
                 seen.append(toolkit)
         return tuple(seen)
+
+
+# ---------------------------------------------------------------------------
+# Enablement: a layer distinct from reading the tree
+# ---------------------------------------------------------------------------
+#
+# Enabling the accessibility bus and enabling each application's tree are two
+# separate things. The bus is enabled once, per session, by setting
+# org.a11y.Status.IsEnabled. A toolkit is enabled per launched process, by the
+# environment or flags below, because an app cua starts inherits none of the
+# desktop's own accessibility settings. GTK4 exposes its tree without any of
+# this on a stock GNOME session; Qt and Chromium need to be told.
+_QT_A11Y_ENV = ("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
+_CHROMIUM_A11Y_FLAGS = ("--force-renderer-accessibility",)
+
+
+def accessibility_launch_env(base: dict | None = None) -> dict:
+    """Environment for launching a Qt app so it exposes its accessible tree.
+
+    Qt gates AT-SPI behind QT_LINUX_ACCESSIBILITY_ALWAYS_ON; a Qt app cua spawns
+    without it is invisible to the structured tier however healthy the bus is.
+    """
+    env = dict(os.environ if base is None else base)
+    env[_QT_A11Y_ENV[0]] = _QT_A11Y_ENV[1]
+    return env
+
+
+def chromium_accessibility_flags() -> list[str]:
+    """Command-line flags that make Chromium and Electron expose their tree."""
+    return list(_CHROMIUM_A11Y_FLAGS)
+
+
+def bus_reachable(timeout: float = 2.0) -> bool:
+    """Whether the accessibility bus answers, for the deps diagnosis.
+
+    A one-shot probe that never raises and cleans up its loop thread: off Linux,
+    or with no dbus-fast, or with no bus, it is simply False.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        import dbus_fast  # noqa: F401
+    except Exception:
+        return False
+    probe = _AtspiBus(call_timeout=timeout)
+    try:
+        return _DbusClient(probe).reachable()
+    except Exception:
+        return False
+    finally:
+        probe.close()
+
+
+def enable_bus(timeout: float = 2.0) -> bool:
+    """Set org.a11y.Status.IsEnabled true. Returns whether the bus accepted it.
+
+    One-shot and self-cleaning like bus_reachable. This is the bus half of
+    enablement; the toolkit half is the env and flags above.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        import dbus_fast  # noqa: F401
+        from dbus_fast.signature import Variant
+    except Exception:
+        return False
+    probe = _AtspiBus(call_timeout=timeout)
+    try:
+        reply = probe.run(
+            probe.session_call(
+                _A11Y_BUS, _A11Y_BUS_PATH, _PROPERTIES, "Set", "ssv",
+                ["org.a11y.Status", "IsEnabled", Variant("b", True)],
+            )
+        )
+        return not _is_error(reply)
+    except Exception:
+        return False
+    finally:
+        probe.close()
 
 
 def build_atspi_backend() -> AtspiBackend | None:

@@ -372,6 +372,26 @@ class TestStructuredCapabilityHelper:
         assert cap["available"] is True
 
 
+class TestEnablement:
+    """Enablement is a layer: the bus and each toolkit are enabled separately."""
+
+    def test_launch_env_turns_on_qt_accessibility(self):
+        env = atspi.accessibility_launch_env({"HOME": "/home/x"})
+        assert env["QT_LINUX_ACCESSIBILITY_ALWAYS_ON"] == "1"
+        assert env["HOME"] == "/home/x"  # the base env is preserved, not replaced
+
+    def test_chromium_flag_forces_renderer_accessibility(self):
+        assert "--force-renderer-accessibility" in atspi.chromium_accessibility_flags()
+
+    def test_bus_reachable_is_false_off_linux(self, monkeypatch):
+        monkeypatch.setattr(atspi.sys, "platform", "darwin")
+        assert atspi.bus_reachable() is False
+
+    def test_enable_bus_is_false_off_linux(self, monkeypatch):
+        monkeypatch.setattr(atspi.sys, "platform", "darwin")
+        assert atspi.enable_bus() is False
+
+
 class TestPlatformDefaultIsHonest:
     """The other three platforms answer 'no structured tier', never a stub."""
 

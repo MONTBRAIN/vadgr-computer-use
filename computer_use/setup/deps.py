@@ -29,6 +29,7 @@ import getpass
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 # package-manager -> (detect binary, install-command tokens WITHOUT escalation).
@@ -41,9 +42,20 @@ _MANAGERS = {
     "zypper": ("zypper", ["zypper", "install", "-y"]),
 }
 
-# logical dep -> package name per manager (same name on all four here).
+# logical dep -> package name(s) per manager. A value may name more than one
+# package separated by spaces (the plan joins them into one install line), which
+# is how the accessibility entry pulls the bus core and the ATK bridge together.
 _PACKAGES = {
     "wl-clipboard": {m: "wl-clipboard" for m in _MANAGERS},
+    # The structured Tier 1: the AT-SPI bus/registry (at-spi2-core) plus the ATK
+    # bridge that makes GTK apps expose their tree onto it. Package names differ
+    # per distro; the bridge is libatk-bridge on Debian and at-spi2-atk elsewhere.
+    "at-spi2-core": {
+        "apt": "at-spi2-core libatk-bridge2.0-0",
+        "dnf": "at-spi2-core at-spi2-atk",
+        "pacman": "at-spi2-core at-spi2-atk",
+        "zypper": "at-spi2-core at-spi2-atk",
+    },
 }
 
 _UDEV_RULE = Path(__file__).resolve().parent / "udev" / "99-vadgr-uinput.rules"
@@ -60,6 +72,20 @@ def _clipboard_present() -> bool:
     return any(shutil.which(t) for t in ("wl-copy", "wl-paste", "xclip", "xsel"))
 
 
+def accessibility_bus_reachable() -> bool:
+    """Whether the AT-SPI bus answers. Isolated so diagnose can be tested.
+
+    Never raises: off Linux, or with no accessibility stack, it is False, and the
+    diagnosis then lists the stack as missing.
+    """
+    try:
+        from computer_use.tools.ui.atspi import bus_reachable
+
+        return bus_reachable()
+    except Exception:
+        return False
+
+
 def diagnose() -> dict:
     """Report which system-level deps are missing, each with a reason + fix."""
     missing = []
@@ -74,6 +100,15 @@ def diagnose() -> dict:
             "name": "uinput-access",
             "reason": "/dev/uinput is not writable (uinput input fallback unavailable)",
             "fix": "install the udev rule and join the 'input' group",
+        })
+    # The structured tier needs a reachable accessibility bus. Report it missing
+    # only on Linux: it is the only platform with an AT-SPI stack to install, and
+    # probing elsewhere would list a package that does not apply.
+    if sys.platform.startswith("linux") and not accessibility_bus_reachable():
+        missing.append({
+            "name": "at-spi2-core",
+            "reason": "no accessibility bus reachable (structured Tier 1 unavailable)",
+            "fix": "install at-spi2-core and the ATK bridge, then start a desktop session",
         })
     return {"package_manager": detect_package_manager(), "missing": missing}
 
