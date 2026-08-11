@@ -114,20 +114,32 @@ class StructuredBackend(Protocol):
     def capability(self) -> dict: ...
 
 
-def resolve_backend() -> StructuredBackend | None:
-    """Build the structured backend for this session, or None if unavailable.
+# The resolved backend is cached for the process, and the cache is the reason a
+# ref survives across tool calls: ui_find hands out a ref, ui_act resolves it, and
+# both must reach the same backend instance holding the same ref table. Rebuilding
+# per call would reset that table and make every ref look stale. A None result is
+# cached too, because "no structured tier on this OS" does not change mid-session.
+_CACHED_BACKEND: "StructuredBackend | None" = None
+_RESOLVED = False
 
-    Never raises. A missing optional dependency, no accessibility bus, or an OS
-    with no structured tier yet all mean the same thing to a caller - "no
-    structured tier here" - which the tools translate to at_spi_unavailable with
-    its remedy. The import is deferred so the package loads on a box with no
-    accessibility stack at all.
+
+def resolve_backend() -> StructuredBackend | None:
+    """Return the process's structured backend, or None if there is none.
+
+    Never raises. A missing optional dependency or an OS with no structured tier
+    yet both mean the same thing to a caller - "no structured tier here" - which
+    the tools translate to at_spi_unavailable with its remedy. The import is
+    deferred so the package loads on a box with no accessibility stack at all. The
+    backend itself is built at most once and reused (see the cache note above).
     """
+    global _CACHED_BACKEND, _RESOLVED
+    if _RESOLVED:
+        return _CACHED_BACKEND
+    _RESOLVED = True
     try:
         from computer_use.tools.ui.atspi import build_atspi_backend
+
+        _CACHED_BACKEND = build_atspi_backend()
     except Exception:
-        return None
-    try:
-        return build_atspi_backend()
-    except Exception:
-        return None
+        _CACHED_BACKEND = None
+    return _CACHED_BACKEND
