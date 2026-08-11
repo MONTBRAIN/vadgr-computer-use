@@ -35,6 +35,7 @@ class FakeNode:
     def __init__(
         self, role, name, *, states=(), extents=(0, 0, 0, 0),
         interfaces=(), actions=(), children=(), gone=False, toolkit=None,
+        pid=0,
     ):
         self.role = role
         self.name = name
@@ -45,6 +46,7 @@ class FakeNode:
         self.children = list(children)
         self.gone = gone
         self.toolkit = toolkit
+        self.pid = pid
         self.did = []  # (action_index) log
         self.text = None
 
@@ -121,6 +123,9 @@ class FakeClient:
             if fake.toolkit and fake.toolkit not in seen:
                 seen.append(fake.toolkit)
         return tuple(seen)
+
+    def pid(self, node):
+        return self._n(node).pid
 
 
 def _session(server="wayland"):
@@ -340,6 +345,56 @@ class TestWait:
     def test_returns_none_on_timeout(self):
         backend = _backend(_tree_with_button())
         assert backend.wait("dialog", "", 0) is None
+
+
+class TestForegroundWindow:
+    """The Wayland foreground-window path, migrated off gi onto the client."""
+
+    def _two_active_windows(self):
+        # A chrome window then a terminal window, both active. GNOME orders the
+        # most recently focused last, so the terminal must win.
+        return {
+            ("reg", "/root"): FakeNode("desktop frame", "main",
+                                       children=[("chrome", "/c"), ("term", "/t")]),
+            ("chrome", "/c"): FakeNode("application", "Google Chrome", pid=100,
+                                       children=[("cw", "/cw")]),
+            ("cw", "/cw"): FakeNode("frame", "Chrome", states=["active"],
+                                    extents=(0, 0, 1920, 1080)),
+            ("term", "/t"): FakeNode("application", "gnome-terminal", pid=200,
+                                     children=[("tw", "/tw")]),
+            ("tw", "/tw"): FakeNode("frame", "Terminal", states=["active"],
+                                    extents=(0, 0, 800, 600)),
+        }
+
+    def test_last_active_window_wins(self, monkeypatch):
+        monkeypatch.setattr(atspi, "_proc_comm", lambda pid: "")
+        backend = _backend(self._two_active_windows())
+        fg = backend.foreground_window()
+        assert fg is not None
+        assert fg.pid == 200
+        assert fg.title == "Terminal"
+
+    def test_app_name_prefers_proc_comm(self, monkeypatch):
+        monkeypatch.setattr(atspi, "_proc_comm", lambda pid: "firefox")
+        backend = _backend(self._two_active_windows())
+        assert backend.foreground_window().app_name == "firefox"
+
+    def test_none_when_no_active_window(self, monkeypatch):
+        nodes = self._two_active_windows()
+        nodes[("cw", "/cw")].states = []
+        nodes[("tw", "/tw")].states = []
+        backend = _backend(nodes)
+        assert backend.foreground_window() is None
+
+    def test_none_when_bus_unreachable(self):
+        backend = _backend(self._two_active_windows(), reachable=False)
+        assert backend.foreground_window() is None
+
+    def test_module_helper_is_none_without_a_backend(self, monkeypatch):
+        from computer_use.tools.ui import backend as be
+
+        monkeypatch.setattr(be, "resolve_backend", lambda: None)
+        assert atspi.foreground_window() is None
 
 
 class TestBuildBackend:

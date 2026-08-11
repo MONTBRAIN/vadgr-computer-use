@@ -96,6 +96,17 @@ _MAX_NODES = 2000
 _WAIT_POLL_SECONDS = 0.1
 
 
+def _proc_comm(pid: int) -> str:
+    """The process command name from /proc, or empty. Best effort by design."""
+    if pid <= 0:
+        return ""
+    try:
+        with open(f"/proc/{pid}/comm") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
 def decode_states(word_low: int, word_high: int) -> tuple[str, ...]:
     """Turn AT-SPI's two-word state bitfield into sorted state names.
 
@@ -148,6 +159,7 @@ class _Client(Protocol):
     def set_text(self, node: Node, text: str) -> bool: ...
     def grab_focus(self, node: Node) -> bool: ...
     def toolkits(self) -> tuple[str, ...]: ...
+    def pid(self, node: Node) -> int: ...
 
 
 # The verbs ui_act accepts, mapped to how each is performed. click/toggle/expand
@@ -390,6 +402,43 @@ class AtspiBackend:
                 return None
             time.sleep(_WAIT_POLL_SECONDS)
 
+    # -- foreground window (for the platform layer) ------------------------
+
+    def foreground_window(self):
+        """The active top-level window as a ForegroundWindow, or None.
+
+        This is the Wayland foreground-window path the platform layer used to
+        get from gi.Atspi. On Wayland the extents are window-relative (origin
+        withheld by the compositor), which is the same limitation the pixel
+        tools already carry there; the app name, title and pid are the useful
+        part. The last active window wins, matching GNOME's most-recently-focused
+        ordering.
+        """
+        from computer_use.core.types import ForegroundWindow
+
+        if not self._client.reachable():
+            return None
+        result = None
+        for app in self._client.children(self._client.root()):
+            try:
+                app_name = self._client.name(app)
+                for window in self._client.children(app):
+                    if "active" not in self._client.states(window):
+                        continue
+                    extents = self._client.extents(window) or (0, 0, 0, 0)
+                    pid = self._client.pid(app)
+                    name = _proc_comm(pid) or app_name
+                    result = ForegroundWindow(
+                        app_name=name,
+                        title=self._client.name(window) or "",
+                        x=extents[0], y=extents[1],
+                        width=extents[2], height=extents[3],
+                        pid=pid,
+                    )
+            except ElementGone:
+                continue
+        return result
+
 
 # ---------------------------------------------------------------------------
 # The real client: dbus-fast on a private event-loop thread
@@ -629,6 +678,21 @@ class _DbusClient:
             return False
         return bool(reply.body[0])
 
+    def pid(self, node: Node) -> int:
+        # The app's OS pid, read from the a11y bus daemon by its connection name.
+        # AT-SPI has no GetProcessId over D-Bus, but the app is a bus peer, so its
+        # connection's unix pid is the app's pid.
+        reply = self._bus.run(
+            self._bus.call(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "GetConnectionUnixProcessID", "s",
+                [node[0]],
+            )
+        )
+        if _is_error(reply):
+            return 0
+        return int(reply.body[0])
+
     def toolkits(self) -> tuple[str, ...]:
         # Best effort: read each application's ToolkitName. A capability read
         # should never fail because one app misbehaves, so a bad app is skipped.
@@ -724,6 +788,25 @@ def enable_bus(timeout: float = 2.0) -> bool:
         return False
     finally:
         probe.close()
+
+
+def foreground_window():
+    """The active window via AT-SPI, or None. Reuses the cached backend.
+
+    The platform layer calls this on Wayland, where the compositor gives no
+    global window geometry to the pixel path. It reuses resolve_backend's warm
+    connections rather than opening a new bus per query (the foreground window is
+    polled), and never raises: any failure is None, and the caller falls back.
+    """
+    from computer_use.tools.ui.backend import resolve_backend
+
+    backend = resolve_backend()
+    if backend is None:
+        return None
+    try:
+        return backend.foreground_window()
+    except Exception:
+        return None
 
 
 def build_atspi_backend() -> AtspiBackend | None:
