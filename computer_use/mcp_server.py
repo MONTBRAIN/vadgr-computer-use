@@ -393,6 +393,7 @@ from computer_use.tools.system import http as _http_impl
 from computer_use.tools.system import shell as _shell_impl
 from computer_use.tools.system import tempfile as _tempfile_impl
 from computer_use.tools.system import time as _time_impl
+from computer_use.tools.ui import tools as _ui_impl
 
 
 @mcp.tool()
@@ -750,6 +751,62 @@ def profiles(op: str, profile_id: str = None):
     CUA_BROWSER_PROFILE env var (a profile_id prefix or a tab-title substring).
     """
     return _browser_impl.profiles(op=op, profile_id=profile_id)
+
+
+# --- Tier 1: structured (AT-SPI on Linux; UIA and AX to follow) ---
+#
+# Read the accessibility tree and act on an element by reference: small text
+# instead of an image, tens of milliseconds instead of seconds, and correct under
+# a window that moved. The pixel tier stays exactly as it is - this is added
+# beside it, never a replacement, and the loop still chooses the rung.
+
+
+@mcp.tool()
+@tool(name="ui_tree", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_tree(depth: int = 6) -> dict:
+    """Read the focused window's accessible tree (Tier 1), filtered and depth-capped.
+
+    Returns small structured text, not an image. Prefer this over a screenshot to
+    understand a native (non-web) window. On a box with no accessibility bus it
+    returns ``error: at_spi_unavailable`` with a one-line remedy.
+    """
+    return _ui_impl.ui_tree(depth)
+
+
+@mcp.tool()
+@tool(name="ui_find", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_find(role: str = "", name: str = "") -> dict:
+    """Find native UI elements (Tier 1) by role, name, or both.
+
+    Each result carries an opaque ``ref`` for ui_act, plus ``bounds`` and
+    ``states``. An empty match is a successful read (``ok`` with an empty list),
+    not an error. Match by role (e.g. "push button"), by name, or both.
+    """
+    return _ui_impl.ui_find(role=role, name=name)
+
+
+@mcp.tool()
+@tool(name="ui_act", tier=Tier.ONE, risk=Risk.MEDIUM)
+def ui_act(ref: str, action: str, text: str = "") -> dict:
+    """Act on a native UI element by ref (Tier 1): click, focus, set_text, toggle, expand.
+
+    Re-reads the element after acting and returns its new state, so a toggle that
+    did not toggle is visible in the response. A ref that no longer resolves fails
+    ``element_gone`` and never falls back to clicking its old coordinates. Pass
+    ``text`` for ``set_text``.
+    """
+    return _ui_impl.ui_act(ref=ref, action=action, text=text)
+
+
+@mcp.tool()
+@tool(name="ui_wait", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_wait(role: str = "", name: str = "", timeout_ms: int = 5000) -> dict:
+    """Block until a matching native element appears or the timeout elapses (Tier 1).
+
+    Bounded by ``timeout_ms``. Returns the element when it appears, or
+    ``error: timeout`` with the elapsed milliseconds.
+    """
+    return _ui_impl.ui_wait(role=role, name=name, timeout_ms=timeout_ms)
 
 
 # --- CLI: management subcommands ---

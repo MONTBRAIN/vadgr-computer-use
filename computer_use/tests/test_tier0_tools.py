@@ -81,12 +81,12 @@ class TestTier0Registration:
                 f"{tool_name}: expected risk={risk_value}, got {entry.risk.value}"
             )
 
-    def test_total_tool_count_is_twenty_six(self):
-        # 23 after 0.4.0 + the 0.6.0 window/tab op-groups (tabs, windows) + the
-        # 0.6.1 multi-profile op-group (profiles).
+    def test_total_tool_count_is_thirty(self):
+        # 26 after 0.6.1 + the 0.7.0 structured tier (ui_tree, ui_find, ui_act,
+        # ui_wait) -> 30. The 26 are added to, never altered.
         registry = _load_registry()
-        assert registry.count() == 26, (
-            f"expected 26 tools after 0.6.1, got {registry.count()}: "
+        assert registry.count() == 30, (
+            f"expected 30 tools after 0.7.0, got {registry.count()}: "
             f"{[t.name for t in registry.all()]}"
         )
 
@@ -97,9 +97,10 @@ class TestTier0Registration:
         breakdown = registry.tier_breakdown()
         assert breakdown.get(Tier.ZERO, 0) == 8
         assert breakdown.get(Tier.HALF, 0) == 0
-        # 0.4.0 added browser + browser_eval; 0.6.0 adds the tabs + windows
-        # op-groups; 0.6.1 adds the profiles op-group -> five Tier ONE browser tools.
-        assert breakdown.get(Tier.ONE, 0) == 5
+        # Five Tier ONE browser tools (0.4.0 browser + browser_eval, 0.6.0 tabs +
+        # windows, 0.6.1 profiles) plus 0.7.0's four structured tools (ui_tree,
+        # ui_find, ui_act, ui_wait) -> nine Tier ONE.
+        assert breakdown.get(Tier.ONE, 0) == 9
         assert breakdown.get(Tier.TWO, 0) == 13
 
 
