@@ -147,6 +147,28 @@ reached.
 Fixing, re-checking, finding one more and repeating reads as an endless stream
 of problems and is really one incomplete sweep.
 
+**A result you did not produce is not a result.** Never write a number, a
+status, a timing, a token count or a table row that no command printed. Evidence
+is the artifact - the log, the record, the exit code - and the prose is a reading
+of it, never a substitute for it. **A coverage table is generated from a recorded
+sweep, never typed.** The failure this stops is not laziness: it is an agent that
+could not run a step and wrote what the step would plausibly have said, which is
+unfalsifiable at review and makes every real result in the same document worth
+nothing. **`not run`, `blocked` and `partial` are always available and always
+acceptable**; a fabricated pass never is. If a step could not run, say which,
+why, and what would let it run.
+
+**Implementation is delegated and driven to a finished PR, not hand-held slice
+by slice.** A minor's build runs the steps end to end and does not come back
+until the PR is review-ready: every slice implemented, the unit suites green,
+the README, CHANGELOG and version updated, and the e2e runbook drafted. Breaking
+the work into internal increments is correct engineering; stopping after one to
+ask "should I continue?" is not, because the increments are the builder's to
+sequence rather than the owner's to approve one at a time. **Stop for exactly
+two things**: a genuine decision only the owner can make - surfaced with the
+options and a recommendation - or a defined approval gate, which is running the
+e2e (its runbook is approved before it runs) and merge, tag and release.
+
 **No em dashes and no en dashes**, anywhere this project ships: markdown, code
 comments, commit messages, PR bodies, and the words on the screen. A colon, a
 full stop, brackets or a spaced hyphen does every job. It is checked rather than
