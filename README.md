@@ -336,6 +336,6 @@ Apache 2.0. See `LICENSE`.
 
 ## Part of Vadgr
 
-- [vadgr](https://github.com/MONTBRAIN/vadgr): workflow engine (brain)
+- [vadgr](https://github.com/MONTBRAIN/vadgr): the daemon that runs on your machine, and the CLI (brain)
 - **[vadgr-computer-use](https://github.com/MONTBRAIN/vadgr-computer-use)**: computer-use MCP with system, browser, and desktop tiers (hands and eyes)
 - [vadgr-agent-os](https://github.com/MONTBRAIN/vadgr-agent-os): containerized agent runtime
