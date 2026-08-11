@@ -415,7 +415,7 @@ tool over the wire, so it can never satisfy parts D or E. A row marked
 |---|---|---|---|---|---|
 | A: reproduce the defect | **pass** | **pass** | **pass** | **pass** | a resolver and an import, no OS branch. CI was red on this exact error for five days, the same observation from the outside. macOS was run by hand to confirm the fail mode on that wheel; Windows too: `mcp 2.0.0` resolved vs `0.6.5`, and both the import (from a neutral cwd) and the console script exited `1` with `ModuleNotFoundError` at `mcp_server.py:36` |
 | B: suites on a fresh 2.x env | **partial** | **pass** | **partial** | **pass** | CI builds its environment from `pyproject.toml` on every push, so each row is itself a fresh install resolving 2.x. macOS was also run by hand: 706 passed, 48 skipped, ruff exit 0. Windows: `mcp 2.0.0` resolved, `ruff` `0`, entry point imports, stdio serves 26 tools, floor plant (`mcp<2` -> `ResolutionImpossible`) holds; but full `pytest` cannot collect on Windows (`fcntl`), pre-existing and unrelated to `mcp`, hence `partial` |
-| C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch (Linux: Not-Needed, same reason as macOS — WSL/Windows already ran it byte-identical). Windows: 26 tools both majors, names + `inputSchema` + `outputSchema` byte-identical across `mcp` 1.29.0 and 2.0.0 (contract sha256 `1b7534438d64090d`), `2024-11-05` handshake, no module names the removed package. The raw before/after file diff is non-empty only because of the branch's own `cf25631` em-dash->hyphen sweep in 3 tool descriptions (cosmetic, F7), not an across-majors divergence |
+| C: surface diff across the majors | Not-Needed | Not-Needed | **pass** | **pass** | the catalogue is derived from decorators with no OS branch (Linux: Not-Needed, same reason as macOS - WSL/Windows already ran it byte-identical). Windows: 26 tools both majors, names + `inputSchema` + `outputSchema` byte-identical across `mcp` 1.29.0 and 2.0.0 (contract sha256 `1b7534438d64090d`), `2024-11-05` handshake, no module names the removed package. The raw before/after file diff is non-empty only because of the branch's own `cf25631` em-dash->hyphen sweep in 3 tool descriptions (cosmetic, F7), not an across-majors divergence |
 | D: live agent session | **pass** | **pass** | **pass** | **pass** | cells 1 to 7. `screenshot` and the structured cells cross a per-OS backend. macOS: cell 5 via a bad-selector `op_failed` (bond live). Windows: cell 5 via `browser(navigate)` returning `[not_connected]` + pixel fallback (bond held elsewhere); `get_platform_info` reported `platform: windows`. Linux: cell 5 via bad-selector `op_failed` (bond live on the branch server, the session's own mcp-1.x server being dead); `screenshot` via the GNOME 50 XDG portal, `get_platform_info` reported `platform: linux` |
 | E: every tool called | **pass†** | **pass†** | **pass** | **pass** | 26 of 26 called on all four. WSL browser tools dispatch-only (bond held elsewhere); macOS browser tools round-tripped (`†` see the macOS note); macOS input tools dispatch-only until the Quartz rig exists. **Windows drove all 8 input tools against a full-screen event-logging rig** (real clicks, held drag, wheel notches, double-click word-select, real keystrokes); Windows browser tools dispatch-only. Findings F8 (high-DPI coordinate mismatch) and F9 (`type_text` real keystrokes) |
 | overall | **pass†** | **pass†** | **pass** | **pass** | **All four OSes now carry the whole runbook A to E.** Linux (Ubuntu 26.04 / GNOME 50, 2026-08-10): A reproduced, D cells 1-7, E 26/26 with tier-0/tier-2 ground-truthed and the browser tier round-tripped; caveats are B's one pre-existing env-sensitive uinput test (F10, not `mcp`) and E's input rig (dispatch-only, the Linux executor was already proven in the 0.4.1 runbook). macOS's caveat is the input rig; Windows's is Part B's `pytest` collection (`fcntl`) plus F8/F9 |
@@ -525,7 +525,7 @@ Setup block requires; not the pre-existing checkout venv.
   computer_use` exited `0`. Plant 1 (floor): with `mcp>=2.0` in place,
   `pip install --dry-run <checkout> "mcp<2"` exited `1` with
   `ResolutionImpossible`, so the floor really is what prevents the 1.x resolve.
-  Plants 2–4 already fired on WSL and are not re-run per OS; they exercise
+  Plants 2 to 4 already fired on WSL and are not re-run per OS; they exercise
   wire-surface / source-scan / run-path assertions that are OS-independent.
 - **Part C, Not-Needed on macOS.** The catalogue is derived from decorators
   with no OS branch; WSL already ran C to a byte-identical diff.
@@ -728,7 +728,7 @@ per the Setup block.
   issue #39 reports.
 - **Part B, partial.** `/tmp/cua-26` (editable `[dev]`) resolved `mcp 2.0.0` and
   `0.6.6`. `ruff check computer_use` exited `0`. `pytest computer_use/tests -q`:
-  **725 passed, 28 skipped, 1 failed** —
+  **725 passed, 28 skipped, 1 failed** -
   `test_linux.py::TestCreateActionExecutor::test_wayland_no_mutter_no_evdev_raises`.
   That single failure is F10 below: a pre-existing, environment-sensitive test
   unrelated to `mcp`. **Plant 1 (the floor) fired:** with `mcp>=2.0`,
@@ -746,7 +746,7 @@ per the Setup block.
   - **Cell 2 pass.** `fs(read, /tmp/cua-e2e-066-linux/input.txt)` returned
     `sentinel-linux-a9f31c`, `is_error` falsy.
   - **Cell 3 pass.** `screenshot(format=jpeg)` returned an `image` block,
-    `mimeType image/jpeg` (~89 KB b64), through the GNOME 50 XDG portal — the
+    `mimeType image/jpeg` (~89 KB b64), through the GNOME 50 XDG portal - the
     `Image` path crosses the moved import intact.
   - **Cell 4 pass.** `get_platform_info` returned the dict
     `{"platform": "linux", "backend_available": true}`.
@@ -758,7 +758,7 @@ per the Setup block.
     … pixel tools …`. The migrated `ToolError` is the class the SDK still
     recognises, guidance intact, not a masked error.
   - **Cell 6 pass.** Off-agent `od -c /tmp/cua-e2e-066-linux/output.txt` =
-    `SENTINEL-A9F31C`, 15 bytes on disk — not from the agent's summary.
+    `SENTINEL-A9F31C`, 15 bytes on disk - not from the agent's summary.
   - **Cell 7 pass.** `vadgr-cua --transport sse --port 8791` came up; `GET /sse`
     answered `HTTP 200` with `event: endpoint / data: /messages/?session_id=…`, an
     unknown path answered `404`. `--port` reaches the transport through `run()`.

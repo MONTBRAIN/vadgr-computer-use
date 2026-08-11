@@ -78,7 +78,7 @@ python3 ../vadgr-docs/scripts/check_iteration.py <phase> <iteration>
 
 ## The practices every repo in this family follows
 
-**This section is identical in all four repos, and identical in this repo's
+**This section is identical in every code repo, and identical in this repo's
 `CLAUDE.md` and `AGENTS.md`.** An agent loads one or the other depending on the
 tool it runs under, and it must not get a different standard depending on which.
 The long form of every rule here is `vadgr-docs/general/ENGINEERING.md`; these
@@ -179,9 +179,9 @@ options and a recommendation - or a defined approval gate, which is running the
 e2e (its runbook is approved before it runs) and merge, tag and release.
 
 **Write your replies to the owner in Simplified Technical English, ASD-STE100.**
-Set the Claude Code output style to it. This applies on every machine and in
-every repo, so it is written in each entry point and not in one person's local
-settings.
+In Claude Code, set the output style to it; a CLI with no such setting applies
+the rules below directly. This applies on every machine and in every repo, so
+it is written in each entry point and not in one person's local settings.
 
 The rules:
 

@@ -7,12 +7,13 @@
 > **This template is this repo's, not a shared one.** `vadgr` proves an API and
 > a CLI, `vadgr-mobile` proves a screen in a person's hand, and this repo proves
 > **a real agent driving a real desktop**. The shape below follows from that: the
-> driver is a Claude subagent, the oracle is the JSON it emitted, and the axis
-> that has to be repeated is the **operating system**.
+> driver is a headless agent CLI session, the oracle is the JSON it emitted, and
+> the axis that has to be repeated is the **operating system**.
 
-## The approach: a Claude subagent over `claude -p`
+## The approach: a headless agent CLI session
 
-> Say which model, which MCP config, and what the agent was told. The task is
+> Say which CLI drove it (Codex or Claude Code, whichever the machine has) and
+> its version, which model, which MCP config, and what the agent was told. The task is
 > **goal-level** ("log in and confirm the banner"), never a script of tool calls:
 > a runbook that dictates the calls tests the runbook, not the runtime.
 
@@ -24,7 +25,7 @@ agent's summary is self-report, a mutating action counts only when a
 `is_error: true`, and with neither stream nor transcript the result is
 **not verified** rather than a pass.
 
-> Name where this pass's JSON landed - the teed stream, or the `~/.claude`
+> Name where this pass's JSON landed - the teed stream, or the driving CLI's
 > transcript path - so a reader can check your verdicts rather than trust them.
 
 ## Prerequisites (per OS)
