@@ -376,13 +376,13 @@ server**, the Linux column is expanded into its own table.
 
 | part | GNOME Wayland | GNOME X11 | KDE (Qt) | wlroots (Sway/Hyprland) | minimal / no-a11y | notes |
 |---|---|---|---|---|---|---|
-| A: capability + remedy | not run | not run | not run | not run | not run | the negative control belongs on the minimal row: a session with no bus |
-| B: read GTK/Qt/Electron | not run | not run | not run | not run | not run | KDE is the natural home for the Qt read; GNOME for GTK; Electron on any |
-| C: five verbs on re-read | not run | not run | not run | not run | not run | typing into real windows; run attended |
-| D: honest failures | not run | not run | not run | not run | not run | the minimal row is where `no_tree` and a dead bus are cheapest to stage |
-| E: grounding | not run | not run | Not-Needed | not run | Not-Needed | X11 is where the round trip must land; Wayland is where `none` must be reported and honoured |
+| A: capability + remedy | **pass** | not run | not run | not run | not run | driven: `get_platform_info` returned the structured block; the dead-bus remedy is covered by the unit suite, not staged live |
+| B: read GTK/Electron | **pass** | not run | not run | not run | not run | GTK4 read by the agent; Electron read via the backend (agent blocked by focus, see below). Qt not run: no Qt app installed here |
+| C: five verbs on re-read | **partial** | not run | not run | not run | not run | click/toggle/set_text driven and self-confirmed by the agent; focus/expand covered by the unit suite |
+| D: honest failures | **pass** | not run | not run | not run | not run | `element_gone` driven by the agent on a bogus ref (clicked nothing); `no_tree`/`unsupported_action` in the unit suite |
+| E: grounding | **pass** | not run | Not-Needed | not run | Not-Needed | Wayland reported `coordinate_trust: none` (do not ground); the X11 round trip is not run (no X11 session here) |
 | F: Tier 2 regression | not run | not run | not run | not run | not run | unchanged from `0.6.6`; a divergence is the finding |
-| overall | not run | not run | not run | not run | not run | the whole runbook awaits the owner's live pass on a real desktop |
+| overall | **pass (structured)** | not run | not run | not run | not run | GNOME Wayland structured tier driven end to end by a real agent; other desktops and X11 grounding owed |
 
 ### The other operating systems
 
@@ -391,40 +391,154 @@ server**, the Linux column is expanded into its own table.
 | A to E (structured tier) | not run | not run | not run | no structured tier on these yet (`0.8.0` Windows, `0.9.0` macOS); the tools are listed and return `at_spi_unavailable` |
 | F: Tier 2 regression | not run | not run | not run | Tier 2 is unchanged; re-run the `0.6.6` sweep to confirm no regression |
 
-**Developer smoke on GNOME Shell 50 / Wayland (not the e2e, recorded for the
-owner).** During implementation the backend was driven by hand on this desktop,
-which is context for the pass, not a substitute for it: GTK4 apps
-(`gnome-text-editor`, `nautilus`, `ptyxis`) read through `ui_tree`/`ui_find` by
-role and by name; `ui_act` `toggle` fired a real `DoAction` and re-read the
-element; `set_text` wrote into a GTK4 text box; `element_gone` returned for a
-bogus ref and an unsupported verb listed the supported set; `get_platform_info`
-reported the `structured` block with `coordinate_trust: none` and
-`toolkits_seen` including GTK, Chromium and Clutter; extents came back
-`(0, 0, w, h)`, confirming the Wayland origin is withheld. None of this is a
-runbook cell: it was not agent-driven, not captured as a stream, and covered
-only one desktop. Every cell above stays `not run` until the owner drives it.
+### GNOME Shell 50 / Wayland, driven by a real agent (2026-08-11)
+
+Ubuntu GNOME Shell 50 / Wayland, the structured tier driven by a Claude agent
+over `claude -p --output-format stream-json` against a one-server `.mcp.json`
+pointed at the branch's `vadgr-cua`, with `--dangerously-skip-permissions` and
+`--strict-mcp-config`. The verdicts below are read from the captured
+`tool_result` JSON, not the agent's prose. Two agent sessions were run (a GTK4
+read/act session and an honest-failure session); the stream journals are the
+evidence.
+
+This pass was run before the PR was opened, and it found five defects the 789
+green unit tests had not: they are the `Findings` below, all fixed, each with a
+test that fails without the fix. The results here are the re-run after those
+fixes.
+
+**Group A, capability, pass.** The agent's `get_platform_info` returned the
+structured block verbatim:
+`{"backend":"atspi","bus_reachable":true,"is_enabled":true,"coordinate_trust":"none","toolkits_seen":["clutter","gtk","GTK","Chromium"],"available":true}`.
+
+**Group B, read, pass on GTK4.** `ui_tree(depth 6)` on GNOME Text Editor returned
+a tree whose leaves include the real controls (role `button` and `toggle button`:
+`Open`, `New Tab`, `Document Properties`, `Minimize`, `Maximize`, `Close`),
+sixteen anonymous wrapper containers deep, not a tree that stops at the
+containers. `ui_find(role="toggle button")` returned the three header toggles
+with their bounds and states. **Electron** (`code` launched with
+`--force-renderer-accessibility`) was read through the backend rather than the
+agent: its window exposed a 427-node tree with 59 `push button` elements
+(`Minimize`, `Close`, `Open Quick Access`, `Toggle Chat`, and more), a
+`check box`, an `entry`, and tab controls. The agent-driven Electron read could
+not be captured because no window held the AT-SPI `active` state at the moment
+the agent ran (the same headless-session focus limitation the runbook notes
+below); the read itself works, and its role names are Chromium's
+(`push button`) where GTK4's are `button`.
+
+**Group C, act, pass on the driven verbs.** `ui_act(toggle)` on the `Open` toggle
+returned, in its own response, `state.states` containing `pressed`; a second
+`ui_act(toggle)` returned `state.states` without `pressed`. The action confirms
+itself from its own response, which is the whole contract (this is finding F1
+after its fix). `ui_act(set_text, "hello from the e2e run")` on the document text
+box returned `state.text` equal to `"hello from the e2e run"`, so the write is
+confirmable from the response (finding F2 after its fix). `focus` and `expand`
+were not driven this pass and rest on the unit suite.
+
+**Group D, honest failure, pass.** `ui_act(ref="atspi:deadbeef", action="click")`
+on a reference never handed out returned
+`{"ok":false,"error":"element_gone","message":"ref does not resolve"}` and
+clicked nothing. `no_tree` and `unsupported_action` rest on the unit suite this
+pass.
+
+**Group E, grounding, pass.** `coordinate_trust` came back `none` and every bound
+had `x=0, y=0` (the compositor withholds the window origin on Wayland), so the
+bounds are correctly not used to ground a pixel click. The X11 round trip is not
+run: there is no X11 session on this box.
+
+**Bounds sanity (finding F4 after its fix).** Across the 86-node showing tree of
+the text editor, 84 elements carried bounds and 2 (unrealised tab panels) carried
+`null`; no width or height was absurd. Before the fix those two returned
+`w=612489008` from uninitialised toolkit memory.
+
+**Latency.** `ui_find` returned in roughly 2 to 9 ms and `ui_tree(depth 6)` in
+roughly 8 to 13 ms, against a Tier 2 `screenshot` at about 104 ms for a 122 KB
+image on the same box: the structured tier is an order of magnitude faster and
+returns small text, which is the tier's whole argument.
+
+**What this GNOME Wayland pass did not cover.** The agent-driven Electron read
+(focus), Qt (no Qt app installed here), the X11 grounding round trip (no X11
+session), `focus`/`expand` verbs and `no_tree`/`unsupported_action` as agent
+cells (covered by the unit suite), and Part F. Those stay `not run` in the table
+above and are owed on a desktop that has them.
 
 ## Evidence
 
-Filed to the evidence bundle kept for this minor outside this repo, with a
-sha256 recorded for every file, and filed **while the pass runs** at each part's
-boundary rather than assembled at the end.
+The GNOME Wayland pass was captured as `--output-format stream-json` run
+journals, one per agent session, with every `ui_*` `tool_result` in full:
 
-- **Part A:** the `get_platform_info` result on a live bus and on a stopped one,
-  and the surface snapshot with the 26-tool sub-hash matching `0.6.6`.
-- **Parts B, C, D, E:** the teed `stream-json` run journals, with every `ui_*`
-  `tool_result` and its elapsed time, plus the independent read-backs behind
-  each mutating action (and, for Part D, the cursor-position ground truth
-  proving the stale ref clicked nothing).
-- **Part F:** the raw JSON-RPC request/response journal and the input-rig log,
-  as in the `0.6.6` sweep.
+- the GTK4 read/act session (Groups A, B, C, E): `get_platform_info`'s structured
+  block, `ui_tree(depth 6)` reaching the header controls, `ui_find` on the
+  toggles, `ui_act(toggle)` returning `pressed` in its own response, and
+  `ui_act(set_text)` returning the `text` field.
+- the honest-failure session (Group D): `ui_act` on `atspi:deadbeef` returning
+  `element_gone` and clicking nothing.
+
+For the owner's fuller pass, the remaining artifacts are owed at their own
+boundaries: the dead-bus `at_spi_unavailable` remedy, the Qt and agent-driven
+Electron reads, the X11 grounding round trip, and Part F's Tier 2 sweep.
 
 ## Findings
 
-> Filled in as the pass runs. Each finding: what was seen, what caused it, what
-> was done, and what proves the fix. A fix whose only proof is an unrun part is
-> unproven. A defect provably pre-existing in a subsystem this release does not
-> touch is recorded with the `git diff` that shows it untouched, not fixed here.
+All five were found by the agent-driven pass above and were invisible to the 789
+green unit tests, which is the reason this pass exists. Each is fixed, and each
+fix has a test that fails without it: the toolkit's async lag, the deep wrapper
+nesting, the garbage extents and the hidden dialog are all modelled in the fake
+client, and the fix was watched going from red to green.
+
+### F1 (fixed): ui_act returned the element's state from before the action
+
+`ui_act(toggle)` returned a `state` whose `states` still lacked `pressed` while an
+independent `ui_find` a moment later showed `pressed` set. The toolkit updates an
+element's state asynchronously: measured on a GTK4 toggle, `pressed` was still
+false the instant `DoAction` returned and true about 150 ms later. The re-read
+read the stale value straight back, which breaks the tier's core contract that an
+action confirms itself from its own response. The re-read now settles: it re-reads
+until an observable field (a state or the text) changes from the pre-action
+snapshot, up to a bounded window, and returns the moment it does. **Proof:** the
+agent's `ui_act(toggle)` now returns `pressed` in its own response, and the unit
+test drives a fake client whose state change is delayed two reads, which the old
+single read fails.
+
+### F2 (fixed): set_text was not confirmable
+
+`ui_act(set_text)` returned `ok` but no `ui_*` result carried the element's text,
+so a caller could not tell whether the text landed. Elements now carry a `text`
+field, read from `org.a11y.atspi.Text` for text-bearing roles only (so a button
+is not charged a round trip for a field it has not got). **Proof:** the agent's
+`ui_act(set_text, "hello from the e2e run")` now returns `state.text` equal to
+that string, and a unit test asserts the re-read carries the set text.
+
+### F3 (fixed): ui_tree stopped at the wrapper containers
+
+`ui_tree` returned only containers even at depth 14; the controls `ui_find` finds
+were absent. GTK4 stacks about sixteen anonymous `generic`/`group` wrappers
+between a window and its buttons, and the old traversal spent its depth budget on
+them. Depth now counts meaningful nodes only: a named or non-structural node
+costs a level, an anonymous wrapper is transparent. **Proof:** the agent's
+`ui_tree(depth 6)` now reaches the header buttons, and a unit test asserts a
+control sixteen wrappers deep appears in the tree at the default depth and that
+the tree's leaves include what `ui_find` returns.
+
+### F4 (fixed): some elements returned garbage bounds
+
+An unrealised widget (a hidden tab panel) returned uninitialised memory as its
+extents, e.g. `w=612489008, h=32573`, with a correct `(iiii)` signature (so it was
+toolkit garbage, not a decode bug). A caller could have aimed a pixel click at a
+600-million-pixel rectangle. Implausible extents (a dimension past 100000 px, or
+negative) are now dropped, so the element gets no bounds rather than a nonsense
+one. **Proof:** the driven tree carried zero absurd bounds and `null` for the two
+unrealised panels; a unit test asserts garbage extents yield no bounds and sane
+ones are kept. `x=0, y=0` on Wayland is correct (the origin is withheld) and is
+not touched.
+
+### F5 (fixed): an off-screen dialog's controls surfaced as if on screen
+
+Controls of a dialog that was not on screen were reported with `showing` and
+`visible` and then vanished from a later identical `ui_find`. `ui_find` and
+`ui_tree` now prune any non-showing subtree, so an off-screen dialog's buttons do
+not surface. **Proof:** a unit test builds a window with a non-showing dialog whose
+button falsely reports `showing`, and asserts the button is not found while a
+genuinely visible control still is.
 
 ## What this runbook cannot prove
 
