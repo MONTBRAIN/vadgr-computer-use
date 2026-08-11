@@ -35,7 +35,7 @@ class FakeNode:
     def __init__(
         self, role, name, *, states=(), extents=(0, 0, 0, 0),
         interfaces=(), actions=(), children=(), gone=False, toolkit=None,
-        pid=0,
+        pid=0, text=None,
     ):
         self.role = role
         self.name = name
@@ -47,19 +47,25 @@ class FakeNode:
         self.gone = gone
         self.toolkit = toolkit
         self.pid = pid
+        self.text = text
         self.did = []  # (action_index) log
-        self.text = None
+        # Models the toolkit's async state update: a queued change becomes
+        # visible only after `reveal` more states() reads, so a re-read done too
+        # eagerly sees the stale value (the D1 defect).
+        self._pending = None
+        self._reveal = 0
 
 
 class FakeClient:
     """An in-memory accessibility tree keyed by opaque node ids."""
 
     def __init__(self, nodes: dict, root=("reg", "/root"), *,
-                 reachable=True, enabled=False):
+                 reachable=True, enabled=False, act_lag=0):
         self._nodes = nodes
         self._root = root
         self._reachable = reachable
         self._enabled = enabled
+        self._act_lag = act_lag
 
     def _n(self, node) -> FakeNode:
         fake = self._nodes.get(node)
@@ -86,11 +92,22 @@ class FakeClient:
         return self._n(node).name
 
     def states(self, node):
-        return tuple(self._n(node).states)
+        fake = self._n(node)
+        # Reveal a queued change once its countdown elapses, so an eager re-read
+        # sees the pre-action value and a settling one sees the post-action value.
+        if fake._reveal > 0:
+            fake._reveal -= 1
+            if fake._reveal == 0 and fake._pending is not None:
+                fake.states.append(fake._pending)
+                fake._pending = None
+        return tuple(fake.states)
 
     def extents(self, node):
         ext = self._n(node).extents
         return tuple(ext) if ext is not None else None
+
+    def text(self, node):
+        return self._n(node).text
 
     def interfaces(self, node):
         return tuple(self._n(node).interfaces)
@@ -101,10 +118,15 @@ class FakeClient:
     def do_action(self, node, index):
         fake = self._n(node)
         fake.did.append(index)
-        # A GTK toggle button gains "pressed" when its click action fires; model
-        # that so a toggle's re-read is observably different.
+        # A GTK toggle button gains "pressed" when its click action fires. With a
+        # lag configured, the change is queued and only surfaces after that many
+        # states() reads, modelling the toolkit's asynchronous update.
         if fake.role == "toggle button" and "pressed" not in fake.states:
-            fake.states.append("pressed")
+            if self._act_lag > 0:
+                fake._pending = "pressed"
+                fake._reveal = self._act_lag
+            else:
+                fake.states.append("pressed")
         return True
 
     def set_text(self, node, text):
@@ -134,18 +156,28 @@ def _session(server="wayland"):
 
 
 def _tree_with_button(**button_kwargs):
-    """A desktop -> app -> active window -> button, with the button tunable."""
+    """A desktop -> app -> active window -> button, with the button tunable.
+
+    The window and button are on screen (showing/visible) so the showing-prune
+    keeps them; a test that wants an off-screen element sets its own states.
+    """
     defaults = dict(
         role="push button", name="Save", extents=(0, 0, 74, 30),
         interfaces=[_ACCESSIBLE, _COMPONENT, _ACTION], actions=["Click"],
     )
     defaults.update(button_kwargs)
+    bstates = list(defaults.get("states", ()))
+    for s in ("showing", "visible"):
+        if s not in bstates:
+            bstates.append(s)
+    defaults["states"] = bstates
     button = FakeNode(**defaults)
     nodes = {
         ("reg", "/root"): FakeNode("desktop frame", "main", children=[("app", "/a")]),
         ("app", "/a"): FakeNode("application", "gedit", toolkit="GTK",
                                 children=[("win", "/w")]),
-        ("win", "/w"): FakeNode("frame", "Doc - gedit", states=["active"],
+        ("win", "/w"): FakeNode("frame", "Doc - gedit",
+                                states=["active", "showing", "visible"],
                                 extents=(0, 0, 800, 600),
                                 children=[("btn", "/b")]),
         ("btn", "/b"): button,
@@ -318,6 +350,166 @@ class TestActVerbs:
         with pytest.raises(StructuredError) as exc:
             backend.act(ref, "focus", "")
         assert exc.value.code == "unsupported_action"
+
+
+class TestActReReadIsPostAction:
+    """D1: the returned state must be the element after acting, not before.
+
+    The toolkit updates state asynchronously, so a re-read done the instant
+    DoAction returns sees the stale value. The whole contract of ui_act is that
+    the action confirms itself from its own response.
+    """
+
+    def test_toggle_state_change_survives_the_toolkit_lag(self):
+        nodes = _tree_with_button()
+        nodes[("btn", "/b")].role = "toggle button"
+        # act_lag=2: the pressed state only appears on the second states() read
+        # after DoAction, so an eager single read returns the old state.
+        backend = _backend(nodes, act_lag=2)
+        ref = backend.find("toggle button", "")[0].ref
+        result = backend.act(ref, "toggle", "")
+        assert "pressed" in result["state"]["states"]
+
+
+class TestSetTextIsConfirmable:
+    """D2: set_text is only trustworthy if the re-read shows the text landed."""
+
+    def test_reread_carries_the_text_that_was_set(self):
+        nodes = _tree_with_button(
+            role="text box", interfaces=[_ACCESSIBLE, _EDITABLE_TEXT, "org.a11y.atspi.Text"],
+            actions=[], text="",
+        )
+        backend = _backend(nodes)
+        ref = backend.find("text box", "")[0].ref
+        result = backend.act(ref, "set_text", "hello world")
+        assert result["state"]["text"] == "hello world"
+
+    def test_find_surfaces_text_for_text_roles(self):
+        nodes = _tree_with_button(role="text box", text="already here",
+                                  interfaces=[_ACCESSIBLE, "org.a11y.atspi.Text"])
+        backend = _backend(nodes)
+        el = backend.find("text box", "")[0]
+        assert el.text == "already here"
+
+    def test_a_button_carries_no_text_field(self):
+        backend = _backend(_tree_with_button())
+        assert backend.find("push button", "")[0].as_dict().get("text") is None
+
+
+class TestTreeReachesControls:
+    """D3: ui_tree must reach the same leaves ui_find reaches.
+
+    GTK stacks anonymous wrapper containers between a window and its controls; a
+    tree that stops at the wrappers is no substitute for a screenshot.
+    """
+
+    def _deeply_nested(self, wrapper_depth=16):
+        # window -> N anonymous generic wrappers -> a named button.
+        nodes = {
+            ("reg", "/root"): FakeNode("desktop frame", "d", children=[("app", "/a")]),
+            ("app", "/a"): FakeNode("application", "app", children=[("win", "/w")]),
+        }
+        chain = ("win", "/w")
+        nodes[chain] = FakeNode("frame", "Win",
+                                states=["active", "showing", "visible"])
+        parent = chain
+        for i in range(wrapper_depth):
+            nid = ("g", f"/g{i}")
+            nodes[nid] = FakeNode("generic", "", states=["showing", "visible"])
+            nodes[parent].children = [nid]
+            parent = nid
+        btn = ("btn", "/b")
+        nodes[btn] = FakeNode("push button", "Deep Save",
+                              states=["showing", "visible"],
+                              interfaces=[_ACCESSIBLE, _ACTION], actions=["Click"])
+        nodes[parent].children = [btn]
+        return nodes
+
+    def _leaf_names(self, tree_node):
+        names = []
+        stack = [tree_node]
+        while stack:
+            n = stack.pop()
+            if not n["children"]:
+                names.append(n["name"])
+            stack.extend(n["children"])
+        return names
+
+    def test_default_depth_reaches_a_control_sixteen_wrappers_deep(self):
+        backend = _backend(self._deeply_nested(16))
+        tree = backend.tree(depth=6)  # the default; wrappers must be transparent
+        assert "Deep Save" in self._leaf_names(tree["root"])
+
+    def test_tree_leaves_include_what_find_returns(self):
+        nodes = self._deeply_nested(16)
+        backend = _backend(nodes)
+        found = {e.name for e in backend.find("push button", "")}
+        leaves = set(self._leaf_names(backend.tree(depth=6)["root"]))
+        assert found and found <= leaves
+
+
+class TestBoundsAreSane:
+    """D4: garbage extents (unrealised widgets) must not surface as bounds."""
+
+    def test_garbage_extents_yield_no_bounds(self):
+        nodes = _tree_with_button(extents=(0, 0, 612489008, 32573))
+        backend = _backend(nodes)
+        el = backend.find("push button", "")[0]
+        assert el.bounds is None
+
+    def test_sane_extents_are_kept(self):
+        backend = _backend(_tree_with_button(extents=(10, 20, 74, 30)))
+        el = backend.find("push button", "")[0]
+        assert el.bounds.as_dict() == {"x": 10, "y": 20, "w": 74, "h": 30}
+
+    def test_negative_size_is_rejected(self):
+        backend = _backend(_tree_with_button(extents=(0, 0, -1, 30)))
+        assert backend.find("push button", "")[0].bounds is None
+
+
+class TestOffScreenIsNotSurfaced:
+    """D5: an off-screen dialog's controls must not surface as if on screen."""
+
+    def _window_with_hidden_dialog(self):
+        return {
+            ("reg", "/root"): FakeNode("desktop frame", "d", children=[("app", "/a")]),
+            ("app", "/a"): FakeNode("application", "app", children=[("win", "/w")]),
+            ("win", "/w"): FakeNode("frame", "Win",
+                                    states=["active", "showing", "visible"],
+                                    children=[("real", "/r"), ("dlg", "/d")]),
+            ("real", "/r"): FakeNode("push button", "Visible Save",
+                                     states=["showing", "visible"],
+                                     interfaces=[_ACCESSIBLE, _ACTION], actions=["Click"]),
+            # An off-screen close-confirmation dialog: not showing, but GTK still
+            # reports its buttons as showing. Pruning at the dialog is what keeps
+            # them out of the results.
+            ("dlg", "/d"): FakeNode("dialog", "", states=["visible"],
+                                    children=[("disc", "/disc")]),
+            ("disc", "/disc"): FakeNode("push button", "Discard",
+                                        states=["showing", "visible"],
+                                        interfaces=[_ACCESSIBLE, _ACTION],
+                                        actions=["Click"]),
+        }
+
+    def test_hidden_dialog_button_is_not_found(self):
+        backend = _backend(self._window_with_hidden_dialog())
+        assert backend.find("push button", "Discard") == []
+
+    def test_the_visible_control_is_still_found(self):
+        backend = _backend(self._window_with_hidden_dialog())
+        assert [e.name for e in backend.find("push button", "")] == ["Visible Save"]
+
+    def test_tree_omits_the_off_screen_dialog(self):
+        backend = _backend(self._window_with_hidden_dialog())
+        tree = backend.tree(depth=6)
+        names = []
+        stack = [tree["root"]]
+        while stack:
+            n = stack.pop()
+            names.append(n["name"])
+            stack.extend(n["children"])
+        assert "Discard" not in names
+        assert "Visible Save" in names
 
 
 class TestBusUnavailable:

@@ -64,22 +64,33 @@ class Bounds:
 
 @dataclass(frozen=True)
 class Element:
-    """One accessible element: an opaque, session-scoped ref plus what it is."""
+    """One accessible element: an opaque, session-scoped ref plus what it is.
+
+    ``text`` is the element's textual content for text/editable/value elements
+    (empty everywhere else). It is what makes a ``set_text`` confirmable: the
+    caller reads back what actually landed rather than trusting an ``ok``.
+    """
 
     ref: str
     role: str
     name: str
     bounds: Bounds | None = None
     states: tuple[str, ...] = ()
+    text: str | None = None
 
     def as_dict(self) -> dict:
-        return {
+        out = {
             "ref": self.ref,
             "role": self.role,
             "name": self.name,
             "bounds": self.bounds.as_dict() if self.bounds else None,
             "states": list(self.states),
         }
+        # Only carried when the element actually has text, so a button or a
+        # container is not padded with a null field on every read.
+        if self.text is not None:
+            out["text"] = self.text
+        return out
 
 
 class StructuredError(Exception):

@@ -160,6 +160,14 @@ gate result: it is the weakest of the parts actually driven on that OS. This
 shipped once and was caught in review, with two platforms marked `pass (CI)`
 while their own live rows read `not run`. **A suite is not a session.**
 
+**The e2e is run before the PR is published, and the owner reviews the results,
+not a plan.** Whoever builds the change runs the e2e the feature needs - a browser
+change against real sites, a desktop or structured change against real
+applications, never a mock - and ships the results in the PR. There is no
+approve-the-runbook-before-it-runs step: the owner reviews the results and asks for
+changes if they do not convince. A PR that claims a feature works with its e2e left
+unrun is incomplete.
+
 **Close an e2e with three independent passes**, run concurrently, each with its
 **own port, database and daemon** - three observations rather than one run
 watched three times. Compare them structurally: every HTTP entry on method,

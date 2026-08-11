@@ -95,6 +95,67 @@ _MAX_NODES = 2000
 # poll is simpler, needs no signal plumbing, and cannot outlive its timeout.
 _WAIT_POLL_SECONDS = 0.1
 
+# The largest extent, in pixels, that is ever a real widget. GTK reports
+# uninitialised memory as the extents of an unrealised widget (observed: a hidden
+# tab panel returning w=612489008 with a correct (iiii) signature), so a value
+# past this is toolkit garbage, not a bound, and the element gets no bounds rather
+# than a nonsense rectangle a caller might aim a pixel click at.
+_MAX_EXTENT = 100000
+
+# Anonymous structural containers GTK stacks between a window and its controls:
+# on GTK4 a button can sit sixteen of these deep. They carry no information a
+# caller acts on, so they are transparent to ui_tree's depth budget, which is
+# what lets a shallow depth still reach the controls (a tree that stops at the
+# wrappers is no substitute for a screenshot). A node with a name is never
+# structural, whatever its role.
+_STRUCTURAL_ROLES = frozenset({
+    "filler", "generic", "section", "group", "box", "panel",
+    "redundant object", "scroll pane", "viewport", "split pane",
+    "layered pane", "tab panel",
+})
+
+# Roles whose text content is worth reading. Reading GetText on every node would
+# make ui_tree pay a round trip per element for text almost none of them have, so
+# only text-bearing roles are asked, and the read is what makes set_text
+# confirmable.
+_TEXT_ROLES = frozenset({
+    "text", "entry", "password text", "text box", "paragraph", "heading",
+    "label", "static", "document text", "terminal", "document web",
+})
+
+# After an action, the toolkit updates the element's state asynchronously: a GTK
+# toggle reads its old state for tens of milliseconds after DoAction returns
+# (observed: pressed still false immediately, true 150 ms later). So the re-read
+# is a bounded poll that returns the moment an observable field changes, which is
+# what lets a toggle confirm itself from its own response rather than three turns
+# later. If nothing changes within the window (a click that acts elsewhere), the
+# last read is returned rather than waiting the whole time for nothing.
+_ACT_SETTLE_SECONDS = 0.6
+_ACT_SETTLE_POLL = 0.03
+
+
+def _sane_extents(ext: tuple[int, int, int, int] | None):
+    """Drop implausible extents (toolkit garbage) so bounds are trustworthy."""
+    if ext is None:
+        return None
+    x, y, w, h = ext
+    if w < 0 or h < 0 or w > _MAX_EXTENT or h > _MAX_EXTENT:
+        return None
+    if abs(x) > _MAX_EXTENT or abs(y) > _MAX_EXTENT:
+        return None
+    return ext
+
+
+def _is_meaningful(role: str, name: str) -> bool:
+    """Whether a node counts against ui_tree's depth (a named or non-structural node)."""
+    if name:
+        return True
+    return role not in _STRUCTURAL_ROLES
+
+
+def _role_reads_text(role: str) -> bool:
+    return role in _TEXT_ROLES or role.endswith("text")
+
 
 def _proc_comm(pid: int) -> str:
     """The process command name from /proc, or empty. Best effort by design."""
@@ -160,6 +221,7 @@ class _Client(Protocol):
     def grab_focus(self, node: Node) -> bool: ...
     def toolkits(self) -> tuple[str, ...]: ...
     def pid(self, node: Node) -> int: ...
+    def text(self, node: Node) -> str | None: ...
 
 
 # The verbs ui_act accepts, mapped to how each is performed. click/toggle/expand
@@ -260,30 +322,55 @@ class AtspiBackend:
     # -- reading -----------------------------------------------------------
 
     def _element(self, node: Node) -> Element:
-        extents = self._client.extents(node)
+        role = self._client.role_name(node)
+        extents = _sane_extents(self._client.extents(node))
         bounds = Bounds(*extents) if extents is not None else None
+        # Text is only asked of text-bearing roles: it is what makes set_text
+        # confirmable, and reading it from every button would be a round trip per
+        # node for a field they do not have.
+        text = self._client.text(node) if _role_reads_text(role) else None
         return Element(
             ref=self._ref_for(node),
-            role=self._client.role_name(node),
+            role=role,
             name=self._client.name(node),
             bounds=bounds,
             states=self._client.states(node),
+            text=text,
         )
 
     def _node_dict(self, node: Node, depth: int, budget: list[int]) -> dict:
-        """A tree node as a plain dict, its children recursed to ``depth``."""
-        element = self._element(node)
-        out = element.as_dict()
+        """A tree node as a plain dict, its meaningful children recursed to ``depth``.
+
+        ``depth`` counts meaningful nodes only: the anonymous wrappers GTK stacks
+        between a window and its controls are transparent, so a shallow depth
+        still reaches the controls. Non-showing children are pruned, which is how
+        an off-screen dialog's widgets never surface as if they were on screen.
+        """
+        out = self._element(node).as_dict()
         children: list[dict] = []
-        if depth > 0 and budget[0] > 0:
-            for child in self._client.children(node):
-                if budget[0] <= 0:
-                    break
-                budget[0] -= 1
-                try:
-                    children.append(self._node_dict(child, depth - 1, budget))
-                except ElementGone:
-                    continue
+        try:
+            kids = self._client.children(node)
+        except ElementGone:
+            kids = []
+        for child in kids:
+            if budget[0] <= 0:
+                break
+            try:
+                if "showing" not in self._client.states(child):
+                    continue  # off-screen: do not surface it or its subtree
+                crole = self._client.role_name(child)
+                cname = self._client.name(child)
+            except ElementGone:
+                continue
+            meaningful = _is_meaningful(crole, cname)
+            if meaningful and depth <= 0:
+                continue  # a meaningful child past the depth cap
+            budget[0] -= 1
+            child_depth = depth - 1 if meaningful else depth
+            try:
+                children.append(self._node_dict(child, child_depth, budget))
+            except ElementGone:
+                continue
         out["children"] = children
         return out
 
@@ -311,17 +398,26 @@ class AtspiBackend:
     def _search(self, role: str, name: str) -> list[Element]:
         window = self._active_window()
         found: list[Element] = []
-        stack: list[Node] = [window]
+        # (node, is_root): the root is always walked; every other node is skipped,
+        # subtree and all, when it is not showing, so an off-screen dialog's
+        # controls never surface as matches (they are the phantoms a screenshot
+        # would never show either).
+        stack: list[tuple[Node, bool]] = [(window, True)]
         visited = 0
         while stack and visited < _MAX_NODES:
-            node = stack.pop()
+            node, is_root = stack.pop()
             visited += 1
             try:
-                if self._matches(node, role, name):
+                showing = "showing" in self._client.states(node)
+                if not is_root and not showing:
+                    continue
+                if showing and self._matches(node, role, name):
                     found.append(self._element(node))
-                stack.extend(reversed(self._client.children(node)))
+                children = self._client.children(node)
             except ElementGone:
                 continue
+            for child in reversed(children):
+                stack.append((child, False))
         return found
 
     def find(self, role: str, name: str) -> list[Element]:
@@ -343,13 +439,37 @@ class AtspiBackend:
             supported=actions,
         )
 
+    def _snapshot(self, node: Node) -> tuple[frozenset, str | None]:
+        """The observable fields an action might change, for the settle-poll."""
+        role = self._client.role_name(node)
+        text = self._client.text(node) if _role_reads_text(role) else None
+        return (frozenset(self._client.states(node)), text)
+
+    def _reread_after_act(self, node: Node, before: tuple) -> Element:
+        """Re-read the element, waiting out the toolkit's async state update.
+
+        Returns as soon as an observable field differs from ``before`` (the
+        common case: a toggle flips, a field's text changes, focus lands), and
+        otherwise returns the last read once the settle window elapses, so an
+        action whose effect is not on this element does not stall.
+        """
+        deadline = time.monotonic() + _ACT_SETTLE_SECONDS
+        while True:
+            element = self._element(node)
+            after = (frozenset(element.states), element.text)
+            if after != before or time.monotonic() >= deadline:
+                return element
+            time.sleep(_ACT_SETTLE_POLL)
+
     def act(self, ref: str, action: str, text: str) -> dict:
         self._require_bus()
         node = self._node_for(ref)
-        # Confirm the ref still resolves before doing anything: a stale node is
-        # element_gone, never a click on a remembered coordinate.
+        # Confirm the ref still resolves before doing anything, and capture the
+        # pre-action snapshot: a stale node is element_gone, never a click on a
+        # remembered coordinate, and the snapshot is what the re-read compares
+        # against so the returned state is the element after acting, not before.
         try:
-            self._client.role_name(node)
+            before = self._snapshot(node)
         except ElementGone:
             raise StructuredError(ELEMENT_GONE, "ref no longer resolves")
 
@@ -383,8 +503,10 @@ class AtspiBackend:
 
         # The re-read is the point of the tier: return what the element became,
         # so a toggle that did not toggle is visible now, not three turns later.
+        # It waits out the toolkit's async update rather than reading the stale
+        # pre-action state back.
         try:
-            state = self._element(node).as_dict()
+            state = self._reread_after_act(node, before).as_dict()
         except ElementGone:
             raise StructuredError(ELEMENT_GONE, "element gone after acting")
         return {"action": verb, "state": state}
@@ -677,6 +799,22 @@ class _DbusClient:
         if _is_error(reply):
             return False
         return bool(reply.body[0])
+
+    def text(self, node: Node) -> str | None:
+        # org.a11y.atspi.Text.GetText(start, end); end is capped rather than -1 so
+        # reading a large document's text box stays bounded. An element without
+        # the Text interface returns an error, which is simply "no text".
+        reply = self._bus.run(
+            self._bus.call(
+                node[0], node[1], "org.a11y.atspi.Text", "GetText", "ii",
+                [0, 5000],
+            )
+        )
+        if _is_error(reply):
+            if reply.error_name in self._GONE_ERRORS:
+                raise ElementGone(reply.error_name)
+            return None
+        return reply.body[0]
 
     def pid(self, node: Node) -> int:
         # The app's OS pid, read from the a11y bus daemon by its connection name.
