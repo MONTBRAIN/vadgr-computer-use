@@ -123,6 +123,15 @@ its steps passed**: one sweep was entirely green when an agent noticed a single
 case taking 15.2s against 0.1-0.8s for every other, which no assertion could
 have caught because nothing asserted on duration.
 
+**Drive an e2e with the agent CLI the machine has, and name it in the runbook.**
+Codex and Claude Code both run a headless session with their own MCP config, and
+either satisfies the method: a **fresh** MCP server started from the session's
+own config, the `tool_use` / `tool_result` stream as the verdict, and an isolated
+working directory. **Detect the CLI, do not assume it.** Record which one ran and
+its version beside the result, because two passes driven by two CLIs are still
+two observations, and a reader cannot compare them if the runbook does not say.
+A result with no CLI named is a result nobody can reproduce.
+
 **Evidence is filed while the pass runs, never assembled after it.** The
 evidence directory exists before the first cell, each group files what it
 produced at its own boundary, and a group that captured nothing gets a note
