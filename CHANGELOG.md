@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-08-11
+
+Adds a structured Tier 1 on Linux: read the accessibility tree, find an element
+by role and name, act on it by reference, and wait for one to appear. Small text
+and tens of milliseconds instead of a full screenshot, and correct under a
+window that moved. Nothing in Tier 2 changes: the pixel path stays exactly as it
+is and remains the fallback.
+
+The surface goes from 26 tools to **30**. The 26 existing tools keep their names
+and their derived schemas byte-for-byte; the four new tools are added, never
+altered.
+
+### Added
+- **Four structured-tier tools.** `ui_tree` reads the focused window's tree
+  (filtered, depth-capped). `ui_find` returns elements matching a role and/or
+  name, each with an opaque session-scoped `ref`, `bounds`, and decoded
+  `states`; an empty match is a successful read, not an error. `ui_act` performs
+  `click`, `focus`, `set_text`, `toggle` or `expand` on a `ref`, then re-reads
+  the element and returns its new state; a stale `ref` fails `element_gone` and
+  never falls back to clicking an old coordinate, and an unsupported verb fails
+  `unsupported_action` listing what the element does support. `ui_wait` blocks
+  until a matching element appears or a timeout elapses. On a machine with no
+  accessibility bus every one returns `at_spi_unavailable` with a one-line
+  remedy, and the tools stay listed so a consumer's catalogue does not vary per
+  machine.
+- **A `structured` block on `get_platform_info`.** Reports the backend, whether
+  the bus is reachable and enabled, the toolkits seen, and `coordinate_trust`:
+  `real` on X11, `none` on Wayland, where the compositor withholds a window's
+  screen origin so bounds are window-relative and must not ground a pixel click.
+- **The AT-SPI stack in `vadgr-cua install-deps`.** When the accessibility bus
+  is not reachable, the plan now installs `at-spi2-core` plus the ATK bridge
+  (package names resolved per distro), alongside the existing clipboard and
+  `/dev/uinput` steps.
+
+### Changed
+- **The structured tier and Wayland foreground-window detection speak AT-SPI
+  over `dbus-fast`**, a plain pure-Python wheel now pulled in automatically on
+  Linux. The previous foreground-window path imported PyGObject under an extra
+  that did not exist, so it was dead on every install this package produces;
+  migrating it onto `dbus-fast` makes it work.
+
 ## [0.6.6] - 2026-08-09
 
 Fixes #39: a fresh `pip install vadgr-computer-use` could not start. `mcp` 2.0.0

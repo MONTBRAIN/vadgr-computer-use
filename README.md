@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local MCP server for computer use. 26 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** a browser tier that drives your real Chrome through an MV3 extension with direct DOM ops plus window / tab / profile management, and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
+Local MCP server for computer use. 30 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** structured control (drive your real Chrome through an MV3 extension with direct DOM ops plus window / tab / profile management, and, on Linux, read and drive native apps through the accessibility tree with AT-SPI), and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM or a native control through its accessibility node, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
@@ -21,7 +21,9 @@ system-dependency step (the second of the two install commands):
 vadgr-cua install-deps        # prints the plan; add --yes to run it
 ```
 
-It provisions the clipboard backend (`wl-clipboard`) and `/dev/uinput` access via a
+It provisions the clipboard backend (`wl-clipboard`), the accessibility stack
+(`at-spi2-core` plus the ATK bridge, for the Tier 1 structured tools) and
+`/dev/uinput` access via a
 single graphical auth prompt (`pkexec`, falling back to `sudo`). pip can't install
 those (they are OS packages), so this command bridges the gap. See
 [First run on Linux](#first-run-on-linux).
@@ -198,7 +200,7 @@ The Linux backend is selected per session by a capability resolver (run
 | WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
 | macOS | `mss` | Quartz `CGEvent` (via `pyobjc`) | nothing extra; deps pulled by pip. Grant Accessibility + Screen Recording on first run |
 
-`pip install vadgr-computer-use` pulls `jeepney` and `python-xlib` automatically on Linux (pure-Python, no compilation). The pixel-input fallback uses a pure-Python `/dev/uinput` writer, so **no C compiler is needed**; the optional `evdev`-backed path is available via `pip install vadgr-computer-use[linux-uinput]`. The clipboard backend (`wl-clipboard`) and `/dev/uinput` access are OS-level and installed by `vadgr-cua install-deps`. Foreground-window detection on Wayland uses AT-SPI2 if available; install with `pip install vadgr-computer-use[linux-atspi]` to enable it.
+`pip install vadgr-computer-use` pulls `jeepney`, `python-xlib` and `dbus-fast` automatically on Linux (pure-Python, no compilation). The pixel-input fallback uses a pure-Python `/dev/uinput` writer, so **no C compiler is needed**; the optional `evdev`-backed path is available via `pip install vadgr-computer-use[linux-uinput]`. The clipboard backend (`wl-clipboard`), the accessibility stack (`at-spi2-core` plus the ATK bridge) and `/dev/uinput` access are OS-level and installed by `vadgr-cua install-deps`. The Tier 1 structured tools and Wayland foreground-window detection speak AT-SPI over `dbus-fast` (a plain wheel, no PyGObject), so they work on a stock desktop with no extra install.
 
 On macOS, `pip install vadgr-computer-use` pulls `pyobjc-framework-Quartz` and `pyobjc-framework-ApplicationServices` (wheel install, no compilation). No Homebrew packages required.
 
@@ -210,9 +212,10 @@ After `pip install`, run the one-time system-dependency step:
 vadgr-cua install-deps --yes   # one pkexec/sudo prompt; omit --yes to preview the plan
 ```
 
-It installs the clipboard backend (`wl-clipboard`) and sets up `/dev/uinput` access
-(udev rule + `input` group) under a single graphical auth prompt. pip cannot install
-these because they are OS packages, not Python wheels.
+It installs the clipboard backend (`wl-clipboard`), the accessibility stack
+(`at-spi2-core` plus the ATK bridge, when the bus is not already reachable) and sets
+up `/dev/uinput` access (udev rule + `input` group) under a single graphical auth
+prompt. pip cannot install these because they are OS packages, not Python wheels.
 
 On **GNOME 49/50 Wayland**, the first `screenshot()` shows a one-time GNOME consent
 dialog (the XDG Screenshot portal); click **Share** and the grant is remembered, so
@@ -274,6 +277,13 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 - `windows(op, ...)`: enumerate and manage windows: `list` (the thin variant), `open` (a new owned window, unfocused by default), `focus` (the explicit raise), `close` (owned only unless `force=True`).
 - `profiles(op, ...)`: enumerate and select the connected browser profile when the extension is installed in more than one Chrome profile (personal, work, several Google accounts). `list` shows each profile with recognition context (window / tab counts and a few open tab titles, e.g. "the one with work Gmail and Figma"); `use(profile_id)` pins which profile the browser / tabs / windows ops act within. A single connected profile is used automatically; with more than one connected and none selected, the next op raises a terminal `profile_ambiguous` listing the choices (never a silent guess). You can also pin a default with `CUA_BROWSER_PROFILE` (a profile_id prefix or a tab-title substring).
 - `browser_eval(expression)`: evaluate an expression in the page, for verification and debugging.
+
+### Tier 1: structured desktop (4, Linux)
+Read and drive native apps through the accessibility tree (AT-SPI over `dbus-fast`), so the agent acts on a control by role and name instead of guessing a pixel. Small text and tens of milliseconds instead of a full screenshot. Reported by `get_platform_info`'s `structured` block, which also carries `coordinate_trust` (`real` on X11, `none` on Wayland, where the compositor withholds a window's screen origin).
+- `ui_tree(depth=6)`: the focused window's accessible tree, filtered and depth-capped.
+- `ui_find(role, name)`: elements matching a role and/or name, each with an opaque `ref`, `bounds` and decoded `states`. An empty match is a successful read, not an error.
+- `ui_act(ref, action, text="")`: act on a `ref`: `click`, `focus`, `set_text`, `toggle`, `expand`. It re-reads the element and returns its new state; a stale `ref` fails `element_gone` and never falls back to clicking an old coordinate.
+- `ui_wait(role, name, timeout_ms=5000)`: block until a matching element appears or the timeout elapses.
 
 ### Tier 2: desktop (13)
 Capture (2)
