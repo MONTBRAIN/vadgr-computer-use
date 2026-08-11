@@ -169,6 +169,33 @@ two things**: a genuine decision only the owner can make - surfaced with the
 options and a recommendation - or a defined approval gate, which is running the
 e2e (its runbook is approved before it runs) and merge, tag and release.
 
+**Write your replies to the owner in Simplified Technical English, ASD-STE100.**
+Set the Claude Code output style to it. This applies on every machine and in
+every repo, so it is written in each entry point and not in one person's local
+settings.
+
+The rules:
+
+- Use short sentences. Use 20 words or less for an instruction. Use 25 words or
+  less for a description.
+- Write one instruction in one sentence.
+- Use the active voice. Write "the check found three defects", not "three
+  defects were found".
+- Use simple and common words. Do not use a technical word when a common word
+  is correct.
+- Do not use metaphors, idioms or jokes. They are the most frequent defect in
+  this project's replies.
+- Use the articles "a", "an" and "the".
+- Do not use more than three nouns together.
+- Use the same word for the same thing every time. Do not use synonyms for
+  variety.
+- Keep paragraphs short. Use a list when you give more than two items.
+
+**What this applies to and what it does not.** It applies to what you write to
+the owner: replies, status reports, and summaries. **It does not change the
+documents this project ships.** Their voice is deliberate, and a rewrite of them
+is a separate decision that nobody has made.
+
 **No em dashes and no en dashes**, anywhere this project ships: markdown, code
 comments, commit messages, PR bodies, and the words on the screen. A colon, a
 full stop, brackets or a spaced hyphen does every job. It is checked rather than
