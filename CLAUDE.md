@@ -93,5 +93,14 @@ cloned under its own name.) Exit `0` or do not start.
 - Branch, then PR. Never commit to `master`.
 - `CHANGELOG.md` is updated **in the PR**; CD publishes the extension keylessly
   on tag.
+- **`README.md` is updated in the same PR when the minor changed what it says**,
+  and it is the file most people read. A deleted surface, a renamed command, a
+  moved directory, a changed install path, a changed dependency floor, or a
+  change in what the product **is** all change it. Read the release's own diff
+  against it and either edit it or **say nothing in it changed** - the silence is
+  the defect. A claim can also rot with no diff touching it, and the one-line
+  description is the usual casualty. This repo's described the daemon as a
+  "workflow engine" long after Workflows were deferred out of the product
+  whole.
 - A patch that ships gets a row in `vadgr-docs/general/PATCHES.md` naming the
   runbook that caught it.
