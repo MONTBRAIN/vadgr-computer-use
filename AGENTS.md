@@ -231,6 +231,17 @@ nothing. **`not run`, `blocked` and `partial` are always available and always
 acceptable**; a fabricated pass never is. If a step could not run, say which,
 why, and what would let it run.
 
+**Impossible is a probed verdict, never an impression.** Nothing is declared
+fundamental, unfixable or out of scope until it was probed on the real target
+and every plausible fix was tried or ruled out with evidence: a different API,
+an enablement flag, a workaround at another layer. A "cannot be done" ships
+with the probe that showed it, exactly as a pass ships with its log - most
+"impossible" failures dissolve under a real probe, and the few true limits are
+worth naming only with the probe and the platform's own design notes in hand.
+**Hard bugs get the strongest tool before they get a verdict**: under Claude
+Code, switching the session or a subagent to the Fable 5 model (`fable`) is
+authorized for exactly these investigations, and only for them.
+
 **Implementation is delegated and driven to a finished PR, not hand-held slice
 by slice.** A minor's build runs the steps end to end and does not come back
 until the PR is review-ready: every slice implemented, the unit suites green,
