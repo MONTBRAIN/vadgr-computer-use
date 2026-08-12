@@ -168,6 +168,14 @@ approve-the-runbook-before-it-runs step: the owner reviews the results and asks 
 changes if they do not convince. A PR that claims a feature works with its e2e left
 unrun is incomplete.
 
+**Drive the tool over its real wire, not by importing it.** Importing the module
+and calling the function tests the code, not the served tool a client calls: it
+skips the MCP server, its schema and the transport. Call it the way a client does
+(a `claude -p` subagent with the server mounted), and `claude -p` loads a fresh
+server from the current code, so it never tests a stale connection. cua `0.7.0`'s
+`app_open` passed its units and an import check while the wire e2e caught a
+two-minute hang and an `ok` returned before any window existed.
+
 **Close an e2e with three independent passes**, run concurrently, each with its
 **own port, database and daemon** - three observations rather than one run
 watched three times. Compare them structurally: every HTTP entry on method,
