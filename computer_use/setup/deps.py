@@ -56,6 +56,15 @@ _PACKAGES = {
         "pacman": "at-spi2-core at-spi2-atk",
         "zypper": "at-spi2-core at-spi2-atk",
     },
+    # The desktop launcher app_open shells out to: gio (glib bin tools), with
+    # gtk-launch as the fallback. Both ship with a normal GNOME, so this only
+    # fires on a stripped install.
+    "desktop-launcher": {
+        "apt": "libglib2.0-bin",
+        "dnf": "glib2",
+        "pacman": "glib2",
+        "zypper": "glib2-tools",
+    },
 }
 
 _UDEV_RULE = Path(__file__).resolve().parent / "udev" / "99-vadgr-uinput.rules"
@@ -110,7 +119,18 @@ def diagnose() -> dict:
             "reason": "no accessibility bus reachable (structured Tier 1 unavailable)",
             "fix": "install at-spi2-core and the ATK bridge, then start a desktop session",
         })
+    # The launcher app_open needs one of gio or gtk-launch on PATH.
+    if sys.platform.startswith("linux") and not _launcher_present():
+        missing.append({
+            "name": "desktop-launcher",
+            "reason": "no gio or gtk-launch on PATH (app_open cannot launch apps)",
+            "fix": "install the glib launcher tools",
+        })
     return {"package_manager": detect_package_manager(), "missing": missing}
+
+
+def _launcher_present() -> bool:
+    return any(shutil.which(t) for t in ("gio", "gtk-launch"))
 
 
 def detect_escalation() -> str | None:

@@ -81,12 +81,12 @@ class TestTier0Registration:
                 f"{tool_name}: expected risk={risk_value}, got {entry.risk.value}"
             )
 
-    def test_total_tool_count_is_thirty(self):
-        # 26 after 0.6.1 + the 0.7.0 structured tier (ui_tree, ui_find, ui_act,
-        # ui_wait) -> 30. The 26 are added to, never altered.
+    def test_total_tool_count_is_thirty_three(self):
+        # 30 after 0.7.0's structured core + the 0.7.x expansion (ui_windows,
+        # apps, app_open) -> 33. The earlier tools are added to, never altered.
         registry = _load_registry()
-        assert registry.count() == 30, (
-            f"expected 30 tools after 0.7.0, got {registry.count()}: "
+        assert registry.count() == 33, (
+            f"expected 33 tools after the 0.7.x expansion, got {registry.count()}: "
             f"{[t.name for t in registry.all()]}"
         )
 
@@ -95,13 +95,29 @@ class TestTier0Registration:
 
         registry = _load_registry()
         breakdown = registry.tier_breakdown()
-        assert breakdown.get(Tier.ZERO, 0) == 8
+        # Eight system tools plus the expansion's apps and app_open -> ten Tier 0.
+        assert breakdown.get(Tier.ZERO, 0) == 10
         assert breakdown.get(Tier.HALF, 0) == 0
-        # Five Tier ONE browser tools (0.4.0 browser + browser_eval, 0.6.0 tabs +
-        # windows, 0.6.1 profiles) plus 0.7.0's four structured tools (ui_tree,
-        # ui_find, ui_act, ui_wait) -> nine Tier ONE.
-        assert breakdown.get(Tier.ONE, 0) == 9
+        # Five Tier ONE browser tools plus 0.7.0's four structured tools
+        # (ui_tree, ui_find, ui_act, ui_wait) and the expansion's ui_windows
+        # -> ten Tier ONE.
+        assert breakdown.get(Tier.ONE, 0) == 10
         assert breakdown.get(Tier.TWO, 0) == 13
+
+    def test_expansion_tools_registered_with_their_tiers(self):
+        from computer_use.core.risk import Risk
+        from computer_use.core.tier import Tier
+
+        registry = _load_registry()
+        expected = {
+            "ui_windows": (Tier.ONE, Risk.READ_ONLY),
+            "apps": (Tier.ZERO, Risk.READ_ONLY),
+            "app_open": (Tier.ZERO, Risk.MEDIUM),
+        }
+        for name, (tier, risk) in expected.items():
+            entry = registry.get(name)
+            assert entry is not None, f"{name} not registered"
+            assert entry.tier == tier and entry.risk == risk
 
 
 class TestMcpServerDispatch:

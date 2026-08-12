@@ -83,6 +83,11 @@ class FakeClient:
     def root(self):
         return self._root
 
+    def warm_caches(self, bus_names):
+        # The fake tree already is the in-memory snapshot, so warming is a no-op;
+        # this keeps it a full _Client so the backend can call it unconditionally.
+        pass
+
     def children(self, node):
         return list(self._n(node).children)
 
@@ -545,6 +550,81 @@ class TestOffScreenIsNotSurfaced:
             stack.extend(n["children"])
         assert "Discard" not in names
         assert "Visible Save" in names
+
+
+def _multi_app_tree():
+    # Two apps, each with one frame. Calculator's frame is NOT active; gedit's is.
+    # This is the exact shape the expansion targets: read a non-focused window.
+    return {
+        ("reg", "/root"): FakeNode("desktop frame", "d",
+                                   children=[("a1", "/a1"), ("a2", "/a2")]),
+        ("a1", "/a1"): FakeNode("application", "gnome-calculator",
+                                children=[("f1", "/f1")]),
+        ("f1", "/f1"): FakeNode("frame", "Calculator",
+                                states=["showing", "visible"],
+                                children=[("b7", "/b7")]),
+        ("b7", "/b7"): FakeNode("button", "7", states=["showing", "visible"],
+                                interfaces=[_ACCESSIBLE, _ACTION], actions=["Click"]),
+        ("a2", "/a2"): FakeNode("application", "gedit",
+                                children=[("f2", "/f2")]),
+        ("f2", "/f2"): FakeNode("frame", "gedit",
+                                states=["active", "showing", "visible"],
+                                children=[("bs", "/bs")]),
+        ("bs", "/bs"): FakeNode("push button", "Save",
+                                states=["showing", "visible"],
+                                interfaces=[_ACCESSIBLE, _ACTION], actions=["Click"]),
+    }
+
+
+class TestReadAnyWindow:
+    """The expansion: target a window by name or search them all, not only active."""
+
+    def test_default_reads_the_active_window(self):
+        backend = _backend(_multi_app_tree())
+        names = {e.name for e in backend.find("", "", app="")}
+        assert "Save" in names  # gedit is active
+        assert "7" not in names  # Calculator is not
+
+    def test_by_name_reads_a_non_focused_window(self):
+        # The motivating case: Calculator is not focused, gedit is, yet a read
+        # targeted by name still finds Calculator's button.
+        backend = _backend(_multi_app_tree())
+        found = backend.find("button", "7", app="gnome-calculator")
+        assert [e.name for e in found] == ["7"]
+
+    def test_star_searches_every_window(self):
+        backend = _backend(_multi_app_tree())
+        names = {e.name for e in backend.find("", "", app="*")}
+        assert {"7", "Save"} <= names
+
+    def test_unknown_app_is_no_tree(self):
+        backend = _backend(_multi_app_tree())
+        with pytest.raises(StructuredError) as exc:
+            backend.find("", "", app="no-such-app")
+        assert exc.value.code == "no_tree"
+
+    def test_tree_by_name_returns_a_single_root(self):
+        backend = _backend(_multi_app_tree())
+        result = backend.tree(depth=6, app="gnome-calculator")
+        assert result["root"]["name"] == "Calculator"
+
+    def test_tree_star_returns_multiple_roots(self):
+        backend = _backend(_multi_app_tree())
+        result = backend.tree(depth=6, app="*")
+        titles = {r["name"] for r in result["roots"]}
+        assert {"Calculator", "gedit"} <= titles
+
+
+class TestListWindows:
+    def test_windows_lists_every_frame_with_active_flag(self):
+        backend = _backend(_multi_app_tree())
+        wins = backend.windows()["windows"]
+        by_title = {w["title"]: w for w in wins}
+        assert set(by_title) == {"Calculator", "gedit"}
+        assert by_title["gedit"]["active"] is True
+        assert by_title["Calculator"]["active"] is False
+        assert by_title["Calculator"]["app_name"] == "gnome-calculator"
+        assert by_title["gedit"]["ref"].startswith("atspi:")
 
 
 class TestBusUnavailable:

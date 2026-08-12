@@ -29,25 +29,44 @@ def _unavailable() -> dict:
     return {"ok": False, "error": AT_SPI_UNAVAILABLE, "remedy": UNAVAILABLE_REMEDY}
 
 
-def ui_tree(depth: int = 6) -> dict:
-    """Read the focused window's accessible tree, filtered and depth-capped."""
+def ui_tree(depth: int = 6, app: str = "") -> dict:
+    """Read an accessible tree, filtered and depth-capped.
+
+    ``app=""`` reads the focused window (unchanged). ``app="Name"`` reads that
+    application's window; ``app="*"`` reads every open window.
+    """
     backend = resolve_backend()
     if backend is None:
         return _unavailable()
     try:
-        return {"ok": True, **backend.tree(depth)}
+        return {"ok": True, **backend.tree(depth, app)}
     except StructuredError as e:
         return e.as_dict()
 
 
-def ui_find(role: str = "", name: str = "") -> dict:
-    """Find elements matching role, name, or both. An empty match is ``ok``."""
+def ui_find(role: str = "", name: str = "", app: str = "") -> dict:
+    """Find elements matching role, name, or both. An empty match is ``ok``.
+
+    ``app=""`` searches the focused window (unchanged). ``app="Name"`` searches
+    that application's window; ``app="*"`` searches every open window.
+    """
     backend = resolve_backend()
     if backend is None:
         return _unavailable()
     try:
-        elements = backend.find(role, name)
+        elements = backend.find(role, name, app)
         return {"ok": True, "elements": [e.as_dict() for e in elements]}
+    except StructuredError as e:
+        return e.as_dict()
+
+
+def ui_windows() -> dict:
+    """List open top-level windows across all apps: app, title, active, ref."""
+    backend = resolve_backend()
+    if backend is None:
+        return _unavailable()
+    try:
+        return {"ok": True, **backend.windows()}
     except StructuredError as e:
         return e.as_dict()
 
@@ -68,13 +87,19 @@ def ui_act(ref: str, action: str, text: str = "") -> dict:
         return e.as_dict()
 
 
-def ui_wait(role: str = "", name: str = "", timeout_ms: int = 5000) -> dict:
-    """Block until a matching element appears or the timeout elapses (bounded)."""
+def ui_wait(
+    role: str = "", name: str = "", timeout_ms: int = 5000, app: str = ""
+) -> dict:
+    """Block until a matching element appears or the timeout elapses (bounded).
+
+    ``app`` scopes the wait the same way ``ui_find`` does: the focused window by
+    default, a named application's window, or ``"*"`` for every open window.
+    """
     backend = resolve_backend()
     if backend is None:
         return _unavailable()
     try:
-        element = backend.wait(role, name, timeout_ms)
+        element = backend.wait(role, name, timeout_ms, app)
         if element is None:
             return {"ok": False, "error": TIMEOUT, "elapsed_ms": timeout_ms}
         return {"ok": True, "element": element.as_dict()}

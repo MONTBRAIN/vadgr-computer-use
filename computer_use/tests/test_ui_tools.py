@@ -38,16 +38,21 @@ _EL = Element(
 class FakeBackend:
     """A StructuredBackend stand-in with scripted results and failures."""
 
-    def __init__(self, *, elements=(), act=None, act_error=None, wait=None):
+    def __init__(self, *, elements=(), act=None, act_error=None, wait=None,
+                 windows=None):
         self._elements = list(elements)
         self._act = act or {"state": _EL.as_dict()}
         self._act_error = act_error
         self._wait = wait
+        self._windows = windows if windows is not None else []
+        self.last_app = None  # records the app arg the tools threaded through
 
-    def tree(self, depth):
+    def tree(self, depth, app=""):
+        self.last_app = app
         return {"root": _EL.as_dict(), "depth": depth}
 
-    def find(self, role, name):
+    def find(self, role, name, app=""):
+        self.last_app = app
         return [
             e
             for e in self._elements
@@ -59,8 +64,12 @@ class FakeBackend:
             raise self._act_error
         return self._act
 
-    def wait(self, role, name, timeout_ms):
+    def wait(self, role, name, timeout_ms, app=""):
+        self.last_app = app
         return self._wait
+
+    def windows(self):
+        return {"windows": self._windows}
 
     def capability(self):
         return {"bus_reachable": True, "backend": "fake"}
@@ -75,10 +84,44 @@ class TestDegradesHonestlyWhenUnavailable:
 
     def test_every_tool_reports_unavailable(self, monkeypatch):
         monkeypatch.setattr(ui, "resolve_backend", lambda: None)
-        for result in (ui.ui_tree(), ui.ui_find(), ui.ui_act("r", "click"), ui.ui_wait()):
+        results = (ui.ui_tree(), ui.ui_find(), ui.ui_act("r", "click"),
+                   ui.ui_wait(), ui.ui_windows())
+        for result in results:
             assert result["ok"] is False
             assert result["error"] == "at_spi_unavailable"
             assert result["remedy"]  # a non-empty one-line remedy
+
+
+class TestAppTargeting:
+    """The app arg is threaded through, and default stays the active window."""
+
+    def test_default_app_is_empty_backward_compatible(self, monkeypatch):
+        backend = FakeBackend(elements=[_EL])
+        _use(monkeypatch, backend)
+        ui.ui_find(role="push button")
+        assert backend.last_app == ""
+
+    def test_find_threads_the_app_through(self, monkeypatch):
+        backend = FakeBackend(elements=[_EL])
+        _use(monkeypatch, backend)
+        ui.ui_find(name="Save", app="Calculator")
+        assert backend.last_app == "Calculator"
+
+    def test_tree_and_wait_thread_the_app_through(self, monkeypatch):
+        backend = FakeBackend(wait=_EL)
+        _use(monkeypatch, backend)
+        ui.ui_tree(app="*")
+        assert backend.last_app == "*"
+        ui.ui_wait(app="Files")
+        assert backend.last_app == "Files"
+
+    def test_ui_windows_lists_the_windows(self, monkeypatch):
+        wins = [{"app_name": "gnome-calculator", "title": "Calculator",
+                 "active": False, "ref": "atspi:9"}]
+        _use(monkeypatch, FakeBackend(windows=wins))
+        result = ui.ui_windows()
+        assert result["ok"] is True
+        assert result["windows"] == wins
 
 
 class TestReadContract:
@@ -103,7 +146,7 @@ class TestReadContract:
 
     def test_no_tree_is_a_named_error(self, monkeypatch):
         backend = FakeBackend()
-        backend.tree = lambda depth: (_ for _ in ()).throw(
+        backend.tree = lambda depth, app="": (_ for _ in ()).throw(
             StructuredError(NO_TREE, "gedit exposes no tree")
         )
         _use(monkeypatch, backend)

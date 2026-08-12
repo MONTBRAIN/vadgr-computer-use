@@ -43,6 +43,7 @@ import time
 from typing import Protocol
 
 from computer_use.platform.resolver.session import SessionContext
+from computer_use.tools.ui.cache import CacheSnapshot, build_snapshot
 from computer_use.tools.ui.backend import (
     AT_SPI_UNAVAILABLE,
     ELEMENT_GONE,
@@ -67,6 +68,14 @@ _REGISTRY_BUS = "org.a11y.atspi.Registry"
 _ROOT_PATH = "/org/a11y/atspi/accessible/root"
 _A11Y_BUS = "org.a11y.Bus"
 _A11Y_BUS_PATH = "/org/a11y/bus"
+
+# The per-application Cache object, and the roles that are a top-level window.
+# A frame (23) or window (69) is the app's own top-level; the active one carries
+# the active state. Targeting a window by name is choosing one of these frames.
+_CACHE = "org.a11y.atspi.Cache"
+_CACHE_PATH = "/org/a11y/atspi/cache"
+_FRAME_ROLE_ENUMS = frozenset({23, 69})
+_FRAME_ROLE_NAMES = frozenset({"frame", "window", "dialog", "alert"})
 
 # SCREEN coordinate type for Component.GetExtents (the other is WINDOW).
 _COORD_SCREEN = 0
@@ -216,6 +225,7 @@ class _Client(Protocol):
     def reachable(self) -> bool: ...
     def is_enabled(self) -> bool: ...
     def root(self) -> Node: ...
+    def warm_caches(self, bus_names: list[str]) -> None: ...
     def children(self, node: Node) -> list[Node]: ...
     def role_name(self, node: Node) -> str: ...
     def name(self, node: Node) -> str: ...
@@ -304,6 +314,27 @@ class AtspiBackend:
 
     # -- the focused window ------------------------------------------------
 
+    def _apps(self) -> list[Node]:
+        try:
+            return self._client.children(self._client.root())
+        except ElementGone:
+            return []
+
+    def _frames_of(self, app: Node) -> list[Node]:
+        """The app's top-level windows (its frame children), robust to junk."""
+        frames = []
+        try:
+            children = self._client.children(app)
+        except ElementGone:
+            return frames
+        for child in children:
+            try:
+                if self._client.role_name(child).lower() in _FRAME_ROLE_NAMES:
+                    frames.append(child)
+            except ElementGone:
+                continue
+        return frames
+
     def _active_window(self) -> Node:
         """Find the active top-level window across all applications.
 
@@ -312,19 +343,39 @@ class AtspiBackend:
         (nothing focused, or a toolkit that exposes none), so it is no_tree
         rather than an empty success.
         """
-        root = self._client.root()
-        for app in self._client.children(root):
-            try:
-                windows = self._client.children(app)
-            except ElementGone:
-                continue
-            for window in windows:
+        for app in self._apps():
+            for window in self._frames_of(app):
                 try:
                     if "active" in self._client.states(window):
                         return window
                 except ElementGone:
                     continue
         raise StructuredError(NO_TREE, "no active window exposes a tree")
+
+    def _resolve_frames(self, app: str) -> list[Node]:
+        """The frames a read targets, and warm their caches before the walk.
+
+        ``app=""`` is the active window (unchanged default). ``app="*"`` is every
+        open window. Otherwise it is the windows of the applications whose name
+        matches, and a name that matches nothing is ``no_tree`` (naming it), not
+        an empty success that reads as "found nothing on screen".
+        """
+        if app == "":
+            frames = [self._active_window()]
+        elif app == "*":
+            frames = [f for a in self._apps() for f in self._frames_of(a)]
+        else:
+            frames = []
+            for a in self._apps():
+                try:
+                    if app.lower() in self._client.name(a).lower():
+                        frames.extend(self._frames_of(a))
+                except ElementGone:
+                    continue
+            if not frames:
+                raise StructuredError(NO_TREE, f"no open window for app {app!r}")
+        self._client.warm_caches([f[0] for f in frames])
+        return frames
 
     # -- reading -----------------------------------------------------------
 
@@ -393,15 +444,25 @@ class AtspiBackend:
                 result.extend(self._collapsed_children(child, depth, budget))
         return result
 
-    def tree(self, depth: int) -> dict:
+    def tree(self, depth: int, app: str = "") -> dict:
         self._require_bus()
-        window = self._active_window()
-        budget = [_MAX_NODES]
+        frames = self._resolve_frames(app)
+
+        def one(frame: Node) -> dict:
+            budget = [_MAX_NODES]
+            return self._node_dict(frame, max(depth, 0), budget)
+
         try:
-            root = self._node_dict(window, max(depth, 0), budget)
+            if len(frames) == 1:
+                # The default and the by-name single-window case: unchanged shape.
+                return {"root": one(frames[0]), "depth": depth}
+            return {
+                "roots": [one(f) for f in frames],
+                "count": len(frames),
+                "depth": depth,
+            }
         except ElementGone:
-            raise StructuredError(NO_TREE, "the focused window's tree went away")
-        return {"root": root, "depth": depth}
+            raise StructuredError(NO_TREE, "the target window's tree went away")
 
     def _matches(self, node: Node, role: str, name: str) -> bool:
         # role is an exact (case-insensitive) role-name match; name is a
@@ -414,14 +475,13 @@ class AtspiBackend:
             return False
         return True
 
-    def _search(self, role: str, name: str) -> list[Element]:
-        window = self._active_window()
+    def _search_frame(self, frame: Node, role: str, name: str) -> list[Element]:
         found: list[Element] = []
         # (node, is_root): the root is always walked; every other node is skipped,
         # subtree and all, when it is not showing, so an off-screen dialog's
         # controls never surface as matches (they are the phantoms a screenshot
         # would never show either).
-        stack: list[tuple[Node, bool]] = [(window, True)]
+        stack: list[tuple[Node, bool]] = [(frame, True)]
         visited = 0
         while stack and visited < _MAX_NODES:
             node, is_root = stack.pop()
@@ -439,9 +499,12 @@ class AtspiBackend:
                 stack.append((child, False))
         return found
 
-    def find(self, role: str, name: str) -> list[Element]:
+    def find(self, role: str, name: str, app: str = "") -> list[Element]:
         self._require_bus()
-        return self._search(role, name)
+        found: list[Element] = []
+        for frame in self._resolve_frames(app):
+            found.extend(self._search_frame(frame, role, name))
+        return found
 
     # -- acting ------------------------------------------------------------
 
@@ -541,16 +604,42 @@ class AtspiBackend:
 
     # -- waiting -----------------------------------------------------------
 
-    def wait(self, role: str, name: str, timeout_ms: int) -> Element | None:
+    def wait(
+        self, role: str, name: str, timeout_ms: int, app: str = ""
+    ) -> Element | None:
         self._require_bus()
         deadline = time.monotonic() + max(timeout_ms, 0) / 1000.0
         while True:
-            matches = self._search(role, name)
+            matches = self.find(role, name, app)
             if matches:
                 return matches[0]
             if time.monotonic() >= deadline:
                 return None
             time.sleep(_WAIT_POLL_SECONDS)
+
+    # -- listing open windows ----------------------------------------------
+
+    def windows(self) -> dict:
+        """Every open top-level window across all apps, for the model to target."""
+        self._require_bus()
+        out = []
+        for app in self._apps():
+            try:
+                app_name = self._client.name(app)
+            except ElementGone:
+                continue
+            for frame in self._frames_of(app):
+                try:
+                    states = self._client.states(frame)
+                    out.append({
+                        "app_name": app_name,
+                        "title": self._client.name(frame),
+                        "active": "active" in states,
+                        "ref": self._ref_for(frame),
+                    })
+                except ElementGone:
+                    continue
+        return {"windows": out}
 
     # -- foreground window (for the platform layer) ------------------------
 
@@ -676,6 +765,27 @@ class _AtspiBus:
             )
         )
 
+    async def _gather(self, calls):
+        from dbus_fast import Message
+
+        await self._ensure_connected()
+        coros = [
+            self._a11y.call(Message(
+                destination=d, path=p, interface=i, member=m,
+                signature=s or "", body=list(b) if b else [],
+            ))
+            for (d, p, i, m, s, b) in calls
+        ]
+        return await asyncio.gather(*coros, return_exceptions=True)
+
+    def gather(self, calls):
+        """Run several method calls concurrently on the one owning loop.
+
+        The bulk read fans out one GetItems per app at once, so N windows cost one
+        round trip's wall time, not N.
+        """
+        return self.run(self._gather(calls))
+
 
 def _is_error(reply) -> bool:
     from dbus_fast import MessageType
@@ -701,6 +811,54 @@ class _DbusClient:
 
     def __init__(self, bus: _AtspiBus) -> None:
         self._bus = bus
+        # A warm snapshot per application bus name, and the role-enum-to-name map
+        # calibrated against GetRoleName so a cached role name is identical to a
+        # walked one. Both persist for the process: the cache is kept and the
+        # calibration only grows.
+        self._cache: dict[str, CacheSnapshot] = {}
+        self._role_names: dict[int, str] = {}
+
+    def warm_caches(self, bus_names: list[str]) -> None:
+        """Bulk-read each app's exported tree with one concurrent GetItems each.
+
+        An app that does not export Cache (the reply errors) is simply left out of
+        the warm set, so its reads stay live: the fast path degrades to the walk
+        rather than failing.
+        """
+        unique = [b for b in dict.fromkeys(bus_names) if b]
+        if not unique:
+            return
+        calls = [(b, _CACHE_PATH, _CACHE, "GetItems", "", None) for b in unique]
+        replies = self._bus.gather(calls)
+        for bus_name, reply in zip(unique, replies):
+            if isinstance(reply, Exception) or _is_error(reply):
+                self._cache.pop(bus_name, None)
+                continue
+            snapshot = build_snapshot(reply.body[0], decode_states)
+            self._cache[bus_name] = snapshot
+            self._calibrate(snapshot)
+
+    def _calibrate(self, snapshot: CacheSnapshot) -> None:
+        # Resolve every role enum in the snapshot to the name GetRoleName gives, so
+        # the walk that follows needs no live role reads. One call per new enum,
+        # about ten the first time and none after.
+        for role_enum in snapshot.role_enums():
+            if role_enum in self._role_names:
+                continue
+            node = snapshot.node_with_role(role_enum)
+            if node is None:
+                continue
+            reply = self._bus.run(
+                self._bus.call(node[0], node[1], _ACCESSIBLE, "GetRoleName")
+            )
+            if not _is_error(reply):
+                self._role_names[role_enum] = reply.body[0]
+
+    def _cached(self, node: Node) -> "CacheSnapshot | None":
+        snapshot = self._cache.get(node[0])
+        if snapshot is not None and snapshot.has(node):
+            return snapshot
+        return None
 
     def _check(self, reply):
         if _is_error(reply):
@@ -761,14 +919,28 @@ class _DbusClient:
         return (_REGISTRY_BUS, _ROOT_PATH)
 
     def children(self, node: Node) -> list[Node]:
+        # Serve from the warm cache only when it holds every child the node
+        # declares; an incomplete branch falls to a live read, which also warms
+        # the cache for next time, so no child is ever missed.
+        snapshot = self._cache.get(node[0])
+        if snapshot is not None and snapshot.is_complete(node):
+            return snapshot.children(node)
         reply = self._call(node, _ACCESSIBLE, "GetChildren")
         return [(bn, pp) for (bn, pp) in reply.body[0]]
 
     def role_name(self, node: Node) -> str:
+        snapshot = self._cached(node)
+        if snapshot is not None:
+            name = self._role_names.get(snapshot.item(node).role_enum)
+            if name is not None:
+                return name
         reply = self._call(node, _ACCESSIBLE, "GetRoleName")
         return reply.body[0]
 
     def name(self, node: Node) -> str:
+        snapshot = self._cached(node)
+        if snapshot is not None:
+            return snapshot.item(node).name or ""
         try:
             return self._prop(node, _ACCESSIBLE, "Name") or ""
         except ElementGone:
@@ -777,6 +949,9 @@ class _DbusClient:
             return ""
 
     def states(self, node: Node) -> tuple[str, ...]:
+        snapshot = self._cached(node)
+        if snapshot is not None:
+            return snapshot.item(node).states
         reply = self._call(node, _ACCESSIBLE, "GetState")
         words = list(reply.body[0])
         low = words[0] if len(words) > 0 else 0
@@ -797,6 +972,9 @@ class _DbusClient:
         return (int(x), int(y), int(w), int(h))
 
     def interfaces(self, node: Node) -> tuple[str, ...]:
+        snapshot = self._cached(node)
+        if snapshot is not None:
+            return snapshot.item(node).interfaces
         reply = self._call(node, _ACCESSIBLE, "GetInterfaces")
         return tuple(reply.body[0])
 
