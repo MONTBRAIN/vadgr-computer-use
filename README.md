@@ -1,6 +1,6 @@
 # vadgr-computer-use
 
-Local MCP server for computer use. 30 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, and more), **Tier 1** structured control (drive your real Chrome through an MV3 extension with direct DOM ops plus window / tab / profile management, and, on Linux, read and drive native apps through the accessibility tree with AT-SPI), and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM or a native control through its accessibility node, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
+Local MCP server for computer use. 33 tools across three tiers: **Tier 0** system tools (files, shell, HTTP, clipboard, time, listing and launching apps, and more), **Tier 1** structured control (drive your real Chrome through an MV3 extension with direct DOM ops plus window / tab / profile management, and, on Linux, read and drive native apps through the accessibility tree with AT-SPI, any window by name and not just the focused one), and **Tier 2** desktop control (screenshot plus mouse/keyboard, driven from the pixels). The agent picks the highest-precision tier that fits the task: act on a web page through the DOM or a native control through its accessibility node, run a system op directly, or fall back to screenshot-and-pixels for anything on the desktop.
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
@@ -264,12 +264,14 @@ If the WSL2 daemon can't start (e.g. no Windows Python available), the server fa
 
 Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 
-### Tier 0: system (8)
+### Tier 0: system (10)
 - `fs(op, ...)`: read / write / list / stat / mkdir / remove on the filesystem.
 - `shell(op, ...)`: run a command, capture stdout / stderr / exit code.
 - `http(op, ...)`: make an HTTP request.
 - `clipboard(op, ...)`: read / write the OS clipboard.
 - `env(op, ...)` / `time(op, ...)` / `tempfile(op, ...)` / `data(op, ...)`: environment variables, time, temp files, and structured-data helpers.
+- `apps()`: list installed launchable apps (id, name, icon) from the XDG desktop entries.
+- `app_open(target)`: launch an installed app by id or name (Linux; via `gio` / `gtk-launch`).
 
 ### Tier 1: browser (5)
 - `browser(op, ...)`: drive your real Chrome through the MV3 extension with direct DOM ops (`navigate`, `click`, `fill`, `query`, `read_text`, `wait_for`, `hover`, `dialog`, `upload`, `element_state`, `snapshot`, `use_target`, `back`/`forward`, and more). The DOM is the ground truth, so a mutating op is confirmed by a structured read-back rather than a screenshot. Every result also carries a `target: {window_id, tab_id, url}` so you always see which tab you acted on. Requires the companion extension - install it from the Chrome Web Store, or load the release asset `vadgr-cua-extension-<ver>.zip` unpacked; the native-host manifest allowlists both install flavors.
@@ -278,12 +280,13 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 - `profiles(op, ...)`: enumerate and select the connected browser profile when the extension is installed in more than one Chrome profile (personal, work, several Google accounts). `list` shows each profile with recognition context (window / tab counts and a few open tab titles, e.g. "the one with work Gmail and Figma"); `use(profile_id)` pins which profile the browser / tabs / windows ops act within. A single connected profile is used automatically; with more than one connected and none selected, the next op raises a terminal `profile_ambiguous` listing the choices (never a silent guess). You can also pin a default with `CUA_BROWSER_PROFILE` (a profile_id prefix or a tab-title substring).
 - `browser_eval(expression)`: evaluate an expression in the page, for verification and debugging.
 
-### Tier 1: structured desktop (4, Linux)
-Read and drive native apps through the accessibility tree (AT-SPI over `dbus-fast`), so the agent acts on a control by role and name instead of guessing a pixel. Small text and tens of milliseconds instead of a full screenshot. Reported by `get_platform_info`'s `structured` block, which also carries `coordinate_trust` (`real` on X11, `none` on Wayland, where the compositor withholds a window's screen origin).
-- `ui_tree(depth=6)`: the focused window's accessible tree, filtered and depth-capped.
-- `ui_find(role, name)`: elements matching a role and/or name, each with an opaque `ref`, `bounds` and decoded `states`. An empty match is a successful read, not an error.
+### Tier 1: structured desktop (5, Linux)
+Read and drive native apps through the accessibility tree (AT-SPI over `dbus-fast`), so the agent acts on a control by role and name instead of guessing a pixel. Small text and tens of milliseconds instead of a full screenshot. Reads use a one-call bulk read (`Cache.GetItems`) per app where the toolkit exports it, degrading to a node walk where it does not. Reported by `get_platform_info`'s `structured` block, which also carries `coordinate_trust` (`real` on X11, `none` on Wayland, where the compositor withholds a window's screen origin).
+- `ui_tree(depth=6, app="")`: an accessible tree, filtered and depth-capped. `app=""` is the focused window; `app="Name"` is that application's window even if unfocused; `app="*"` is every open window.
+- `ui_find(role, name, app="")`: elements matching a role and/or name, each with an opaque `ref`, `bounds` and decoded `states`. `app` scopes the search the same way as `ui_tree`. An empty match is a successful read, not an error.
 - `ui_act(ref, action, text="")`: act on a `ref`: `click`, `focus`, `set_text`, `toggle`, `expand`. It re-reads the element and returns its new state; a stale `ref` fails `element_gone` and never falls back to clicking an old coordinate.
-- `ui_wait(role, name, timeout_ms=5000)`: block until a matching element appears or the timeout elapses.
+- `ui_wait(role, name, timeout_ms=5000, app="")`: block until a matching element appears or the timeout elapses.
+- `ui_windows()`: list open top-level windows across all apps (app name, title, active flag, ref), so you can discover what is open before targeting a window by name.
 
 ### Tier 2: desktop (13)
 Capture (2)

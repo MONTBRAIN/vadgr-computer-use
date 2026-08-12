@@ -116,8 +116,9 @@ Read every exit code directly. Do not pipe it into anything: `cmd | head` report
 Expected: `pytest` all pass but one (the pre-existing, environment-sensitive
 `test_wayland_no_mutter_no_evdev_raises`, which turns on this box's
 `/dev/uinput` state and is unrelated to this release), `ruff` exit `0`. The
-suite also holds the **30-tool surface** (the 26 of `0.6.6` plus `ui_tree`,
-`ui_find`, `ui_act`, `ui_wait`), the 26 existing entries unchanged.
+suite also holds the **33-tool surface** (the 26 of `0.6.6`, the four structured
+tools `ui_tree`, `ui_find`, `ui_act`, `ui_wait`, and the expansion's `ui_windows`,
+`apps` and `app_open`), the 26 existing entries unchanged.
 
 Green here proves the code paths and proves **nothing** about a real desktop.
 Parts A to F are the gate.
@@ -249,7 +250,7 @@ e2e.
 | surface | Windows | WSL | macOS | notes |
 |---|---|---|---|---|
 | the structured (`ui_*`) tier | not in this release | not in this release | not in this release | Windows UIA lands in `0.8.0`, macOS AX in `0.9.0`; the platform backend has no structured tier, so `ui_*` honestly return `at_spi_unavailable` |
-| the 30-tool surface still loads | Not-Needed live | Not-Needed live | Not-Needed live | unit-covered; the four tools are added to the catalogue on every OS, and cannot be live-driven from this Linux host |
+| the 33-tool surface still loads | Not-Needed live | Not-Needed live | Not-Needed live | unit-covered; the seven new tools are added to the catalogue on every OS, and cannot be live-driven from this Linux host |
 | Tier 2 unchanged | Not-Needed live | Not-Needed live | Not-Needed live | `0.7.0` touches no Tier 2 tool; unit-covered, and there is no session on those OSes from here to drive it |
 
 `not in this release` is deliberate and is not `not run`: there is no run owed,
@@ -312,6 +313,56 @@ X11 grounding round trip (no X11 session), `focus` and `expand` verbs and the
 suite), and Part F. Those stay `not run` above and are owed on a desktop that has
 them.
 
+### The 0.7.x expansion, driven on GNOME Wayland (2026-08-12)
+
+The expansion adds reading a non-focused window by name, a bulk-read fast path,
+listing open windows, and listing and launching apps. Driven against default
+apps only (Calculator, Text Editor, Files, Clocks); the run journals and the
+direct-measurement artifacts are in the evidence bundle.
+
+**The motivating case, agent-driven, pass.** With the **terminal (`ptyxis`)
+holding focus** (`ui_windows` recorded it `active: true` and
+`gnome-calculator` `active: false`), a Claude agent computed on the unfocused
+Calculator: `ui_find(app="Calculator", name="7")` and the same for `+`, `8`, `=`
+each returned the button, `ui_act(click)` fired each, and
+`ui_find(app="Calculator", role="text box")` returned `"text": "15"`. The exact
+limit that motivated the expansion, a launched app that never took focus being
+invisible, is closed: the window is read by name regardless of focus.
+
+**`ui_windows`, pass.** Returned all seven open top-level windows with their app
+name, title and active flag: `gnome-shell`, `gjs`, two `Google Chrome`,
+`ptyxis` (active), `code`, and `gnome-calculator`.
+
+**`apps` and `app_open`, pass.** `apps` listed 30 installed apps, including all
+four defaults with their ids (`org.gnome.Calculator.desktop`,
+`org.gnome.TextEditor.desktop`, `org.gnome.Nautilus.desktop`,
+`org.gnome.clocks.desktop`). `app_open("Clocks")` and `app_open("Text Editor")`
+each returned `{"ok": true, "method": "gio"}` and the window then appeared. The
+`app_open` calls were driven directly rather than through the agent because the
+`claude` harness gated the new Tier 0 mutating tool behind a permission prompt
+this non-interactive run could not answer; the tool itself launches through
+`gio`, proven here and in the unit suite.
+
+**The Cache fast path, pass, with real numbers.** For `gnome-calculator` a whole
+window read went from **709 D-Bus round trips** on the node walk to **152** on
+the cache path, and a **targeted** read (`ui_find(role="button", name="7")`) was
+**11 round trips in about 22 ms**: one `GetItems`, the role calibration, and the
+matched button's own extents. This is the "one call reads a whole window" claim.
+
+**The Cache-absent degrade, pass.** Of the ten running apps, only the GTK ones
+export the cache (`gnome-calculator` 113 items, `ptyxis` 51); `gnome-shell`,
+`Google Chrome`, `code` and the rest return `UnknownMethod` on `GetItems` and are
+read by the node walk instead, with no failure. This is why a whole-desktop
+`app="*"` find is dominated by the cache-less heavy apps (a browser and an
+Electron editor) and runs in seconds rather than milliseconds: the fast path is
+the toolkit's to offer, and the tool takes it where it is there and walks where
+it is not.
+
+**What the expansion pass did not cover.** The agent-driven `app_open` (harness
+permission gate; driven directly instead), and `app="*"` as a fast cross-window
+read when heavy cache-less apps are open (it is correct but not fast there). Qt
+and X11 stay `not run` for the same reasons as the core pass.
+
 ## Evidence
 
 The GNOME Wayland pass was captured as `--output-format stream-json` run
@@ -324,6 +375,15 @@ and toggle finds and the tree reaching leaves), and the honest-failure session
 measurements on the running apps, named in the results above. The owed
 artifacts, at their own boundaries, are the dead-bus remedy, the Qt read, the X11
 grounding round trip and Part F's Tier 2 sweep.
+
+The `0.7.x` expansion pass was filed to an evidence bundle keyed by run id under
+`e2e_evidence/vadgr-computer-use-0.7.0/<run-id>/`: the agent run journal for the
+by-name Calculator compute (`e2e_byname.jsonl`), the `ui_windows` listing with
+the terminal active and the Calculator not (`expansion_artifacts.txt`), the
+`apps` and `app_open` output, the per-app cache-support table showing which apps
+take the fast path and which degrade, and the node-walk versus cache latency and
+round-trip counts (`latency.txt`). The artifacts are the evidence and were
+written as the pass ran, not reconstructed after.
 
 ## Findings
 

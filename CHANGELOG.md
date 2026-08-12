@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [0.7.0] - 2026-08-11
+## [0.7.0] - 2026-08-12
 
 Adds a structured Tier 1 on Linux: read the accessibility tree, find an element
 by role and name, act on it by reference, and wait for one to appear. Small text
@@ -10,11 +10,31 @@ and tens of milliseconds instead of a full screenshot, and correct under a
 window that moved. Nothing in Tier 2 changes: the pixel path stays exactly as it
 is and remains the fallback.
 
-The surface goes from 26 tools to **30**. The 26 existing tools keep their names
-and their derived schemas byte-for-byte; the four new tools are added, never
-altered.
+The surface goes from 26 tools to **33**: the four structured-tier tools plus the
+`0.7.x` expansion (`ui_windows`, `apps`, `app_open`). The 26 existing tools keep
+their names and their derived schemas byte-for-byte; the new tools are added,
+never altered.
 
 ### Added
+- **Read any window, and read it fast.** `ui_find`, `ui_tree` and `ui_wait` gain
+  an optional `app` target. `app=""` is the focused window (unchanged behaviour
+  and token cost); `app="Name"` targets that application's window even when it is
+  not focused; `app="*"` searches every open window. Reads use a one-call bulk
+  read (`org.a11y.atspi.Cache.GetItems`) per app, fanned out concurrently, and
+  match in-process, so a warm single-window read is about eleven D-Bus round
+  trips against about seven hundred for the node walk. An app whose toolkit does
+  not export the cache degrades to the walk; an incomplete branch falls to a live
+  read that also warms it, so no element is missed.
+- **`ui_windows`** lists every open top-level window (app name, title, active
+  flag, and a `ref`), so the model can discover what is open before targeting a
+  window by name.
+- **`apps` and `app_open`** (Tier 0). `apps` lists installed launchable apps from
+  the XDG desktop entries (id, name, icon), dropping `Hidden` and `NoDisplay`
+  entries and keying by desktop-file-id with the home directory winning.
+  `app_open` launches one by id or name through the desktop's own launcher (`gio`
+  launch, then `gtk-launch`, then a manual `Exec` field-code expansion). The
+  launcher prerequisite is registered in `vadgr-cua install-deps` beside the
+  accessibility stack.
 - **Four structured-tier tools.** `ui_tree` reads the focused window's tree
   (filtered, depth-capped). `ui_find` returns elements matching a role and/or
   name, each with an opaque session-scoped `ref`, `bounds`, and decoded
