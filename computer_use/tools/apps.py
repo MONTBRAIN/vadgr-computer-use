@@ -161,17 +161,31 @@ def open_app(target: str) -> dict:
 
     from shutil import which
 
+    # Launch detached: redirect to DEVNULL (never capture_output) and start a new
+    # session. capture_output hands the launched GUI app a stdout/stderr PIPE it
+    # inherits, and subprocess.run then blocks reading that pipe until EOF, which
+    # only happens when the app EXITS. That was the multi-minute hang the wire e2e
+    # caught: the app opened, but the tool never returned. DEVNULL removes the
+    # pipe; the timeout is a backstop for a launcher that itself misbehaves.
+    def _launch(argv: list[str]):
+        try:
+            return subprocess.run(
+                argv,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+
     if which("gio"):
-        result = subprocess.run(
-            ["gio", "launch", str(path)], capture_output=True, text=True
-        )
-        if result.returncode == 0:
+        result = _launch(["gio", "launch", str(path)])
+        if result is not None and result.returncode == 0:
             return {"ok": True, "id": app_id, "method": "gio"}
     if which("gtk-launch"):
-        result = subprocess.run(
-            ["gtk-launch", app_id], capture_output=True, text=True
-        )
-        if result.returncode == 0:
+        result = _launch(["gtk-launch", app_id])
+        if result is not None and result.returncode == 0:
             return {"ok": True, "id": app_id, "method": "gtk-launch"}
 
     entry = _parse_entry(path)

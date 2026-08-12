@@ -99,7 +99,7 @@ class TestOpenApp:
         assert result["ok"] is False
         assert result["error"] == "app_not_found"
 
-    def test_resolves_by_name_and_launches_via_gio(self, tmp_path, monkeypatch):
+    def test_resolves_by_name_and_launches_via_gio_detached(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         _write(home / "applications" / "calc.desktop", _entry("Calculator"))
         _dirs(monkeypatch, home, tmp_path / "system")
@@ -112,15 +112,38 @@ class TestOpenApp:
         class _Result:
             returncode = 0
 
+        _DEVNULL = object()
+
         def fake_run(argv, **kwargs):
             calls["argv"] = argv
+            calls["kwargs"] = kwargs
             return _Result()
 
-        monkeypatch.setattr(apps, "subprocess",
-                            type("S", (), {"run": staticmethod(fake_run)}))
+        monkeypatch.setattr(
+            apps,
+            "subprocess",
+            type(
+                "S",
+                (),
+                {
+                    "run": staticmethod(fake_run),
+                    "DEVNULL": _DEVNULL,
+                    "TimeoutExpired": type("TimeoutExpired", (Exception,), {}),
+                },
+            ),
+        )
         monkeypatch.setattr("shutil.which", fake_which)
         result = apps.open_app("Calculator")
         assert result["ok"] is True
         assert result["method"] == "gio"
         assert result["id"] == "calc.desktop"
         assert calls["argv"][:2] == ["gio", "launch"]
+        # The launch MUST be detached: a launched GUI app that inherits a
+        # stdout/stderr PIPE makes subprocess.run block until the app EXITS - the
+        # multi-minute hang the wire e2e caught. So no capture_output; DEVNULL, a
+        # new session, and a timeout backstop instead.
+        kw = calls["kwargs"]
+        assert not kw.get("capture_output")
+        assert kw.get("stdout") is _DEVNULL and kw.get("stderr") is _DEVNULL
+        assert kw.get("start_new_session") is True
+        assert "timeout" in kw
