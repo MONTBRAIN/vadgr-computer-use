@@ -407,7 +407,7 @@ class AtspiBackend:
 
     # -- reading -----------------------------------------------------------
 
-    def _element(self, node: Node) -> Element:
+    def _element(self, node: Node, window: str | None = None) -> Element:
         role = self._client.role_name(node)
         extents = _sane_extents(self._client.extents(node))
         bounds = Bounds(*extents) if extents is not None else None
@@ -422,6 +422,7 @@ class AtspiBackend:
             bounds=bounds,
             states=self._client.states(node),
             text=text,
+            window=window,
         )
 
     def _node_dict(self, node: Node, depth: int, budget: list[int]) -> dict:
@@ -501,8 +502,14 @@ class AtspiBackend:
             return False
         return not (name and name.lower() not in self._client.name(node).lower())
 
-    def _search_frame(self, frame: Node, role: str, name: str) -> list[Element]:
+    def _search_frame(
+        self, frame: Node, role: str, name: str, gone: list[int]
+    ) -> list[Element]:
         found: list[Element] = []
+        try:
+            window = self._client.name(frame) or None
+        except ElementGone:
+            window = None
         # (node, is_root): the root is always walked; every other node is skipped,
         # subtree and all, when it is not showing, so an off-screen dialog's
         # controls never surface as matches (they are the phantoms a screenshot
@@ -522,20 +529,41 @@ class AtspiBackend:
                     continue
                 visited += 1
                 if showing and self._matches(node, role, name):
-                    found.append(self._element(node))
+                    found.append(self._element(node, window=window))
                 children = self._client.children(node)
             except ElementGone:
+                # The node vanished mid-walk and took its unvisited subtree
+                # with it. Counted so find() knows this pass read a tree in
+                # mid-mutation.
+                gone[0] += 1
                 continue
             for child in reversed(children):
                 stack.append((child, False))
         return found
 
-    def find(self, role: str, name: str, app: str = "") -> list[Element]:
-        self._require_bus()
+    def _find_pass(self, role: str, name: str, app: str) -> tuple[list, int]:
+        gone = [0]
         found: list[Element] = []
         for frame in self._resolve_frames(app):
-            found.extend(self._search_frame(frame, role, name))
-        return found
+            found.extend(self._search_frame(frame, role, name, gone))
+        return found, gone[0]
+
+    def find(self, role: str, name: str, app: str = "") -> list[Element]:
+        self._require_bus()
+        found, gone = self._find_pass(role, name, app)
+        if gone == 0:
+            return found
+        # The walk lost at least one subtree to a node that stopped answering,
+        # so this pass read a tree in mid-mutation (the App Center replaces
+        # nodes while it navigates and the replaced ones answer nothing). One
+        # retry reads the settled tree; observed live, the second pass is clean
+        # and fast. If the tree is still churning, the retry's result stands:
+        # the retry is bounded at one, not a poll.
+        try:
+            retried, _ = self._find_pass(role, name, app)
+        except StructuredError:
+            return found  # the world moved again; the first pass is the answer
+        return retried
 
     # -- acting ------------------------------------------------------------
 

@@ -35,11 +35,20 @@ never altered.
   (`gio launch`, `gtk-launch`, then a manual `Exec` field-code expansion) and
   confirms the launch on the a11y bus before reporting `ok`: a launcher's exit
   code only proves dispatch, so the tool polls for a window belonging to the
-  app (bounded by `timeout_ms`, default 5s), returns it in the result (with
-  `already_open` when it predates the launch, since a single-instance app
-  presents its existing window), escalates to the next launcher when a
-  dispatched one maps nothing, and fails `no_window` rather than claiming
-  success. A `DBusActivatable` entry tries `gtk-launch` before `gio launch`,
+  app, returns it in the result (with `already_open` when it predates the
+  launch, since a single-instance app presents its existing window), escalates
+  to the next launcher when a dispatched one maps nothing, and fails
+  `no_window` rather than claiming success. A window matches by the strongest
+  identity available: the launched process (or a descendant) owning it, a name
+  token from the desktop entry, the comm of a process that appeared after
+  dispatch, or, last, a window that did not exist before dispatch and whose
+  title carries an entry token. The last rule is what confirms a
+  single-instance snap: LibreOffice opens the new Writer window inside the
+  already-running `soffice` process, so no pid, token or new comm ever matches
+  it, and only the windows-since-dispatch diff plus the title
+  (`Untitled 2 - LibreOffice Writer`) identifies the launch. `timeout_ms`
+  (default 5s) is one total budget split across the launcher ladder, so
+  escalation never multiplies the caller's wait. A `DBusActivatable` entry tries `gtk-launch` before `gio launch`,
   which exits 0 after queueing the D-Bus `Activate` call it never waits for;
   the daemon drops the queued call once the sender is gone, so the service
   starts, idles, and exits without a window. Where the a11y bus cannot answer,
@@ -48,8 +57,13 @@ never altered.
   accessibility stack.
 - **Four structured-tier tools.** `ui_tree` reads the focused window's tree
   (filtered, depth-capped). `ui_find` returns elements matching a role and/or
-  name, each with an opaque session-scoped `ref`, `bounds`, and decoded
-  `states`; an empty match is a successful read, not an error. `ui_act` performs
+  name, each with an opaque session-scoped `ref`, `bounds`, decoded `states`,
+  and the title of its owning `window`, which is what tells equal matches
+  apart (nine Writer documents expose nine paragraphs identical in role, name
+  and window-relative bounds); an empty match is a successful read, not an
+  error. A find whose walk lost a subtree to a node that stopped answering
+  mid-mutation (an app replacing its tree while it navigates) retries once and
+  returns the settled read. `ui_act` performs
   `click`, `focus`, `set_text`, `toggle` or `expand` on a `ref`, then re-reads
   the element and returns its new state; a stale `ref` fails `element_gone` and
   never falls back to clicking an old coordinate, and an unsupported verb fails
@@ -58,6 +72,25 @@ never altered.
   accessibility bus every one returns `at_spi_unavailable` with a one-line
   remedy, and the tools stay listed so a consumer's catalogue does not vary per
   machine.
+- **The tier survives the toolkits as they are**, each behaviour observed on
+  real applications and encoded with a test:
+  - Text is read by the element's real range. LibreOffice answers
+    `GetText(0, end)` with an empty string whenever `end` exceeds the character
+    count (GTK clamps instead), so a fixed-cap read reported every Writer
+    paragraph as empty and made a landed `set_text` look like a no-op; an empty
+    read is re-checked against `CharacterCount` before it is believed.
+  - The `click` verb resolves the toolkit's own action name: GTK's `click`,
+    Qt's `Press`, Flutter's `Tap`. An element whose bulk `GetActions` reply
+    carries blank names (the Ubuntu App Center) is re-asked per index.
+  - `set_text` trusts only the read-back, because the bus adaptor reports
+    success unconditionally; a write that did not land (Flutter accepts
+    `SetTextContents` and writes nothing) is retried as delete-plus-insert,
+    which lands.
+  - An application that never answers a call cannot stall the tier: an
+    unanswered `GetExtents` or `Cache.GetItems` trips a per-app breaker (the
+    element reads as boundless, the app reads live), a gathered bulk read is
+    bounded per call so one silent app cannot sink the batch, and a node the
+    app will not answer for is `element_gone`, which walks already skip.
 - **A `structured` block on `get_platform_info`.** Reports the backend, whether
   the bus is reachable and enabled, the toolkits seen, and `coordinate_trust`:
   `real` on X11, `none` on Wayland, where the compositor withholds a window's

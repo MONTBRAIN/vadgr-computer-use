@@ -276,6 +276,75 @@ class TestReadPath:
         assert exc.value.code == "no_tree"
 
 
+class TestFindNamesTheOwningWindow:
+    def test_find_results_carry_their_window_title(self):
+        # Nine Writer windows hold nine equal paragraphs with equal
+        # window-relative bounds; without the owning window's title a caller
+        # cannot tell them apart to target one.
+        backend = _backend(_tree_with_button())
+        el = backend.find("push button", "")[0]
+        assert el.window == "Doc - gedit"
+        assert el.as_dict()["window"] == "Doc - gedit"
+
+    def test_act_state_omits_the_window_field(self):
+        # act's re-read has no frame in hand; the field is absent, not null.
+        backend = _backend(_tree_with_button())
+        ref = backend.find("push button", "")[0].ref
+        state = backend.act(ref, "click", "")["state"]
+        assert "window" not in state
+
+
+class _HealsAfterOneGone(FakeClient):
+    """One node answers nothing for exactly one read, then recovers.
+
+    Models the App Center mid-navigation: a replaced node stops answering, the
+    walk skips it and loses its subtree, and the very next read finds the tree
+    settled.
+    """
+
+    def __init__(self, nodes, flaky, **kwargs):
+        super().__init__(nodes, **kwargs)
+        self._flaky = flaky
+        self._tripped = False
+
+    def states(self, node):
+        if node == self._flaky and not self._tripped:
+            self._tripped = True
+            raise ElementGone(str(node))
+        return super().states(node)
+
+
+class TestFindRetriesAnUnsettledTree:
+    def _nodes_with_panel(self):
+        nodes = _tree_with_button()
+        nodes[("win", "/w")].children = [("panel", "/p")]
+        nodes[("panel", "/p")] = FakeNode(
+            "panel", "", states=["showing", "visible"],
+            children=[("btn", "/b")],
+        )
+        return nodes
+
+    def test_a_subtree_lost_mid_walk_is_found_by_the_bounded_retry(self):
+        # First pass: the panel answers nothing, so the button under it is
+        # never seen. One retry reads the settled tree and finds it; without
+        # the retry this find returns [] and the caller acts on a lie.
+        nodes = self._nodes_with_panel()
+        client = _HealsAfterOneGone(nodes, flaky=("panel", "/p"))
+        backend = AtspiBackend(client, _session())
+        elements = backend.find("push button", "")
+        assert [e.name for e in elements] == ["Save"]
+
+    def test_a_clean_walk_is_not_walked_twice(self):
+        nodes = self._nodes_with_panel()
+        client = FakeClient(nodes)
+        backend = AtspiBackend(client, _session())
+        backend.find("push button", "")
+        first_walk_reads = client.states_reads
+        client.states_reads = 0
+        backend.find("push button", "")
+        assert client.states_reads <= first_walk_reads  # no doubled walk
+
+
 class TestRefLifecycle:
     def test_find_ref_resolves_in_a_later_act(self):
         backend = _backend(_tree_with_button())

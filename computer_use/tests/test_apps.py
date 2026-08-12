@@ -371,6 +371,107 @@ class TestOpenAppConfirmsWindow:
         assert result["ok"] is False
         assert result["error"] == "no_window"
 
+    def test_a_new_window_since_dispatch_confirms_a_single_instance_snap(
+        self, tmp_path, monkeypatch
+    ):
+        # LibreOffice snap with soffice already running: the new Writer window
+        # opens inside the existing process, so there is no launched pid to
+        # match, 'soffice' matches no desktop-entry token, and 'soffice.bin'
+        # already sat in the pre-dispatch comms so it is not a new comm either.
+        # The signal left is the window itself: it was not in the pre-dispatch
+        # snapshot (observed live: the new frame appeared in the windows() diff
+        # 13.6s after gio launch) and its title carries the entry's Name, and
+        # together those must confirm.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=("gio",))
+        old_win = {"app_name": "soffice",
+                   "title": "Untitled 1 - LibreOffice Writer",
+                   "active": False, "ref": "atspi:3", "pid": 900}
+        new_win = {"app_name": "soffice",
+                   "title": "Untitled 2 - LibreOffice Writer",
+                   "active": True, "ref": "atspi:9", "pid": 900}
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[old_win], [old_win], [old_win, new_win]]),
+        )
+        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 900}, raising=False)
+        monkeypatch.setattr(
+            apps, "_proc_comm", lambda pid: "soffice.bin", raising=False,
+        )
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
+        assert result["ok"] is True
+        assert result["window"]["title"] == "Untitled 2 - LibreOffice Writer"
+
+    def test_a_new_window_with_an_unrelated_title_never_matches(
+        self, tmp_path, monkeypatch
+    ):
+        # Newness alone is not identity: a window that appears mid-poll but
+        # carries none of the entry's tokens in its title (another app's
+        # notification, a stray dialog) must not confirm the launch.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=("gio",))
+        stray = {"app_name": "zulip", "title": "New message",
+                 "active": True, "ref": "atspi:7", "pid": 700}
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[], [stray]]),
+        )
+        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 700}, raising=False)
+        monkeypatch.setattr(
+            apps, "_proc_comm", lambda pid: "zulip", raising=False,
+        )
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
+        assert result["ok"] is False
+        assert result["error"] == "no_window"
+
+    def test_a_window_present_before_dispatch_never_matches_as_new(
+        self, tmp_path, monkeypatch
+    ):
+        # The new-window rule must not turn an unrelated pre-existing window
+        # into a false confirmation when nothing new ever appears.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=("gio",))
+        old_win = {"app_name": "soffice", "title": "Untitled 1",
+                   "active": True, "ref": "atspi:3", "pid": 900}
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[old_win]]),
+        )
+        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 900}, raising=False)
+        monkeypatch.setattr(
+            apps, "_proc_comm", lambda pid: "soffice.bin", raising=False,
+        )
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
+        assert result["ok"] is False
+        assert result["error"] == "no_window"
+
+    def test_the_timeout_bounds_the_whole_ladder_not_each_method(
+        self, tmp_path, monkeypatch
+    ):
+        # Three dispatched methods each polling the full timeout stretched a
+        # five-second budget into the observed ~18s. The budget is one total,
+        # split across the methods not yet tried, and every method still gets
+        # its dispatch.
+        import time as _time
+
+        self._calc(tmp_path, monkeypatch)
+        _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(apps, "_structured_backend", lambda: _FakeBackend([[]]))
+        start = _time.monotonic()
+        result = apps.open_app("Calculator", timeout_ms=300)
+        elapsed = _time.monotonic() - start
+        assert result["ok"] is False
+        assert result["error"] == "no_window"
+        assert "gio" in result["methods"] and "exec" in result["methods"]
+        assert elapsed < 0.75, f"ladder took {elapsed:.2f}s for a 0.3s budget"
+
     def test_exec_fallback_still_confirms(self, tmp_path, monkeypatch):
         self._calc(tmp_path, monkeypatch)
         calls = _install_launch_fakes(monkeypatch, have=())

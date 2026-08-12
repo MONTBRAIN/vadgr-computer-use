@@ -252,23 +252,48 @@ def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
     return {norm for norm in (_normalize(token) for token in raw) if len(norm) >= 3}
 
 
+def _window_key(window: dict) -> tuple:
+    """A window's identity for the new-since-dispatch comparison."""
+    return (window.get("app_name") or "", window.get("title") or "")
+
+
 def _matching_window(
     windows: list[dict],
     candidates: set[str],
     launched_pids: set[int] | frozenset[int] = frozenset(),
+    baseline_keys: frozenset[tuple] | None = None,
 ) -> dict | None:
+    # Three passes, strongest identity first, so a weak match never shadows a
+    # strong one later in the list.
     for window in windows:
-        # Process identity first: a window owned by the launched process (or a
+        # Process identity: a window owned by the launched process (or a
         # descendant of it) is the launch, whatever the toolkit named it. The
         # a11y app name is derived from the process, not the desktop entry, and
         # LibreOffice's 'soffice' matches no token of libreoffice_writer.desktop.
         pid = window.get("pid") or 0
         if pid and launched_pids and launched_pids & _lineage(pid):
             return window
+    for window in windows:
         app_name = _normalize(window.get("app_name") or "")
         if len(app_name) < 3:
             continue
         if any(app_name in cand or cand in app_name for cand in candidates):
+            return window
+    if baseline_keys is None:
+        return None
+    for window in windows:
+        # Last resort: a window that did not exist before the dispatch AND
+        # whose title carries one of the entry's own tokens. Newness is the
+        # only signal a single-instance snap leaves - the new Writer window
+        # opens inside the already-running soffice process (no pid lineage, no
+        # matching app name, no new comm) - but newness alone would claim any
+        # unrelated window that happened to appear mid-poll, so the title must
+        # vouch for the identity: 'Untitled 2 - LibreOffice Writer' carries
+        # the entry's Name where the app name 'soffice' never does.
+        if _window_key(window) in baseline_keys:
+            continue
+        title = _normalize(window.get("title") or "")
+        if len(title) >= 3 and any(cand in title for cand in candidates):
             return window
     return None
 
@@ -286,10 +311,11 @@ def _snap_windows(backend) -> list[dict] | None:
 def _poll_for_window(
     backend,
     candidates: set[str],
-    timeout_ms: int,
+    timeout_ms: float,
     launched_pids: set[int] | frozenset[int] = frozenset(),
     baseline_pids: set[int] | frozenset[int] = frozenset(),
     baseline_comms: set[str] | frozenset[str] = frozenset(),
+    baseline_keys: frozenset[tuple] | None = None,
 ) -> dict | None:
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000.0
     while True:
@@ -298,7 +324,7 @@ def _poll_for_window(
         # child pid to match; the processes that appeared since dispatch stand
         # in, contributing their comms as name candidates each poll.
         polled = candidates | _launched_comms(set(baseline_pids), set(baseline_comms))
-        match = _matching_window(windows or [], polled, launched_pids)
+        match = _matching_window(windows or [], polled, launched_pids, baseline_keys)
         if match is not None:
             return match
         remaining = deadline - time.monotonic()
@@ -348,6 +374,14 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
     baseline = _snap_windows(backend)
     already_open = (
         _matching_window(baseline, candidates) if baseline is not None else None
+    )
+    # The windows open before the dispatch, by identity. A window absent from
+    # this set is new since dispatch, which is the last-resort confirmation for
+    # a single-instance snap whose new window opens inside a pre-existing
+    # process (LibreOffice: no pid lineage, no matching token, no new comm).
+    baseline_keys = (
+        frozenset(_window_key(w) for w in baseline)
+        if baseline is not None else None
     )
 
     # The processes alive before the dispatch, so the confirmation can also
@@ -406,7 +440,13 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
 
     dispatched: list[str] = []
     exec_error: dict | None = None
-    for method in ladder:
+    # One budget for the whole ladder, split over the methods not yet tried.
+    # Each dispatched method used to poll the full timeout, so three dispatches
+    # stretched a five-second budget into the observed ~18s; now the last
+    # method inherits whatever its predecessors did not spend, and the total
+    # stays the caller's timeout.
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    for index, method in enumerate(ladder):
         if method == "gio":
             if not which("gio") or not _launch(["gio", "launch", str(path)]):
                 continue
@@ -423,9 +463,11 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
             # rather than claiming the app is up.
             return {"ok": True, "id": app_id, "method": method,
                     "window": None, "confirmed": False}
+        remaining_ms = max((deadline - time.monotonic()) * 1000.0, 0.0)
+        share_ms = remaining_ms / (len(ladder) - index)
         window = _poll_for_window(
-            backend, candidates, timeout_ms,
-            launched_pids, baseline_pids, baseline_comms,
+            backend, candidates, share_ms,
+            launched_pids, baseline_pids, baseline_comms, baseline_keys,
         )
         if window is not None:
             result = {

@@ -69,6 +69,11 @@ class Element:
     ``text`` is the element's textual content for text/editable/value elements
     (empty everywhere else). It is what makes a ``set_text`` confirmable: the
     caller reads back what actually landed rather than trusting an ``ok``.
+
+    ``window`` is the title of the top-level window the element was found
+    under. It is what disambiguates equal matches across windows: nine Writer
+    documents expose nine paragraphs with the same role, name and (on Wayland,
+    window-relative) bounds, and only the owning window tells them apart.
     """
 
     ref: str
@@ -77,6 +82,7 @@ class Element:
     bounds: Bounds | None = None
     states: tuple[str, ...] = ()
     text: str | None = None
+    window: str | None = None
 
     def as_dict(self) -> dict:
         out = {
@@ -90,6 +96,10 @@ class Element:
         # container is not padded with a null field on every read.
         if self.text is not None:
             out["text"] = self.text
+        # Only carried where a window is known (find results); act's re-read
+        # has no frame in hand and omits it rather than shipping a null.
+        if self.window is not None:
+            out["window"] = self.window
         return out
 
 
