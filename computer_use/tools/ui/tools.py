@@ -17,9 +17,9 @@ reads behind approval or let writes through without it.
 from __future__ import annotations
 
 from computer_use.tools.ui.backend import (
+    AT_SPI_UNAVAILABLE,
     TIMEOUT,
     UNAVAILABLE_REMEDY,
-    AT_SPI_UNAVAILABLE,
     StructuredError,
     resolve_backend,
 )

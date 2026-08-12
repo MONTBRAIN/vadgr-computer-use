@@ -133,7 +133,7 @@ class StructuredBackend(Protocol):
 # both must reach the same backend instance holding the same ref table. Rebuilding
 # per call would reset that table and make every ref look stale. A None result is
 # cached too, because "no structured tier on this OS" does not change mid-session.
-_CACHED_BACKEND: "StructuredBackend | None" = None
+_CACHED_BACKEND: StructuredBackend | None = None
 _RESOLVED = False
 
 

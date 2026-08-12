@@ -60,12 +60,16 @@ class FakeClient:
     """An in-memory accessibility tree keyed by opaque node ids."""
 
     def __init__(self, nodes: dict, root=("reg", "/root"), *,
-                 reachable=True, enabled=False, act_lag=0):
+                 reachable=True, enabled=False, act_lag=0, stale_states=None):
         self._nodes = nodes
         self._root = root
         self._reachable = reachable
         self._enabled = enabled
         self._act_lag = act_lag
+        # Models the warm cache: while an entry is present, states() serves it
+        # instead of the live node, exactly like a find-time snapshot would.
+        # invalidate() clears the app's entries, which is what acting must do.
+        self._stale_states = dict(stale_states or {})
         self.states_reads = 0  # how many times states() was asked, for latency tests
 
     def _n(self, node) -> FakeNode:
@@ -88,6 +92,12 @@ class FakeClient:
         # this keeps it a full _Client so the backend can call it unconditionally.
         pass
 
+    def invalidate(self, node):
+        bus_name = node[0]
+        self._stale_states = {
+            n: s for n, s in self._stale_states.items() if n[0] != bus_name
+        }
+
     def children(self, node):
         return list(self._n(node).children)
 
@@ -99,6 +109,8 @@ class FakeClient:
 
     def states(self, node):
         self.states_reads += 1
+        if node in self._stale_states:
+            return tuple(self._stale_states[node])
         fake = self._n(node)
         # Reveal a queued change once its countdown elapses, so an eager re-read
         # sees the pre-action value and a settling one sees the post-action value.
@@ -168,10 +180,10 @@ def _tree_with_button(**button_kwargs):
     The window and button are on screen (showing/visible) so the showing-prune
     keeps them; a test that wants an off-screen element sets its own states.
     """
-    defaults = dict(
-        role="push button", name="Save", extents=(0, 0, 74, 30),
-        interfaces=[_ACCESSIBLE, _COMPONENT, _ACTION], actions=["Click"],
-    )
+    defaults = {
+        "role": "push button", "name": "Save", "extents": (0, 0, 74, 30),
+        "interfaces": [_ACCESSIBLE, _COMPONENT, _ACTION], "actions": ["Click"],
+    }
     defaults.update(button_kwargs)
     bstates = list(defaults.get("states", ()))
     for s in ("showing", "visible"):
@@ -309,6 +321,18 @@ class TestActVerbs:
         result = backend.act(ref, "toggle", "")
         assert "pressed" in result["state"]["states"]
 
+    def test_toggle_fires_a_switch_whose_only_action_is_named_toggle(self):
+        # GNOME Settings (gnome-control-center) exposes its GtkSwitch rows with
+        # a single AT-SPI action named "Toggle" and no "click"; the toggle verb
+        # must resolve to it, or the one control the verb exists for is the one
+        # it cannot act on.
+        nodes = _tree_with_button(actions=["Toggle"])
+        nodes[("btn", "/b")].role = "switch"
+        backend = _backend(nodes)
+        ref = backend.find("switch", "")[0].ref
+        backend.act(ref, "toggle", "")
+        assert nodes[("btn", "/b")].did == [0]
+
     def test_focus_grabs_when_component_present(self):
         nodes = _tree_with_button()
         backend = _backend(nodes)
@@ -373,6 +397,21 @@ class TestActReReadIsPostAction:
         # act_lag=2: the pressed state only appears on the second states() read
         # after DoAction, so an eager single read returns the old state.
         backend = _backend(nodes, act_lag=2)
+        ref = backend.find("toggle button", "")[0].ref
+        result = backend.act(ref, "toggle", "")
+        assert "pressed" in result["state"]["states"]
+
+    def test_act_does_not_read_through_a_stale_cache_snapshot(self):
+        # The warm cache is a find-time snapshot. Files (nautilus) exposed the
+        # defect live: ui_act(toggle)'s settle poll read the cached pre-action
+        # states for the whole window and returned them as the confirmation,
+        # while an independent ui_find 24 ms later, which re-warms the cache,
+        # saw "pressed". Acting must invalidate the app's snapshot so the
+        # pre-action snapshot, the polls and the re-read observe the element.
+        nodes = _tree_with_button()
+        nodes[("btn", "/b")].role = "toggle button"
+        stale = {("btn", "/b"): ("focusable", "showing", "visible")}
+        backend = _backend(nodes, stale_states=stale)
         ref = backend.find("toggle button", "")[0].ref
         result = backend.act(ref, "toggle", "")
         assert "pressed" in result["state"]["states"]
@@ -741,6 +780,13 @@ class TestEnablement:
         env = atspi.accessibility_launch_env({"HOME": "/home/x"})
         assert env["QT_LINUX_ACCESSIBILITY_ALWAYS_ON"] == "1"
         assert env["HOME"] == "/home/x"  # the base env is preserved, not replaced
+
+    def test_launch_env_defaults_to_the_process_environment(self):
+        # The no-base call is the normal launch path, and it raised NameError:
+        # the function used os.environ without importing os, which every test
+        # dodged by passing a base dict.
+        env = atspi.accessibility_launch_env()
+        assert env["QT_LINUX_ACCESSIBILITY_ALWAYS_ON"] == "1"
 
     def test_chromium_flag_forces_renderer_accessibility(self):
         assert "--force-renderer-accessibility" in atspi.chromium_accessibility_flags()

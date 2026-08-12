@@ -183,7 +183,7 @@ def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
     entry declares: the id stem, its last reverse-DNS segment, the display name,
     the ``StartupWMClass``, and the ``Exec`` binary's basename.
     """
-    stem = app_id[: -len(".desktop")] if app_id.endswith(".desktop") else app_id
+    stem = app_id.removesuffix(".desktop")
     raw = {stem, stem.split(".")[-1]}
     for key in ("Name", "StartupWMClass"):
         value = entry.get(key)

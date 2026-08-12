@@ -31,8 +31,8 @@ Two facts the snapshot is built around, both observed on a real GNOME box:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 # A node is an opaque (bus_name, object_path) pair, the same identity used
 # everywhere else. GetItems refs are (so) structs, which decode to exactly this.

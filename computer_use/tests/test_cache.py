@@ -15,6 +15,8 @@ that decides when to fall back to a live read, and the shared state decoding.
 
 from __future__ import annotations
 
+import pytest
+
 from computer_use.tools.ui.atspi import decode_states
 from computer_use.tools.ui.cache import build_snapshot
 
@@ -94,9 +96,17 @@ class TestStateDecodingMatchesLivePath:
 # The client's use of the cache: serve from a warm snapshot, degrade without one
 # ---------------------------------------------------------------------------
 
-from dbus_fast import MessageType  # noqa: E402
+# dbus-fast is a Linux-only dependency (sys_platform == 'linux' in pyproject),
+# so the client tests skip where it is absent while the pure parser tests above
+# still run on every OS.
+try:
+    from dbus_fast import MessageType
+    _HAS_DBUS_FAST = True
+except ModuleNotFoundError:
+    MessageType = None
+    _HAS_DBUS_FAST = False
 
-from computer_use.tools.ui.atspi import _DbusClient  # noqa: E402
+from computer_use.tools.ui.atspi import _DbusClient
 
 
 class _Reply:
@@ -146,6 +156,8 @@ def _one_item(bus, path, parent, cc, role_enum, name):
             role_enum, "", [0, 0]]
 
 
+@pytest.mark.skipif(not _HAS_DBUS_FAST,
+                    reason="dbus-fast is installed on Linux only")
 class TestClientServesFromCache:
     def test_role_and_name_come_from_the_snapshot_not_the_bus(self):
         body = [_one_item("gtk", "/btn", "/frame", 0, 43, "7")]
@@ -168,3 +180,19 @@ class TestClientServesFromCache:
         client.role_name(("chromium", "/x"))
         client.name(("chromium", "/x"))
         assert bus.live_calls > before  # it went to the bus, not a snapshot
+
+    def test_invalidate_drops_only_that_apps_snapshot(self):
+        # Acting invalidates the target app's snapshot so the act-time reads are
+        # live; every other app's snapshot stays warm.
+        body_a = [_one_item("gtk", "/btn", "/frame", 0, 43, "7")]
+        body_b = [_one_item("qt", "/btn", "/frame", 0, 43, "8")]
+        bus = _FakeBus({"gtk": body_a, "qt": body_b})
+        client = _DbusClient(bus)
+        client.warm_caches(["gtk", "qt"])
+        client.invalidate(("gtk", "/btn"))
+        before = bus.live_calls
+        client.name(("gtk", "/btn"))
+        assert bus.live_calls > before  # the invalidated app reads live now
+        before = bus.live_calls
+        assert client.name(("qt", "/btn")) == "8"
+        assert bus.live_calls == before  # the other app is still snapshot-served

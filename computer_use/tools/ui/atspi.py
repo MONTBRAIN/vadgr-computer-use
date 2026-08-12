@@ -37,13 +37,13 @@ GNOME 50 / Wayland box and not assumed:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import threading
 import time
 from typing import Protocol
 
 from computer_use.platform.resolver.session import SessionContext
-from computer_use.tools.ui.cache import CacheSnapshot, build_snapshot
 from computer_use.tools.ui.backend import (
     AT_SPI_UNAVAILABLE,
     ELEMENT_GONE,
@@ -54,6 +54,7 @@ from computer_use.tools.ui.backend import (
     Element,
     StructuredError,
 )
+from computer_use.tools.ui.cache import CacheSnapshot, build_snapshot
 
 # AT-SPI D-Bus interface and object names. The desktop root is a fixed well-known
 # address; every other accessible is addressed by (bus_name, object_path) read
@@ -226,6 +227,7 @@ class _Client(Protocol):
     def is_enabled(self) -> bool: ...
     def root(self) -> Node: ...
     def warm_caches(self, bus_names: list[str]) -> None: ...
+    def invalidate(self, node: Node) -> None: ...
     def children(self, node: Node) -> list[Node]: ...
     def role_name(self, node: Node) -> str: ...
     def name(self, node: Node) -> str: ...
@@ -247,7 +249,7 @@ class _Client(Protocol):
 # the re-read, which the backend does for every verb.
 _ACTION_VERBS = {
     "click": ("click",),
-    "toggle": ("click",),
+    "toggle": ("toggle", "click"),
     "expand": ("expand", "activate", "click"),
 }
 _SUPPORTED_VERBS = ("click", "focus", "set_text", "toggle", "expand")
@@ -471,9 +473,7 @@ class AtspiBackend:
         # work without a sentinel.
         if role and self._client.role_name(node).lower() != role.lower():
             return False
-        if name and name.lower() not in self._client.name(node).lower():
-            return False
-        return True
+        return not (name and name.lower() not in self._client.name(node).lower())
 
     def _search_frame(self, frame: Node, role: str, name: str) -> list[Element]:
         found: list[Element] = []
@@ -551,6 +551,13 @@ class AtspiBackend:
     def act(self, ref: str, action: str, text: str) -> dict:
         self._require_bus()
         node = self._node_for(ref)
+        # Acting is the one operation whose whole value is the element's state
+        # around the action, and the warm cache is a snapshot from find-time: a
+        # settle poll served from it can never observe the change and returns the
+        # pre-action state as if it were the confirmation. Drop this app's
+        # snapshot first so the pre-action snapshot, the settle polls and the
+        # final re-read are all live reads.
+        self._client.invalidate(node)
         # Confirm the ref still resolves before doing anything, and capture the
         # pre-action snapshot: a stale node is element_gone, never a click on a
         # remembered coordinate, and the snapshot is what the re-read compares
@@ -838,6 +845,16 @@ class _DbusClient:
             self._cache[bus_name] = snapshot
             self._calibrate(snapshot)
 
+    def invalidate(self, node: Node) -> None:
+        """Drop one app's snapshot so its next reads are live.
+
+        Called before acting: the snapshot is find-time state, and an act's
+        re-read served from it would return the pre-action value forever. The
+        next find warms the cache again, so the fast path is only ever skipped
+        for the reads that must observe a change.
+        """
+        self._cache.pop(node[0], None)
+
     def _calibrate(self, snapshot: CacheSnapshot) -> None:
         # Resolve every role enum in the snapshot to the name GetRoleName gives, so
         # the walk that follows needs no live role reads. One call per new enum,
@@ -854,7 +871,7 @@ class _DbusClient:
             if not _is_error(reply):
                 self._role_names[role_enum] = reply.body[0]
 
-    def _cached(self, node: Node) -> "CacheSnapshot | None":
+    def _cached(self, node: Node) -> CacheSnapshot | None:
         snapshot = self._cache.get(node[0])
         if snapshot is not None and snapshot.has(node):
             return snapshot
