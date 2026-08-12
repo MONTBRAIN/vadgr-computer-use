@@ -841,16 +841,19 @@ def apps() -> dict:
 
 @mcp.tool()
 @tool(name="app_open", tier=Tier.ZERO, risk=Risk.MEDIUM)
-def app_open(target: str) -> dict:
-    """Launch an installed app by id or name (Tier 0).
+def app_open(target: str, timeout_ms: int = 5000) -> dict:
+    """Launch an installed app by id or name and confirm it opened (Tier 0).
 
-    Resolves the target against the XDG desktop entries and launches with the
-    desktop's own launcher. Returns ``ok`` with the launched ``id`` and the
-    ``method`` used, or a named error when the app is not found.
+    Resolves the target against the XDG desktop entries, launches with the
+    desktop's own launcher, then watches the a11y bus for the app's window.
+    ``ok`` means a matching window is open and the result carries it (with
+    ``already_open`` when it predates the launch); a launch that dispatched but
+    mapped no window within ``timeout_ms`` is the named error ``no_window``.
+    Where the a11y bus cannot answer, the result says ``confirmed: false``.
     """
     from computer_use.tools import apps as _apps_impl
 
-    return _apps_impl.open_app(target)
+    return _apps_impl.open_app(target, timeout_ms=timeout_ms)
 
 
 # --- CLI: management subcommands ---

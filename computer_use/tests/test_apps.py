@@ -92,6 +92,68 @@ class TestExpandExec:
         assert argv == ["myapp"]
 
 
+_DEVNULL = object()
+
+_CALC_WINDOW = {
+    "app_name": "gnome-calculator",
+    "title": "Calculator",
+    "active": True,
+    "ref": "atspi:9",
+}
+
+
+class _FakeBackend:
+    """windows() plays a script of window lists; the last list repeats."""
+
+    def __init__(self, script):
+        self.script = script
+        self.calls = 0
+
+    def windows(self):
+        index = min(self.calls, len(self.script) - 1)
+        self.calls += 1
+        return {"windows": list(self.script[index])}
+
+
+def _install_launch_fakes(monkeypatch, *, have=("gio", "gtk-launch"), rcs=None):
+    """Stub which() and subprocess so no real app launches. Returns the calls.
+
+    ``rcs`` maps a launcher basename to the exit code its dispatch returns
+    (default 0 for all).
+    """
+    calls = []
+    rcs = rcs or {}
+
+    def fake_which(tool):
+        return f"/usr/bin/{tool}" if tool in have else None
+
+    def fake_run(argv, **kwargs):
+        calls.append({"argv": argv, "kwargs": kwargs, "via": "run"})
+        rc = rcs.get(argv[0], 0)
+        return type("R", (), {"returncode": rc})()
+
+    def fake_popen(argv, **kwargs):
+        calls.append({"argv": argv, "kwargs": kwargs, "via": "popen"})
+        return type("P", (), {"pid": 4242})()
+
+    monkeypatch.setattr(
+        apps,
+        "subprocess",
+        type(
+            "S",
+            (),
+            {
+                "run": staticmethod(fake_run),
+                "Popen": staticmethod(fake_popen),
+                "DEVNULL": _DEVNULL,
+                "TimeoutExpired": type("TimeoutExpired", (Exception,), {}),
+            },
+        ),
+    )
+    monkeypatch.setattr("shutil.which", fake_which)
+    return calls
+
+
 class TestOpenApp:
     def test_unknown_target_is_named_error(self, tmp_path, monkeypatch):
         _dirs(monkeypatch, tmp_path / "home", tmp_path / "system")
@@ -101,49 +163,140 @@ class TestOpenApp:
 
     def test_resolves_by_name_and_launches_via_gio_detached(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
-        _write(home / "applications" / "calc.desktop", _entry("Calculator"))
+        _write(home / "applications" / "calc.desktop",
+               _entry("Calculator", exec_line="gnome-calculator"))
         _dirs(monkeypatch, home, tmp_path / "system")
-
-        calls = {}
-
-        def fake_which(tool):
-            return "/usr/bin/gio" if tool == "gio" else None
-
-        class _Result:
-            returncode = 0
-
-        _DEVNULL = object()
-
-        def fake_run(argv, **kwargs):
-            calls["argv"] = argv
-            calls["kwargs"] = kwargs
-            return _Result()
-
+        calls = _install_launch_fakes(monkeypatch, have=("gio",))
         monkeypatch.setattr(
-            apps,
-            "subprocess",
-            type(
-                "S",
-                (),
-                {
-                    "run": staticmethod(fake_run),
-                    "DEVNULL": _DEVNULL,
-                    "TimeoutExpired": type("TimeoutExpired", (Exception,), {}),
-                },
-            ),
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
-        monkeypatch.setattr("shutil.which", fake_which)
         result = apps.open_app("Calculator")
         assert result["ok"] is True
         assert result["method"] == "gio"
         assert result["id"] == "calc.desktop"
-        assert calls["argv"][:2] == ["gio", "launch"]
+        assert calls[0]["argv"][:2] == ["gio", "launch"]
         # The launch MUST be detached: a launched GUI app that inherits a
         # stdout/stderr PIPE makes subprocess.run block until the app EXITS - the
         # multi-minute hang the wire e2e caught. So no capture_output; DEVNULL, a
         # new session, and a timeout backstop instead.
-        kw = calls["kwargs"]
+        kw = calls[0]["kwargs"]
         assert not kw.get("capture_output")
         assert kw.get("stdout") is _DEVNULL and kw.get("stderr") is _DEVNULL
         assert kw.get("start_new_session") is True
         assert "timeout" in kw
+
+
+class TestOpenAppConfirmsWindow:
+    """ok means a window was seen on the a11y bus, never a launcher exit code.
+
+    The wire e2e caught app_open returning ok for Text Editor with no window
+    ever appearing: gio launch exits 0 once it queues the D-Bus Activate call,
+    so its exit code proves dispatch, not a launch.
+    """
+
+    def _calc(self, tmp_path, monkeypatch, extra=""):
+        home = tmp_path / "home"
+        _write(home / "applications" / "calc.desktop",
+               _entry("Calculator", exec_line="gnome-calculator", extra=extra))
+        _dirs(monkeypatch, home, tmp_path / "system")
+
+    def test_ok_carries_the_confirmed_window(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [], [_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["window"]["ref"] == "atspi:9"
+        assert result["window"]["app_name"] == "gnome-calculator"
+
+    def test_no_window_within_timeout_is_a_named_error(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(apps, "_structured_backend", lambda: _FakeBackend([[]]))
+        result = apps.open_app("Calculator", timeout_ms=50)
+        assert result["ok"] is False
+        assert result["error"] == "no_window"
+        assert result["id"] == "calc.desktop"
+        # Every method dispatched before giving up, so the caller sees the path.
+        assert "gio" in result["methods"] and "exec" in result["methods"]
+
+    def test_dbus_activatable_prefers_gtk_launch(self, tmp_path, monkeypatch):
+        # gio launch queues the D-Bus Activate call and exits 0 without waiting
+        # for the reply; the daemon drops the queued call when the sender is
+        # gone before the service registers, so the app starts, idles and exits
+        # with no window. gtk-launch waits out the activation, so a
+        # DBusActivatable entry tries it first.
+        self._calc(tmp_path, monkeypatch, extra="DBusActivatable=true\n")
+        calls = _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["method"] == "gtk-launch"
+        assert calls[0]["argv"][0] == "gtk-launch"
+
+    def test_escalates_to_the_next_launcher_when_no_window(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        calls = _install_launch_fakes(monkeypatch)
+
+        class _WindowAfterGtkLaunch:
+            # gio dispatches fine but maps nothing (the Text Editor defect);
+            # the window exists only once gtk-launch has been dispatched.
+            def windows(self):
+                dispatched = [c["argv"][0] for c in calls if c["via"] == "run"]
+                wins = [_CALC_WINDOW] if "gtk-launch" in dispatched else []
+                return {"windows": wins}
+
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _WindowAfterGtkLaunch()
+        )
+        result = apps.open_app("Calculator", timeout_ms=1)
+        assert result["ok"] is True
+        assert result["method"] == "gtk-launch"
+        assert [c["argv"][0] for c in calls] == ["gio", "gtk-launch"]
+
+    def test_already_open_window_is_reported(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        calls = _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["already_open"] is True
+        assert result["window"]["ref"] == "atspi:9"
+        # The launch is still dispatched: a single-instance app presents its
+        # existing window on activation.
+        assert len(calls) == 1
+
+    def test_unconfirmed_when_the_backend_is_unavailable(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(apps, "_structured_backend", lambda: None)
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["confirmed"] is False
+        assert result["window"] is None
+
+    def test_exec_fallback_still_confirms(self, tmp_path, monkeypatch):
+        self._calc(tmp_path, monkeypatch)
+        calls = _install_launch_fakes(monkeypatch, have=())
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["method"] == "exec"
+        assert result["window"]["ref"] == "atspi:9"
+        assert calls[0]["via"] == "popen"
+        kw = calls[0]["kwargs"]
+        assert kw.get("stdout") is _DEVNULL and kw.get("stderr") is _DEVNULL
+        assert kw.get("start_new_session") is True

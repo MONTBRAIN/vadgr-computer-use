@@ -271,7 +271,7 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 - `clipboard(op, ...)`: read / write the OS clipboard.
 - `env(op, ...)` / `time(op, ...)` / `tempfile(op, ...)` / `data(op, ...)`: environment variables, time, temp files, and structured-data helpers.
 - `apps()`: list installed launchable apps (id, name, icon) from the XDG desktop entries.
-- `app_open(target)`: launch an installed app by id or name (Linux; via `gio` / `gtk-launch`).
+- `app_open(target, timeout_ms)`: launch an installed app by id or name and confirm a window appeared on the a11y bus (Linux; via `gtk-launch` / `gio`); `ok` carries the window, a dispatch that maps nothing fails `no_window`.
 
 ### Tier 1: browser (5)
 - `browser(op, ...)`: drive your real Chrome through the MV3 extension with direct DOM ops (`navigate`, `click`, `fill`, `query`, `read_text`, `wait_for`, `hover`, `dialog`, `upload`, `element_state`, `snapshot`, `use_target`, `back`/`forward`, and more). The DOM is the ground truth, so a mutating op is confirmed by a structured read-back rather than a screenshot. Every result also carries a `target: {window_id, tab_id, url}` so you always see which tab you acted on. Requires the companion extension - install it from the Chrome Web Store, or load the release asset `vadgr-cua-extension-<ver>.zip` unpacked; the native-host manifest allowlists both install flavors.

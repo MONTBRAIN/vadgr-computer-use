@@ -12,9 +12,16 @@ Reading a window is only useful if the model can bring one up first. These are
 Tier 0 system tools, not structured reads: listing and launching are OS
 operations. ``apps`` scans the XDG desktop entries; ``app_open`` launches one by
 id or name. Both are pure-python, no PyGObject: the launch shells out to the
-desktop's own launchers (``gio launch``, then ``gtk-launch``) and only falls back
+desktop's own launchers (``gio launch``, ``gtk-launch``) and only falls back
 to expanding the ``Exec`` line by hand, so a field code is never handed to a
 shell unexpanded.
+
+``app_open`` never trusts a launcher's exit code: for a ``DBusActivatable``
+app, ``gio launch`` exits 0 once it queues the D-Bus ``Activate`` call, and the
+daemon drops that queued call when the sender is gone before the activated
+service registers its name, so the app starts, idles, and exits with no window.
+The tool confirms the launch by watching the a11y bus for the app's window and
+only reports ok when one is there.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ import configparser
 import os
 import shlex
 import subprocess
+import time
 from pathlib import Path
 
 # Desktop-entry field codes. The file ones are dropped when no file is passed;
@@ -146,18 +154,120 @@ def _expand_exec(exec_line: str, name: str, path: Path) -> list[str]:
     return argv
 
 
-def open_app(target: str) -> dict:
-    """Launch an installed app by id or name.
+# How often the window confirmation re-reads the a11y bus while it waits.
+_POLL_SECONDS = 0.25
 
-    Tries the desktop's own launchers first (``gio launch`` then ``gtk-launch``),
-    which handle field codes, the working directory and startup notification, and
-    only expands the ``Exec`` line by hand as a last resort. Returns which method
-    launched it so a caller can see the path taken.
+
+def _structured_backend():
+    """The structured (a11y) backend, or None where it cannot resolve.
+
+    A seam: the confirmation step reads windows through the structured tier
+    rather than shelling out, and tests substitute a fake here.
+    """
+    try:
+        from computer_use.tools.ui.backend import resolve_backend
+    except ImportError:
+        return None
+    return resolve_backend()
+
+
+def _normalize(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
+    """Normalized tokens an a11y app_name may carry for this desktop entry.
+
+    The a11y bus names an application after its process (``gnome-text-editor``),
+    not its desktop id or display name, so the match collects every identity the
+    entry declares: the id stem, its last reverse-DNS segment, the display name,
+    the ``StartupWMClass``, and the ``Exec`` binary's basename.
+    """
+    stem = app_id[: -len(".desktop")] if app_id.endswith(".desktop") else app_id
+    raw = {stem, stem.split(".")[-1]}
+    for key in ("Name", "StartupWMClass"):
+        value = entry.get(key)
+        if value:
+            raw.add(value)
+    exec_line = entry.get("Exec")
+    if exec_line:
+        try:
+            argv0 = shlex.split(exec_line)[0]
+        except (ValueError, IndexError):
+            argv0 = exec_line.split()[0] if exec_line.split() else ""
+        if argv0:
+            raw.add(os.path.basename(argv0))
+    return {norm for norm in (_normalize(token) for token in raw) if len(norm) >= 3}
+
+
+def _matching_window(windows: list[dict], candidates: set[str]) -> dict | None:
+    for window in windows:
+        app_name = _normalize(window.get("app_name") or "")
+        if len(app_name) < 3:
+            continue
+        if any(app_name in cand or cand in app_name for cand in candidates):
+            return window
+    return None
+
+
+def _snap_windows(backend) -> list[dict] | None:
+    """One windows() read, or None where the bus cannot answer."""
+    if backend is None:
+        return None
+    try:
+        return backend.windows().get("windows", [])
+    except Exception:
+        return None
+
+
+def _poll_for_window(backend, candidates: set[str], timeout_ms: int) -> dict | None:
+    deadline = time.monotonic() + max(timeout_ms, 0) / 1000.0
+    while True:
+        windows = _snap_windows(backend)
+        match = _matching_window(windows or [], candidates)
+        if match is not None:
+            return match
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        time.sleep(min(_POLL_SECONDS, remaining))
+
+
+def open_app(target: str, timeout_ms: int = 5000) -> dict:
+    """Launch an installed app by id or name, and confirm a window appeared.
+
+    Dispatches through the desktop's own launchers and then watches the a11y
+    bus for a window belonging to the app, because a launcher's exit code only
+    proves dispatch. ``ok`` therefore means a matching window is open; a launch
+    that dispatched but mapped nothing within ``timeout_ms`` is the named error
+    ``no_window``, and each dispatched method escalates to the next before the
+    tool gives up.
+
+    "Opened" is a matching window present after the dispatch, not a new one: a
+    single-instance app presents its existing window on activation, and that
+    result carries ``already_open``. Where the a11y bus cannot answer at all,
+    the tool returns the dispatch result with ``confirmed: false`` rather than
+    guessing either way.
+
+    A ``DBusActivatable`` entry tries ``gtk-launch`` before ``gio launch``:
+    gio queues the D-Bus ``Activate`` call and exits without waiting for the
+    reply, and the daemon drops the queued call when the sender is gone before
+    the activated service registers, so the service starts, idles, and exits
+    with no window. gtk-launch waits the activation out.
     """
     resolved = _resolve(target)
     if resolved is None:
         return {"ok": False, "error": "app_not_found", "target": target}
     app_id, path = resolved
+    entry = _parse_entry(path) or {}
+    candidates = _window_candidates(app_id, entry, path)
+    timeout_ms = max(0, min(timeout_ms, 60_000))
+
+    backend = _structured_backend()
+    baseline = _snap_windows(backend)
+    already_open = (
+        _matching_window(baseline, candidates) if baseline is not None else None
+    )
 
     from shutil import which
 
@@ -167,9 +277,9 @@ def open_app(target: str) -> dict:
     # only happens when the app EXITS. That was the multi-minute hang the wire e2e
     # caught: the app opened, but the tool never returned. DEVNULL removes the
     # pipe; the timeout is a backstop for a launcher that itself misbehaves.
-    def _launch(argv: list[str]):
+    def _launch(argv: list[str]) -> bool:
         try:
-            return subprocess.run(
+            result = subprocess.run(
                 argv,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -177,31 +287,66 @@ def open_app(target: str) -> dict:
                 timeout=15,
             )
         except subprocess.TimeoutExpired:
-            return None
+            return False
+        return result.returncode == 0
 
-    if which("gio"):
-        result = _launch(["gio", "launch", str(path)])
-        if result is not None and result.returncode == 0:
-            return {"ok": True, "id": app_id, "method": "gio"}
-    if which("gtk-launch"):
-        result = _launch(["gtk-launch", app_id])
-        if result is not None and result.returncode == 0:
-            return {"ok": True, "id": app_id, "method": "gtk-launch"}
+    def _launch_exec() -> tuple[bool, dict | None]:
+        if not entry.get("Exec"):
+            return False, None
+        argv = _expand_exec(entry["Exec"], entry.get("Name") or app_id, path)
+        if not argv:
+            return False, None
+        if entry.get("Terminal", "").strip().lower() == "true":
+            term = os.environ.get("TERMINAL") or "x-terminal-emulator"
+            argv = [term, "-e", *argv]
+        try:
+            subprocess.Popen(
+                argv, start_new_session=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except (OSError, ValueError) as exc:
+            return False, {"ok": False, "error": "launch_failed", "id": app_id,
+                           "detail": str(exc)}
+        return True, None
 
-    entry = _parse_entry(path)
-    if entry is None or not entry.get("Exec"):
-        return {"ok": False, "error": "no_exec", "id": app_id}
-    argv = _expand_exec(entry["Exec"], entry.get("Name") or app_id, path)
-    if not argv:
-        return {"ok": False, "error": "no_exec", "id": app_id}
-    if entry.get("Terminal", "").strip().lower() == "true":
-        term = os.environ.get("TERMINAL") or "x-terminal-emulator"
-        argv = [term, "-e", *argv]
-    try:
-        subprocess.Popen(
-            argv, start_new_session=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    except (OSError, ValueError) as exc:
-        return {"ok": False, "error": "launch_failed", "id": app_id, "detail": str(exc)}
-    return {"ok": True, "id": app_id, "method": "exec"}
+    dbus_activatable = entry.get("DBusActivatable", "").strip().lower() == "true"
+    ladder = ["gtk-launch", "gio"] if dbus_activatable else ["gio", "gtk-launch"]
+    ladder.append("exec")
+
+    dispatched: list[str] = []
+    exec_error: dict | None = None
+    for method in ladder:
+        if method == "gio":
+            if not which("gio") or not _launch(["gio", "launch", str(path)]):
+                continue
+        elif method == "gtk-launch":
+            if not which("gtk-launch") or not _launch(["gtk-launch", app_id]):
+                continue
+        else:
+            ok, exec_error = _launch_exec()
+            if not ok:
+                continue
+        dispatched.append(method)
+        if baseline is None:
+            # No a11y bus to confirm against: report the dispatch honestly
+            # rather than claiming the app is up.
+            return {"ok": True, "id": app_id, "method": method,
+                    "window": None, "confirmed": False}
+        window = _poll_for_window(backend, candidates, timeout_ms)
+        if window is not None:
+            result = {
+                "ok": True, "id": app_id, "method": method,
+                "window": {"app_name": window.get("app_name"),
+                           "title": window.get("title"),
+                           "ref": window.get("ref")},
+            }
+            if already_open is not None:
+                result["already_open"] = True
+            return result
+
+    if dispatched:
+        return {"ok": False, "error": "no_window", "id": app_id,
+                "methods": dispatched, "timeout_ms": timeout_ms}
+    if exec_error is not None:
+        return exec_error
+    return {"ok": False, "error": "no_exec", "id": app_id}

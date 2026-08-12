@@ -31,9 +31,20 @@ never altered.
 - **`apps` and `app_open`** (Tier 0). `apps` lists installed launchable apps from
   the XDG desktop entries (id, name, icon), dropping `Hidden` and `NoDisplay`
   entries and keying by desktop-file-id with the home directory winning.
-  `app_open` launches one by id or name through the desktop's own launcher (`gio`
-  launch, then `gtk-launch`, then a manual `Exec` field-code expansion). The
-  launcher prerequisite is registered in `vadgr-cua install-deps` beside the
+  `app_open` launches one by id or name through the desktop's own launchers
+  (`gio launch`, `gtk-launch`, then a manual `Exec` field-code expansion) and
+  confirms the launch on the a11y bus before reporting `ok`: a launcher's exit
+  code only proves dispatch, so the tool polls for a window belonging to the
+  app (bounded by `timeout_ms`, default 5s), returns it in the result (with
+  `already_open` when it predates the launch, since a single-instance app
+  presents its existing window), escalates to the next launcher when a
+  dispatched one maps nothing, and fails `no_window` rather than claiming
+  success. A `DBusActivatable` entry tries `gtk-launch` before `gio launch`,
+  which exits 0 after queueing the D-Bus `Activate` call it never waits for;
+  the daemon drops the queued call once the sender is gone, so the service
+  starts, idles, and exits without a window. Where the a11y bus cannot answer,
+  the result says `confirmed: false` instead of guessing. The launcher
+  prerequisite is registered in `vadgr-cua install-deps` beside the
   accessibility stack.
 - **Four structured-tier tools.** `ui_tree` reads the focused window's tree
   (filtered, depth-capped). `ui_find` returns elements matching a role and/or
