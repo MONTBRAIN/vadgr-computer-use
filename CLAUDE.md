@@ -305,6 +305,14 @@ that name. Nothing here assumes a particular machine, user or absolute path.
   `cmd | head` reports `head`'s status.
 - After any mutating browser operation, confirm with a **structured read-back**,
   never a screenshot: web state changes faster than a screenshot can witness it.
+- **The structured (accessibility) tier is the ground truth for native apps, the
+  same way the DOM is for the browser tier.** When exercising or testing it,
+  discover elements with `ui_tree` / `ui_find` and drive with `ui_act`, and confirm
+  a mutation with a structured read-back (the act's re-read, or a fresh `ui_find`).
+  A screenshot may only independently confirm an action happened - never to locate
+  an element, decide what to do, or drive the app. Driving a structured-tier test
+  from pixels proves the pixel tier, not the structured one. This holds for every
+  backend: AT-SPI (Linux), UIA (Windows), AX (macOS).
 
 ## Conventions
 
