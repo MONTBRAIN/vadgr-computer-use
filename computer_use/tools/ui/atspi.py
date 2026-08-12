@@ -63,6 +63,7 @@ _ACCESSIBLE = "org.a11y.atspi.Accessible"
 _COMPONENT = "org.a11y.atspi.Component"
 _ACTION = "org.a11y.atspi.Action"
 _EDITABLE_TEXT = "org.a11y.atspi.EditableText"
+_TEXT = "org.a11y.atspi.Text"
 _APPLICATION = "org.a11y.atspi.Application"
 _PROPERTIES = "org.freedesktop.DBus.Properties"
 _REGISTRY_BUS = "org.a11y.atspi.Registry"
@@ -110,6 +111,10 @@ _MAX_EXAMINED = _MAX_NODES * 10
 # ui_wait polls find() rather than subscribing to registry signals: a bounded
 # poll is simpler, needs no signal plumbing, and cannot outlive its timeout.
 _WAIT_POLL_SECONDS = 0.1
+
+# The most characters one text read returns, so a huge document body never
+# turns a tree read into a megabyte transfer.
+_TEXT_READ_CAP = 5000
 
 # The largest extent, in pixels, that is ever a real widget. GTK reports
 # uninitialised memory as the extents of an unrealised widget (observed: a hidden
@@ -265,9 +270,12 @@ class _Client(Protocol):
 # resolve to an Action by name; focus is a Component grab; set_text is an
 # EditableText write. toggle and expand are click-like actions whose value is in
 # the re-read, which the backend does for every verb.
+# The activation action's name is the toolkit's, not the protocol's: GTK names
+# it "click", Qt "Press", Flutter "Tap" (observed on the Ubuntu App Center), and
+# some toolkits "activate". The click verb accepts them all, most specific first.
 _ACTION_VERBS = {
-    "click": ("click",),
-    "toggle": ("toggle", "click"),
+    "click": ("click", "press", "tap", "activate"),
+    "toggle": ("toggle", "click", "press", "tap"),
     "expand": ("expand", "activate", "click"),
 }
 _SUPPORTED_VERBS = ("click", "focus", "set_text", "toggle", "expand")
@@ -804,11 +812,19 @@ class _AtspiBus:
         from dbus_fast import Message
 
         await self._ensure_connected()
+        # Each call is bounded on its own, under the batch's outer timeout: an
+        # app that never answers (the Ubuntu App Center's Cache.GetItems) must
+        # come back as its own TimeoutError, not sink every other app's reply
+        # with it when the whole gather times out.
+        per_call = max(self._timeout - 1.0, 0.5)
         coros = [
-            self._a11y.call(Message(
-                destination=d, path=p, interface=i, member=m,
-                signature=s or "", body=list(b) if b else [],
-            ))
+            asyncio.wait_for(
+                self._a11y.call(Message(
+                    destination=d, path=p, interface=i, member=m,
+                    signature=s or "", body=list(b) if b else [],
+                )),
+                per_call,
+            )
             for (d, p, i, m, s, b) in calls
         ]
         return await asyncio.gather(*coros, return_exceptions=True)
@@ -852,6 +868,10 @@ class _DbusClient:
         # calibration only grows.
         self._cache: dict[str, CacheSnapshot] = {}
         self._role_names: dict[int, str] = {}
+        # Apps whose GetExtents never answers; asked once, then read as boundless.
+        self._no_extents: set[str] = set()
+        # Apps whose Cache.GetItems never answers; asked once, then read live.
+        self._no_items: set[str] = set()
 
     def warm_caches(self, bus_names: list[str]) -> None:
         """Bulk-read each app's exported tree with one concurrent GetItems each.
@@ -860,7 +880,9 @@ class _DbusClient:
         the warm set, so its reads stay live: the fast path degrades to the walk
         rather than failing.
         """
-        unique = [b for b in dict.fromkeys(bus_names) if b]
+        unique = [
+            b for b in dict.fromkeys(bus_names) if b and b not in self._no_items
+        ]
         if not unique:
             return
         calls = [(b, _CACHE_PATH, _CACHE, "GetItems", "", None) for b in unique]
@@ -868,6 +890,10 @@ class _DbusClient:
         for bus_name, reply in zip(unique, replies):
             if isinstance(reply, Exception) or _is_error(reply):
                 self._cache.pop(bus_name, None)
+                # An unanswered GetItems (not a plain error, which is cheap) is
+                # never asked again: each later find would re-pay the stall.
+                if isinstance(reply, (TimeoutError, asyncio.TimeoutError)):
+                    self._no_items.add(bus_name)
                 continue
             snapshot = build_snapshot(reply.body[0], decode_states)
             self._cache[bus_name] = snapshot
@@ -893,9 +919,12 @@ class _DbusClient:
             node = snapshot.node_with_role(role_enum)
             if node is None:
                 continue
-            reply = self._bus.run(
-                self._bus.call(node[0], node[1], _ACCESSIBLE, "GetRoleName")
-            )
+            try:
+                reply = self._run(
+                    self._bus.call(node[0], node[1], _ACCESSIBLE, "GetRoleName")
+                )
+            except ElementGone:
+                continue  # calibration is best effort; the enum reads live
             if not _is_error(reply):
                 self._role_names[role_enum] = reply.body[0]
 
@@ -914,16 +943,30 @@ class _DbusClient:
             )
         return reply
 
+    def _run(self, coro):
+        """A per-node call, where no answer at all means the node is gone.
+
+        The Ubuntu App Center's replaced nodes answer nothing after it
+        navigates (GetState observed hanging until the client timeout, and
+        gi.Atspi times out on them the same way), so a node the app will not
+        answer for is ElementGone, which every walk already skips, never a raw
+        TimeoutError that kills the whole read.
+        """
+        try:
+            return self._bus.run(coro)
+        except (TimeoutError, asyncio.TimeoutError):
+            raise ElementGone("the node's application did not answer")
+
     def _call(self, node: Node, iface, member, signature="", body=None):
         bus_name, path = node
-        reply = self._bus.run(
+        reply = self._run(
             self._bus.call(bus_name, path, iface, member, signature, body)
         )
         return self._check(reply)
 
     def _prop(self, node: Node, iface, name):
         bus_name, path = node
-        reply = self._bus.run(
+        reply = self._run(
             self._bus.call(
                 bus_name, path, _PROPERTIES, "Get", "ss", [iface, name]
             )
@@ -1004,11 +1047,23 @@ class _DbusClient:
         return decode_states(low, high)
 
     def extents(self, node: Node) -> tuple[int, int, int, int] | None:
-        reply = self._bus.run(
-            self._bus.call(
-                node[0], node[1], _COMPONENT, "GetExtents", "u", [_COORD_SCREEN]
+        # An app that never answers GetExtents (the Ubuntu App Center's Flutter
+        # embedder; gi.Atspi times out on it identically, so it is the app) is
+        # asked exactly once: the timeout reads as "no bounds", and the app goes
+        # on a no-extents list so a tree of matched elements costs one stalled
+        # call, not one per element.
+        if node[0] in self._no_extents:
+            return None
+        try:
+            reply = self._bus.run(
+                self._bus.call(
+                    node[0], node[1], _COMPONENT, "GetExtents", "u",
+                    [_COORD_SCREEN],
+                )
             )
-        )
+        except TimeoutError:
+            self._no_extents.add(node[0])
+            return None
         if _is_error(reply):
             if reply.error_name in self._GONE_ERRORS:
                 raise ElementGone(reply.error_name)
@@ -1024,27 +1079,60 @@ class _DbusClient:
         return tuple(reply.body[0])
 
     def actions(self, node: Node) -> list[str]:
-        reply = self._bus.run(
+        reply = self._run(
             self._bus.call(node[0], node[1], _ACTION, "GetActions")
         )
         if _is_error(reply):
             if reply.error_name in self._GONE_ERRORS:
                 raise ElementGone(reply.error_name)
             return []
-        return [entry[0] for entry in reply.body[0]]
+        names = [entry[0] for entry in reply.body[0]]
+        # The Ubuntu App Center's Flutter embedder answers GetActions with the
+        # right count but every name blank, while the per-index GetName answers
+        # ("Tap", "Focus"; gi.Atspi reads the same). A blank bulk name is
+        # re-asked per index, or the element's actions are unnameable and no
+        # verb can ever resolve on it.
+        for index, name in enumerate(names):
+            if name:
+                continue
+            named = self._run(
+                self._bus.call(node[0], node[1], _ACTION, "GetName", "i",
+                               [index])
+            )
+            if not _is_error(named):
+                names[index] = named.body[0]
+        return names
 
     def do_action(self, node: Node, index: int) -> bool:
         reply = self._call(node, _ACTION, "DoAction", "i", [index])
         return bool(reply.body[0])
 
     def set_text(self, node: Node, text: str) -> bool:
-        reply = self._call(
-            node, _EDITABLE_TEXT, "SetTextContents", "s", [text]
+        # The adaptor answers SetTextContents with success unconditionally (it
+        # drops the toolkit's own result), so the read-back is the only truth
+        # about whether the write landed.
+        self._call(node, _EDITABLE_TEXT, "SetTextContents", "s", [text])
+        if self.text(node) == text:
+            return True
+        # Flutter's embedder takes SetTextContents and writes nothing, while
+        # its InsertText lands (observed on the Ubuntu App Center search
+        # field), so a write that did not read back is retried as
+        # delete-plus-insert before it is called a failure.
+        try:
+            count = int(self._prop(node, _TEXT, "CharacterCount"))
+        except ElementGone:
+            raise
+        except Exception:
+            count = 0
+        if count > 0:
+            self._call(node, _EDITABLE_TEXT, "DeleteText", "ii", [0, count])
+        self._call(
+            node, _EDITABLE_TEXT, "InsertText", "isi", [0, text, len(text)]
         )
-        return bool(reply.body[0])
+        return self.text(node) == text
 
     def grab_focus(self, node: Node) -> bool:
-        reply = self._bus.run(
+        reply = self._run(
             self._bus.call(node[0], node[1], _COMPONENT, "GrabFocus")
         )
         if _is_error(reply):
@@ -1055,11 +1143,27 @@ class _DbusClient:
         # org.a11y.atspi.Text.GetText(start, end); end is capped rather than -1 so
         # reading a large document's text box stays bounded. An element without
         # the Text interface returns an error, which is simply "no text".
-        reply = self._bus.run(
-            self._bus.call(
-                node[0], node[1], "org.a11y.atspi.Text", "GetText", "ii",
-                [0, 5000],
-            )
+        value = self._get_text(node, _TEXT_READ_CAP)
+        if value:
+            return value
+        # An empty read is re-checked before it is believed: LibreOffice answers
+        # "" for any end offset past the character count (GTK clamps instead),
+        # so the fixed cap read every Writer paragraph as empty, and a landed
+        # set_text looked like a no-op. One CharacterCount read tells the two
+        # apart, and a non-empty element is re-read with its real range.
+        try:
+            count = int(self._prop(node, _TEXT, "CharacterCount"))
+        except ElementGone:
+            raise
+        except Exception:
+            return value
+        if count <= 0:
+            return value
+        return self._get_text(node, min(count, _TEXT_READ_CAP))
+
+    def _get_text(self, node: Node, end: int) -> str | None:
+        reply = self._run(
+            self._bus.call(node[0], node[1], _TEXT, "GetText", "ii", [0, end])
         )
         if _is_error(reply):
             if reply.error_name in self._GONE_ERRORS:
@@ -1071,7 +1175,7 @@ class _DbusClient:
         # The app's OS pid, read from the a11y bus daemon by its connection name.
         # AT-SPI has no GetProcessId over D-Bus, but the app is a bus peer, so its
         # connection's unix pid is the app's pid.
-        reply = self._bus.run(
+        reply = self._run(
             self._bus.call(
                 "org.freedesktop.DBus", "/org/freedesktop/DBus",
                 "org.freedesktop.DBus", "GetConnectionUnixProcessID", "s",

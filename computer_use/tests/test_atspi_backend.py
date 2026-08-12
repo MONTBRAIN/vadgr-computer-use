@@ -333,6 +333,25 @@ class TestActVerbs:
         backend.act(ref, "toggle", "")
         assert nodes[("btn", "/b")].did == [0]
 
+    def test_click_fires_a_flutter_button_whose_only_action_is_tap(self):
+        # Flutter's Linux embedder names a button's activation "Tap" and offers
+        # no "click" (observed on the Ubuntu App Center: Tap,
+        # DidGainAccessibilityFocus, DidLoseAccessibilityFocus, Focus). The
+        # click verb must resolve to it, or every Flutter button is unclickable.
+        nodes = _tree_with_button(actions=["Tap", "Focus"])
+        backend = _backend(nodes)
+        ref = backend.find("push button", "")[0].ref
+        backend.act(ref, "click", "")
+        assert nodes[("btn", "/b")].did == [0]
+
+    def test_click_fires_a_qt_button_whose_only_action_is_press(self):
+        # Qt names a push button's activation "Press".
+        nodes = _tree_with_button(actions=["Press"])
+        backend = _backend(nodes)
+        ref = backend.find("push button", "")[0].ref
+        backend.act(ref, "click", "")
+        assert nodes[("btn", "/b")].did == [0]
+
     def test_focus_grabs_when_component_present(self):
         nodes = _tree_with_button()
         backend = _backend(nodes)
