@@ -61,7 +61,7 @@ def ui_find(role: str = "", name: str = "", app: str = "") -> dict:
 
 
 def ui_windows() -> dict:
-    """List open top-level windows across all apps: app, title, active, ref."""
+    """List open top-level windows across all apps: app, title, active, ref, pid."""
     backend = resolve_backend()
     if backend is None:
         return _unavailable()

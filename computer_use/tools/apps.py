@@ -175,6 +175,58 @@ def _normalize(text: str) -> str:
     return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
+def _proc_pids() -> set[int]:
+    """The live pids, from /proc. Empty where there is no /proc (non-Linux)."""
+    try:
+        return {int(p) for p in os.listdir("/proc") if p.isdigit()}
+    except OSError:
+        return set()
+
+
+def _proc_comm(pid: int) -> str:
+    """The process command name from /proc, or empty. Best effort by design."""
+    if pid <= 0:
+        return ""
+    try:
+        with open(f"/proc/{pid}/comm") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def _lineage(pid: int) -> set[int]:
+    """The pid and its ancestors, so a launched wrapper's child still matches."""
+    out: set[int] = set()
+    for _ in range(64):
+        if pid <= 1 or pid in out:
+            break
+        out.add(pid)
+        try:
+            with open(f"/proc/{pid}/stat") as handle:
+                stat = handle.read()
+            # Field 4 (ppid) sits after the parenthesised comm, which may
+            # itself contain spaces, so split after the closing parenthesis.
+            pid = int(stat.rpartition(")")[2].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return out
+
+
+def _launched_comms(baseline_pids: set[int], baseline_comms: set[str]) -> set[str]:
+    """Normalized comms of processes that appeared after the dispatch.
+
+    Only a comm no pre-dispatch process carried counts: a new worker of an app
+    that was already running (a browser renderer) must not turn that app's
+    window into a match.
+    """
+    comms: set[str] = set()
+    for pid in _proc_pids() - baseline_pids:
+        comm = _normalize(_proc_comm(pid))
+        if len(comm) >= 3 and comm not in baseline_comms:
+            comms.add(comm)
+    return comms
+
+
 def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
     """Normalized tokens an a11y app_name may carry for this desktop entry.
 
@@ -200,8 +252,19 @@ def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
     return {norm for norm in (_normalize(token) for token in raw) if len(norm) >= 3}
 
 
-def _matching_window(windows: list[dict], candidates: set[str]) -> dict | None:
+def _matching_window(
+    windows: list[dict],
+    candidates: set[str],
+    launched_pids: set[int] | frozenset[int] = frozenset(),
+) -> dict | None:
     for window in windows:
+        # Process identity first: a window owned by the launched process (or a
+        # descendant of it) is the launch, whatever the toolkit named it. The
+        # a11y app name is derived from the process, not the desktop entry, and
+        # LibreOffice's 'soffice' matches no token of libreoffice_writer.desktop.
+        pid = window.get("pid") or 0
+        if pid and launched_pids and launched_pids & _lineage(pid):
+            return window
         app_name = _normalize(window.get("app_name") or "")
         if len(app_name) < 3:
             continue
@@ -220,11 +283,22 @@ def _snap_windows(backend) -> list[dict] | None:
         return None
 
 
-def _poll_for_window(backend, candidates: set[str], timeout_ms: int) -> dict | None:
+def _poll_for_window(
+    backend,
+    candidates: set[str],
+    timeout_ms: int,
+    launched_pids: set[int] | frozenset[int] = frozenset(),
+    baseline_pids: set[int] | frozenset[int] = frozenset(),
+    baseline_comms: set[str] | frozenset[str] = frozenset(),
+) -> dict | None:
     deadline = time.monotonic() + max(timeout_ms, 0) / 1000.0
     while True:
         windows = _snap_windows(backend)
-        match = _matching_window(windows or [], candidates)
+        # gio and gtk-launch hand the spawn to the session, so there is no
+        # child pid to match; the processes that appeared since dispatch stand
+        # in, contributing their comms as name candidates each poll.
+        polled = candidates | _launched_comms(set(baseline_pids), set(baseline_comms))
+        match = _matching_window(windows or [], polled, launched_pids)
         if match is not None:
             return match
         remaining = deadline - time.monotonic()
@@ -249,6 +323,13 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
     the tool returns the dispatch result with ``confirmed: false`` rather than
     guessing either way.
 
+    A window matches by name token or by process identity. The a11y app name is
+    derived from the process, not the desktop entry, so a name that matches no
+    entry token (LibreOffice's windows belong to ``soffice``) is still confirmed
+    when the window's owning pid is the launched process (or a descendant), or
+    when a process that appeared after dispatch carries a comm the window's
+    name matches.
+
     A ``DBusActivatable`` entry tries ``gtk-launch`` before ``gio launch``:
     gio queues the D-Bus ``Activate`` call and exits without waiting for the
     reply, and the daemon drops the queued call when the sender is gone before
@@ -268,6 +349,15 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
     already_open = (
         _matching_window(baseline, candidates) if baseline is not None else None
     )
+
+    # The processes alive before the dispatch, so the confirmation can also
+    # recognise the launch by identity: the window of a process that appeared
+    # after dispatch (matched by pid, or by its comm as a name candidate) is
+    # the launch even when the toolkit's a11y app name ('soffice') matches no
+    # token derived from the desktop entry.
+    baseline_pids = _proc_pids()
+    baseline_comms = {_normalize(_proc_comm(p)) for p in baseline_pids}
+    launched_pids: set[int] = set()
 
     from shutil import which
 
@@ -300,13 +390,14 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
             term = os.environ.get("TERMINAL") or "x-terminal-emulator"
             argv = [term, "-e", *argv]
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 argv, start_new_session=True,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         except (OSError, ValueError) as exc:
             return False, {"ok": False, "error": "launch_failed", "id": app_id,
                            "detail": str(exc)}
+        launched_pids.add(proc.pid)
         return True, None
 
     dbus_activatable = entry.get("DBusActivatable", "").strip().lower() == "true"
@@ -332,7 +423,10 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
             # rather than claiming the app is up.
             return {"ok": True, "id": app_id, "method": method,
                     "window": None, "confirmed": False}
-        window = _poll_for_window(backend, candidates, timeout_ms)
+        window = _poll_for_window(
+            backend, candidates, timeout_ms,
+            launched_pids, baseline_pids, baseline_comms,
+        )
         if window is not None:
             result = {
                 "ok": True, "id": app_id, "method": method,

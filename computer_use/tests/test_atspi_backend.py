@@ -591,20 +591,105 @@ class TestOffScreenIsNotSurfaced:
         assert "Visible Save" in names
 
 
+class TestEmptyStateSetIsNotPruned:
+    """A node with no states at all is unknown, not hidden.
+
+    Observed on snap-store (Flutter under GTK): the node the Flutter view hangs
+    off reports an empty state set, while every control below it reports
+    showing. Pruning on the missing "showing" dropped the whole application
+    tree, so ui_tree returned the bare frame and ui_find matched nothing.
+    """
+
+    def _flutter_tree(self):
+        return {
+            ("reg", "/root"): FakeNode("desktop frame", "d", children=[("app", "/a")]),
+            ("app", "/a"): FakeNode("application", "snap-store",
+                                    children=[("win", "/w")]),
+            ("win", "/w"): FakeNode("frame", "App Center",
+                                    states=["active", "showing", "visible"],
+                                    children=[("embed", "/e")]),
+            # The Flutter embedded root: structural, and no states at all.
+            ("embed", "/e"): FakeNode("filler", "", states=[],
+                                      children=[("btn", "/b")]),
+            ("btn", "/b"): FakeNode("push button", "Explore",
+                                    states=["showing", "visible"],
+                                    interfaces=[_ACCESSIBLE, _ACTION],
+                                    actions=["Click"]),
+        }
+
+    def test_tree_reaches_controls_below_a_stateless_node(self):
+        backend = _backend(self._flutter_tree())
+        tree = backend.tree(depth=6)
+        names = []
+        stack = [tree["root"]]
+        while stack:
+            n = stack.pop()
+            names.append(n["name"])
+            stack.extend(n["children"])
+        assert "Explore" in names
+
+    def test_find_matches_below_a_stateless_node(self):
+        backend = _backend(self._flutter_tree())
+        assert [e.name for e in backend.find("push button", "")] == ["Explore"]
+
+    def test_a_node_with_states_but_not_showing_is_still_pruned(self):
+        nodes = self._flutter_tree()
+        nodes[("embed", "/e")].states = ["visible"]  # reported, and off screen
+        backend = _backend(nodes)
+        assert backend.find("push button", "") == []
+
+
+class TestFindBudgetIsNotSpentOnPrunedNodes:
+    """The node budget must count processed nodes, not pruned ones.
+
+    Observed on LibreOffice Writer: about six thousand cached menu items, none
+    showing, precede the document body in walk order. Each pruned item spent
+    one unit of the find budget, so the walk died inside the menus and the
+    document body was never reached.
+    """
+
+    def _menu_heavy_tree(self, hidden=2500):
+        nodes = {
+            ("reg", "/root"): FakeNode("desktop frame", "d", children=[("app", "/a")]),
+            ("app", "/a"): FakeNode("application", "soffice",
+                                    children=[("win", "/w")]),
+            ("win", "/w"): FakeNode("frame", "Untitled 1",
+                                    states=["active", "showing", "visible"],
+                                    children=[("bar", "/bar"), ("doc", "/doc")]),
+            ("bar", "/bar"): FakeNode("menu bar", "", states=["showing", "visible"]),
+            ("doc", "/doc"): FakeNode("document text", "Document",
+                                      states=["showing", "visible", "editable"],
+                                      interfaces=[_ACCESSIBLE, "org.a11y.atspi.Text"],
+                                      text="body"),
+        }
+        items = []
+        for i in range(hidden):
+            nid = ("mi", f"/m{i}")
+            nodes[nid] = FakeNode("menu item", f"Item {i}", states=["visible"])
+            items.append(nid)
+        nodes[("bar", "/bar")].children = items
+        return nodes
+
+    def test_a_match_past_thousands_of_hidden_menu_items_is_found(self):
+        backend = _backend(self._menu_heavy_tree())
+        found = backend.find("document text", "")
+        assert [e.name for e in found] == ["Document"]
+
+
 def _multi_app_tree():
     # Two apps, each with one frame. Calculator's frame is NOT active; gedit's is.
     # This is the exact shape the expansion targets: read a non-focused window.
     return {
         ("reg", "/root"): FakeNode("desktop frame", "d",
                                    children=[("a1", "/a1"), ("a2", "/a2")]),
-        ("a1", "/a1"): FakeNode("application", "gnome-calculator",
+        ("a1", "/a1"): FakeNode("application", "gnome-calculator", pid=100,
                                 children=[("f1", "/f1")]),
         ("f1", "/f1"): FakeNode("frame", "Calculator",
                                 states=["showing", "visible"],
                                 children=[("b7", "/b7")]),
         ("b7", "/b7"): FakeNode("button", "7", states=["showing", "visible"],
                                 interfaces=[_ACCESSIBLE, _ACTION], actions=["Click"]),
-        ("a2", "/a2"): FakeNode("application", "gedit",
+        ("a2", "/a2"): FakeNode("application", "gedit", pid=200,
                                 children=[("f2", "/f2")]),
         ("f2", "/f2"): FakeNode("frame", "gedit",
                                 states=["active", "showing", "visible"],
@@ -664,6 +749,15 @@ class TestListWindows:
         assert by_title["Calculator"]["active"] is False
         assert by_title["Calculator"]["app_name"] == "gnome-calculator"
         assert by_title["gedit"]["ref"].startswith("atspi:")
+
+    def test_windows_carry_the_owning_app_pid(self):
+        # app_open confirms a launch by process identity when the a11y app name
+        # matches no desktop-entry token (LibreOffice launches as 'soffice'),
+        # so each window carries its application's pid.
+        backend = _backend(_multi_app_tree())
+        by_title = {w["title"]: w for w in backend.windows()["windows"]}
+        assert by_title["Calculator"]["pid"] == 100
+        assert by_title["gedit"]["pid"] == 200
 
 
 class TestBusUnavailable:

@@ -285,6 +285,92 @@ class TestOpenAppConfirmsWindow:
         assert result["confirmed"] is False
         assert result["window"] is None
 
+    def test_confirms_by_pid_when_app_name_matches_no_token(self, tmp_path, monkeypatch):
+        # LibreOffice: the a11y app name is 'soffice', which matches nothing
+        # derived from libreoffice_writer.desktop (id stem, Name, Exec
+        # basename). The launched process's pid owns the window, and that
+        # identity must confirm the launch instead of a full-timeout poll.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=())  # exec path: Popen pid 4242
+        soffice_win = {"app_name": "soffice", "title": "Untitled 1",
+                       "active": True, "ref": "atspi:3", "pid": 4242}
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [soffice_win]]),
+        )
+        monkeypatch.setattr(apps, "_proc_pids", lambda: {1, 2}, raising=False)
+        monkeypatch.setattr(apps, "_proc_comm", lambda pid: "", raising=False)
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
+        assert result["ok"] is True
+        assert result["method"] == "exec"
+        assert result["window"]["app_name"] == "soffice"
+
+    def test_new_process_comm_becomes_a_window_candidate(self, tmp_path, monkeypatch):
+        # gio spawns the app via the session, so there is no child pid to
+        # match, and the window's own pid may be unreadable. A process that
+        # appeared after dispatch contributes its comm ('soffice.bin') as a
+        # name candidate, which is what the window's 'soffice' matches.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=("gio",))
+        soffice_win = {"app_name": "soffice", "title": "Untitled 1",
+                       "active": True, "ref": "atspi:3", "pid": 0}
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [soffice_win]]),
+        )
+        pid_reads = {"count": 0}
+
+        def fake_pids():
+            pid_reads["count"] += 1
+            # The baseline snapshot, then soffice.bin appears after dispatch.
+            return {100} if pid_reads["count"] == 1 else {100, 555}
+
+        monkeypatch.setattr(apps, "_proc_pids", fake_pids, raising=False)
+        monkeypatch.setattr(
+            apps, "_proc_comm",
+            lambda pid: {555: "soffice.bin"}.get(pid, ""), raising=False,
+        )
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
+        assert result["ok"] is True
+        assert result["method"] == "gio"
+        assert result["window"]["app_name"] == "soffice"
+
+    def test_a_preexisting_comm_is_not_a_candidate(self, tmp_path, monkeypatch):
+        # A new worker of an app that was already running (a browser renderer)
+        # must not turn that app's window into a match: only a comm that no
+        # pre-dispatch process carried counts as launched.
+        home = tmp_path / "home"
+        _write(home / "applications" / "libreoffice_writer.desktop",
+               _entry("LibreOffice Writer", exec_line="libreoffice --writer %U"))
+        _dirs(monkeypatch, home, tmp_path / "system")
+        _install_launch_fakes(monkeypatch, have=("gio",))
+        chrome_win = {"app_name": "chrome", "title": "Tab", "active": True,
+                      "ref": "atspi:8", "pid": 0}
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [chrome_win]]),
+        )
+        pid_reads = {"count": 0}
+
+        def fake_pids():
+            pid_reads["count"] += 1
+            return {100} if pid_reads["count"] == 1 else {100, 555}
+
+        monkeypatch.setattr(apps, "_proc_pids", fake_pids, raising=False)
+        # 100 (pre-existing) and 555 (new) are both 'chrome': a renderer.
+        monkeypatch.setattr(
+            apps, "_proc_comm", lambda pid: "chrome", raising=False,
+        )
+        result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
+        assert result["ok"] is False
+        assert result["error"] == "no_window"
+
     def test_exec_fallback_still_confirms(self, tmp_path, monkeypatch):
         self._calc(tmp_path, monkeypatch)
         calls = _install_launch_fakes(monkeypatch, have=())

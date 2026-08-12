@@ -99,7 +99,13 @@ _STATE_NAMES = (
 # A hard cap on tree/find traversal. The structured tier's whole argument is that
 # it returns small text fast; an unbounded walk of a pathological tree would give
 # that back. Depth is the caller's knob; this is the safety net on total nodes.
+# The cap counts the nodes a read actually processes: a node pruned as not
+# showing costs one states read and nothing more, and LibreOffice hides about
+# six thousand menu items ahead of its document body in walk order, so pruned
+# nodes spending the budget would end the walk inside the menus. The larger
+# examined cap is the safety net on those cheap prunes.
 _MAX_NODES = 2000
+_MAX_EXAMINED = _MAX_NODES * 10
 
 # ui_wait polls find() rather than subscribing to registry signals: a bounded
 # poll is simpler, needs no signal plumbing, and cannot outlive its timeout.
@@ -172,6 +178,18 @@ def _is_meaningful(role: str, name: str) -> bool:
 
 def _role_reads_text(role: str) -> bool:
     return role in _TEXT_ROLES or role.endswith("text")
+
+
+def _presumed_showing(states: tuple[str, ...]) -> bool:
+    """Whether a node counts as on screen for the walk.
+
+    An empty state set is unknown, not hidden: snap-store (Flutter under GTK)
+    hangs its whole view off a node that reports no states at all while every
+    control below it reports showing, so pruning on the missing "showing" there
+    dropped the entire application tree. Only a node that reports states and
+    omits "showing" is really off screen.
+    """
+    return "showing" in states or not states
 
 
 def _proc_comm(pid: int) -> str:
@@ -426,7 +444,7 @@ class AtspiBackend:
             if budget[0] <= 0:
                 break
             try:
-                if "showing" not in self._client.states(child):
+                if not _presumed_showing(self._client.states(child)):
                     continue  # off-screen: do not surface it or its subtree
                 crole = self._client.role_name(child)
                 cname = self._client.name(child)
@@ -480,16 +498,21 @@ class AtspiBackend:
         # (node, is_root): the root is always walked; every other node is skipped,
         # subtree and all, when it is not showing, so an off-screen dialog's
         # controls never surface as matches (they are the phantoms a screenshot
-        # would never show either).
+        # would never show either). Pruned nodes do not spend the node budget
+        # (each costs one states read), or a window whose hidden menu items
+        # precede its content in walk order never reaches the content; the
+        # examined cap is the safety net on those cheap prunes.
         stack: list[tuple[Node, bool]] = [(frame, True)]
         visited = 0
-        while stack and visited < _MAX_NODES:
+        examined = 0
+        while stack and visited < _MAX_NODES and examined < _MAX_EXAMINED:
             node, is_root = stack.pop()
-            visited += 1
+            examined += 1
             try:
-                showing = "showing" in self._client.states(node)
+                showing = _presumed_showing(self._client.states(node))
                 if not is_root and not showing:
                     continue
+                visited += 1
                 if showing and self._matches(node, role, name):
                     found.append(self._element(node))
                 children = self._client.children(node)
@@ -633,6 +656,10 @@ class AtspiBackend:
         for app in self._apps():
             try:
                 app_name = self._client.name(app)
+                # The owning process: it is how app_open confirms a launch when
+                # the a11y app name matches no desktop-entry token (LibreOffice
+                # launches as 'soffice'). 0 where the bus cannot answer.
+                pid = self._client.pid(app)
             except ElementGone:
                 continue
             for frame in self._frames_of(app):
@@ -643,6 +670,7 @@ class AtspiBackend:
                         "title": self._client.name(frame),
                         "active": "active" in states,
                         "ref": self._ref_for(frame),
+                        "pid": pid,
                     })
                 except ElementGone:
                     continue

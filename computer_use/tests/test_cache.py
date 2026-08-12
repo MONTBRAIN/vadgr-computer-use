@@ -82,6 +82,28 @@ class TestCompleteness:
         snap = build_snapshot(_body(), decode_states)
         assert snap.is_complete(("bus", "/missing")) is False
 
+    def test_unknown_child_count_is_never_complete(self):
+        # A negative child count is AT-SPI for "unknown". LibreOffice exports
+        # its document body with child_count=-1 and no cached children while a
+        # live GetChildren returns the paragraph; trusting the cache here hides
+        # the one element the document window exists for.
+        body = [
+            _item("bus", "/frame", "/app", 0, 1, 23, "Writer"),
+            _item("bus", "/doc", "/frame", 0, -1, 55, "Document"),
+        ]
+        snap = build_snapshot(body, decode_states)
+        assert snap.is_complete(("bus", "/doc")) is False
+
+    def test_unknown_child_count_with_cached_children_is_still_not_complete(self):
+        # Even with some children cached, a declared -1 cannot vouch that they
+        # are all of them, so the read must go live.
+        body = [
+            _item("bus", "/menu", "/app", 0, -1, 33, "File"),
+            _item("bus", "/item", "/menu", 0, 0, 35, "Open"),
+        ]
+        snap = build_snapshot(body, decode_states)
+        assert snap.is_complete(("bus", "/menu")) is False
+
 
 class TestStateDecodingMatchesLivePath:
     def test_states_decode_with_the_shared_function(self):
@@ -125,9 +147,10 @@ class _FakeBus:
     through, which is all _DbusClient needs, so no event loop is involved.
     """
 
-    def __init__(self, get_items: dict, live_role="LIVE-ROLE"):
+    def __init__(self, get_items: dict, live_role="LIVE-ROLE", live_children=None):
         self._get_items = get_items
         self._live_role = live_role
+        self._live_children = live_children or {}
         self.live_calls = 0
 
     def call(self, dest, path, iface, member, signature="", body=None):
@@ -141,7 +164,8 @@ class _FakeBus:
         if member == "GetRoleName":
             return _Reply([self._live_role])
         if member == "GetChildren":
-            return _Reply([[]])
+            kids = self._live_children.get((dest, path), [])
+            return _Reply([[list(k) for k in kids]])
         return _Reply([""])
 
     def run(self, value):
@@ -180,6 +204,21 @@ class TestClientServesFromCache:
         client.role_name(("chromium", "/x"))
         client.name(("chromium", "/x"))
         assert bus.live_calls > before  # it went to the bus, not a snapshot
+
+    def test_unknown_child_count_falls_back_to_a_live_children_read(self):
+        # The observed LibreOffice shape: the cache advertises the node but
+        # declares child_count=-1 and holds no children for it, while a live
+        # GetChildren returns the real child. The client must walk live rather
+        # than trust the empty cached child list.
+        body = [_one_item("soffice", "/doc", "/frame", -1, 55, "Document")]
+        bus = _FakeBus(
+            {"soffice": body},
+            live_children={("soffice", "/doc"): [["soffice", "/para"]]},
+        )
+        client = _DbusClient(bus)
+        client.warm_caches(["soffice"])
+        kids = client.children(("soffice", "/doc"))
+        assert kids == [("soffice", "/para")]
 
     def test_invalidate_drops_only_that_apps_snapshot(self):
         # Acting invalidates the target app's snapshot so the act-time reads are

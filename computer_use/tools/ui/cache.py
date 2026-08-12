@@ -80,9 +80,13 @@ class CacheSnapshot:
 
         An incomplete node means the cache was not warm for that branch, so the
         caller reads it live (which also warms it) rather than missing children.
+        A negative declared count is AT-SPI for "unknown" (LibreOffice exports
+        its document body with -1 and no cached children while a live
+        GetChildren returns the paragraph), so it can never vouch for
+        completeness and the read goes live.
         """
         item = self._items.get(node)
-        if item is None:
+        if item is None or item.child_count < 0:
             return False
         return len(self._children.get(node, ())) >= item.child_count
 
