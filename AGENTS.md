@@ -253,6 +253,14 @@ two things**: a genuine decision only the owner can make - surfaced with the
 options and a recommendation - or a defined approval gate, which is running the
 e2e (its runbook is approved before it runs) and merge, tag and release.
 
+**Pushing to the PR branch is not a gate; merging is.** The PR branch is the
+working surface where the e2e runs, so commits go there as they are made, never
+held back on the local branch to wait for a nod. The owner's approval gates the
+merge, the tag and the release, not the push. A commit kept off the PR to wait
+for approval is the mistake: the branch is where the change is reviewed and
+tested, and the approval is asked at merge. This holds in every repo in this
+family.
+
 **Complete means complete: a feature is not done while an implementable part is
 left as a follow-up.** "Scoped but not built", "one more thing remaining" and
 "the last piece is a small fix" are not stopping points, and implementable
