@@ -246,10 +246,14 @@ class TestStateDecoding:
 
 
 class TestCapability:
-    def test_coordinate_trust_is_none_on_wayland(self):
+    def test_coordinate_trust_is_per_window_on_wayland(self):
+        # Wayland is not one answer: a Wayland-native window's bounds are
+        # window-relative, and an XWayland window's are true screen pixels, so
+        # the session-level answer is per_window and each found element carries
+        # its own verdict.
         backend = _backend(_tree_with_button(), server="wayland")
         cap = backend.capability()
-        assert cap["coordinate_trust"] == "none"
+        assert cap["coordinate_trust"] == "per_window"
         assert cap["backend"] == "atspi"
         assert cap["bus_reachable"] is True
 
@@ -1148,3 +1152,85 @@ class TestScreenReaderPulse:
         assert be.find("text", "", "") == []
         assert be.find("text", "", "") == []
         assert be._client.sr_log == []
+
+
+def _xwayland_tree(frame_origin=(67, 32)):
+    """A window whose frame reports a real, nonzero screen origin.
+
+    The shape of an XWayland client on a Wayland session: the X server knows
+    the true window position, and the toolkit reports true screen extents
+    through AT-SPI. The matching X toplevel is what the trust check confirms
+    against.
+    """
+    x, y = frame_origin
+    nodes = {
+        ("reg", "/root"): FakeNode("desktop frame", "main",
+                                   children=[("app", "/a")]),
+        ("app", "/a"): FakeNode("application", "code", toolkit="Chromium",
+                                children=[("win", "/w")]),
+        ("win", "/w"): FakeNode("frame", "readme - Code",
+                                states=["active", "showing", "visible"],
+                                extents=(x, y, 1213, 768),
+                                children=[("btn", "/b")]),
+        ("btn", "/b"): FakeNode(
+            "push button", "Save",
+            states=["showing", "visible"], extents=(x + 35, y + 10, 74, 30),
+            interfaces=[_ACCESSIBLE, _COMPONENT, _ACTION], actions=["click"],
+        ),
+    }
+    return nodes
+
+
+class TestPerWindowCoordinateTrust:
+    """On Wayland, an element's bounds are trustworthy exactly when its window
+    is an XWayland client: the X server vouches for the origin. The check is a
+    match between the frame's own claimed geometry and a real X toplevel, so a
+    Wayland-native popup that happens to claim a nonzero origin never passes.
+    """
+
+    def test_x_confirmed_frame_marks_elements_real(self, monkeypatch):
+        be = _backend(_xwayland_tree(), server="wayland")
+        monkeypatch.setattr(
+            atspi, "_x_toplevel_geometries",
+            lambda: [("readme - Code", 67, 32, 1213, 768)],
+        )
+        found = be.find("push button", "", "")
+        assert found[0].coordinate_trust == "real"
+        assert found[0].as_dict()["coordinate_trust"] == "real"
+
+    def test_zero_origin_frame_is_window_relative_and_x_is_not_asked(
+        self, monkeypatch
+    ):
+        def boom():
+            raise AssertionError("a (0,0) frame must not cost an X round trip")
+
+        monkeypatch.setattr(atspi, "_x_toplevel_geometries", boom)
+        be = _backend(_tree_with_button(), server="wayland")
+        found = be.find("push button", "", "")
+        assert found[0].coordinate_trust == "none"
+        assert found[0].as_dict()["coordinate_trust"] == "none"
+
+    def test_unconfirmed_nonzero_origin_is_not_trusted(self, monkeypatch):
+        # A Wayland-native popup reports its parent-relative guess as a nonzero
+        # origin; no X toplevel matches it, so its bounds stay untrusted.
+        be = _backend(_xwayland_tree(frame_origin=(99, 25)), server="wayland")
+        monkeypatch.setattr(atspi, "_x_toplevel_geometries", lambda: [])
+        found = be.find("push button", "", "")
+        assert found[0].coordinate_trust == "none"
+
+    def test_x11_elements_carry_no_per_element_field(self):
+        # On X11 every bound is real and the capability block already says so;
+        # a per-element field would be 33 copies of the same word.
+        be = _backend(_tree_with_button(), server="x11")
+        found = be.find("push button", "", "")
+        assert found[0].coordinate_trust is None
+        assert "coordinate_trust" not in found[0].as_dict()
+
+    def test_x_failure_degrades_to_untrusted(self, monkeypatch):
+        def boom():
+            raise RuntimeError("no X server")
+
+        monkeypatch.setattr(atspi, "_x_toplevel_geometries", boom)
+        be = _backend(_xwayland_tree(), server="wayland")
+        found = be.find("push button", "", "")
+        assert found[0].coordinate_trust == "none"

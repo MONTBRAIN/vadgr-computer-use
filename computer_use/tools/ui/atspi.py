@@ -212,6 +212,38 @@ def _presumed_showing(states: tuple[str, ...]) -> bool:
     return "showing" in states or not states
 
 
+def _x_toplevel_geometries() -> list[tuple[str, int, int, int, int]]:
+    """The mapped X toplevels as (name, x, y, w, h), root-relative.
+
+    On a Wayland session this enumerates the XWayland clients, whose window
+    positions the X server genuinely knows. It is the ground truth the
+    per-window coordinate trust confirms against: a frame whose claimed screen
+    geometry matches a real X toplevel is really there. Raises where there is
+    no X server or no python-xlib; the caller degrades to untrusted.
+    """
+    from Xlib import display as xdisplay
+
+    out: list[tuple[str, int, int, int, int]] = []
+    disp = xdisplay.Display()
+    try:
+        root = disp.screen().root
+        net_wm_name = disp.get_atom("_NET_WM_NAME")
+        for win in root.query_tree().children:
+            try:
+                if win.get_attributes().map_state != 2:  # IsViewable
+                    continue
+                geo = win.get_geometry()
+                name = win.get_full_text_property(net_wm_name)
+                if name is None:
+                    name = win.get_wm_name() or ""
+                out.append((str(name), geo.x, geo.y, geo.width, geo.height))
+            except Exception:
+                continue
+    finally:
+        disp.close()
+    return out
+
+
 def _proc_comm(pid: int) -> str:
     """The process command name from /proc, or empty. Best effort by design."""
     if pid <= 0:
@@ -342,10 +374,45 @@ class AtspiBackend:
     # -- capability --------------------------------------------------------
 
     def _coordinate_trust(self) -> str:
-        # X11 hands out true screen extents; Wayland withholds the surface
-        # origin, so its extents are window-relative and must not be used to aim
-        # a pixel click. "real" versus "none" is that distinction, named.
-        return "real" if self._session.server == "x11" else "none"
+        # X11 hands out true screen extents. Wayland is not one answer: the
+        # compositor withholds a native client's surface origin (so its extents
+        # are window-relative), while an XWayland client's extents are true
+        # screen pixels the X server vouches for. So the session-level verdict
+        # there is per_window, and each found element carries its own.
+        return "real" if self._session.server == "x11" else "per_window"
+
+    def _frame_trust(self, frame: Node) -> str:
+        """Whether this window's bounds are true screen pixels ("real"/"none").
+
+        A Wayland-native frame claims origin (0, 0) (the compositor tells it
+        nothing better), so a zero origin is untrusted without asking X. A
+        nonzero claim is only believed when a mapped X toplevel matches the
+        claimed geometry exactly, and its name matches when both sides have
+        one: a Wayland-native popup guesses a nonzero origin too (observed:
+        a Chrome popup frame at (99, 25) with no X window behind it), and a
+        guess must never aim a click.
+        """
+        try:
+            ext = _sane_extents(self._client.extents(frame))
+        except ElementGone:
+            return "none"
+        if ext is None or (ext[0], ext[1]) == (0, 0):
+            return "none"
+        try:
+            name = self._client.name(frame)
+        except ElementGone:
+            name = ""
+        try:
+            toplevels = _x_toplevel_geometries()
+        except Exception:
+            return "none"  # no X server to vouch: stay untrusted
+        for x_name, x, y, w, h in toplevels:
+            if (x, y, w, h) != ext:
+                continue
+            if name and x_name and name != x_name:
+                continue
+            return "real"
+        return "none"
 
     def capability(self) -> dict:
         reachable = self._client.reachable()
@@ -429,7 +496,12 @@ class AtspiBackend:
 
     # -- reading -----------------------------------------------------------
 
-    def _element(self, node: Node, window: str | None = None) -> Element:
+    def _element(
+        self,
+        node: Node,
+        window: str | None = None,
+        trust: str | None = None,
+    ) -> Element:
         role = self._client.role_name(node)
         extents = _sane_extents(self._client.extents(node))
         bounds = Bounds(*extents) if extents is not None else None
@@ -445,6 +517,7 @@ class AtspiBackend:
             states=self._client.states(node),
             text=text,
             window=window,
+            coordinate_trust=trust,
         )
 
     def _node_dict(self, node: Node, depth: int, budget: list[int]) -> dict:
@@ -553,6 +626,14 @@ class AtspiBackend:
             window = self._client.name(frame) or None
         except ElementGone:
             window = None
+        # One trust verdict per frame per pass: it prices at most one extents
+        # read, and one X enumeration only for the frames that claim a nonzero
+        # origin. On X11 the capability block already answers for everything,
+        # so elements carry no per-element field there.
+        trust = (
+            self._frame_trust(frame)
+            if self._session.server != "x11" else None
+        )
         # (node, is_root): the root is always walked; every other node is skipped,
         # subtree and all, when it is not showing, so an off-screen dialog's
         # controls never surface as matches (they are the phantoms a screenshot
@@ -584,7 +665,9 @@ class AtspiBackend:
                     # do the anonymous wrappers.
                     meaningful[0] += 1
                 if showing and self._matches(node, role, name):
-                    found.append(self._element(node, window=window))
+                    found.append(
+                        self._element(node, window=window, trust=trust)
+                    )
                 children = self._client.children(node)
             except ElementGone:
                 # The node vanished mid-walk and took its unvisited subtree

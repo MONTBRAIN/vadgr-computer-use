@@ -74,6 +74,13 @@ class Element:
     under. It is what disambiguates equal matches across windows: nine Writer
     documents expose nine paragraphs with the same role, name and (on Wayland,
     window-relative) bounds, and only the owning window tells them apart.
+
+    ``coordinate_trust`` says whether this element's bounds are true screen
+    pixels a Tier 2 click can aim at. It is only carried on Wayland, where the
+    answer is per window: an XWayland client's bounds are real (the X server
+    vouches for the window origin), a Wayland-native client's are
+    window-relative. On X11 every bound is real and the capability block
+    already says so once.
     """
 
     ref: str
@@ -83,6 +90,7 @@ class Element:
     states: tuple[str, ...] = ()
     text: str | None = None
     window: str | None = None
+    coordinate_trust: str | None = None
 
     def as_dict(self) -> dict:
         out = {
@@ -100,6 +108,9 @@ class Element:
         # has no frame in hand and omits it rather than shipping a null.
         if self.window is not None:
             out["window"] = self.window
+        # Only carried where the session makes it ambiguous (Wayland).
+        if self.coordinate_trust is not None:
+            out["coordinate_trust"] = self.coordinate_trust
         return out
 
 
