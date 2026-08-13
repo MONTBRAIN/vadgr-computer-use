@@ -103,17 +103,16 @@ never altered.
   exposes its full tree (menu bar, explorer, about 111 KB at depth 5) where an
   unflagged launch exposes two nodes per window. Every non-Chromium entry
   keeps the unchanged ladder and gets neither the flag nor the environment.
-- **A window that answers with no content gets one bounded screen-reader
-  pulse.** Some toolkits (Flutter's GTK embedder was the observed case) build
-  their semantics tree only when the bus says an assistive tool is present. A
-  read whose walk meets no meaningful node raises
-  `org.a11y.Status.ScreenReaderEnabled`, waits up to three seconds for the
-  window to grow content, re-reads only if it did, and drops the flag in every
-  case, including mid-pulse failure. The pulse fires at most once per
-  application, never over a real screen reader, and does not start Orca (GNOME
-  starts Orca from its own gsetting, not the bus property; verified live with
-  an outside witness sampling the property through the pulse). The tree stays
-  populated after the flag drops.
+- **The tier never raises `org.a11y.Status.ScreenReaderEnabled`.** On GNOME that
+  bus property is bridged to the `org.gnome.desktop.a11y.applications`
+  `screen-reader-enabled` gsetting, which autostarts a screen reader within about
+  130 ms (verified live on GNOME 50.1), and the screen reader then speaks. So a
+  read never sets it, even for a thin toolkit that would build its tree only
+  under an assistive tool. A thin already-running Chromium or Electron window
+  reads tree-only; the remedy is to relaunch it through `app_open`, which adds
+  `--force-renderer-accessibility`, or to drive it through the browser tier.
+  Modern Flutter, the original reason for a forced enable, now exposes its tree
+  with no such flag.
 - **Per-window coordinate trust on Wayland, and a grounded pixel click where
   it is `real`.** Wayland is two answers, not one: a Wayland-native window's
   bounds are window-relative, while an XWayland client's bounds are true

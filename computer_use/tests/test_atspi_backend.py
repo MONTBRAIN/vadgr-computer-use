@@ -61,7 +61,7 @@ class FakeClient:
 
     def __init__(self, nodes: dict, root=("reg", "/root"), *,
                  reachable=True, enabled=False, act_lag=0, stale_states=None,
-                 screen_reader=False, sr_children=None, sr_fail_set=False):
+                 sr_children=None):
         self._nodes = nodes
         self._root = root
         self._reachable = reachable
@@ -72,14 +72,14 @@ class FakeClient:
         # invalidate() clears the app's entries, which is what acting must do.
         self._stale_states = dict(stale_states or {})
         self.states_reads = 0  # how many times states() was asked, for latency tests
-        # Models the screen-reader flag on the a11y bus, and the toolkits that
-        # key their semantics tree off it: nodes in sr_children appear only
-        # once the flag has been raised, and stay (the observed stickiness).
-        self.screen_reader = screen_reader
+        # A spy on the screen-reader write the tier removed. The backend must
+        # never call set_screen_reader (it would start a screen reader on GNOME),
+        # so an empty sr_log is the proof. sr_children models the content a thin
+        # toolkit would expose only if the flag were raised: it stays hidden,
+        # which is how the test shows the window really reads tree-only.
         self.sr_log: list[bool] = []  # every set_screen_reader call, in order
         self._sr_children = dict(sr_children or {})
-        self._sr_ever = screen_reader
-        self._sr_fail_set = sr_fail_set
+        self._sr_ever = False
 
     def _n(self, node) -> FakeNode:
         fake = self._nodes.get(node)
@@ -113,14 +113,12 @@ class FakeClient:
             kids += self._sr_children.get(node, [])
         return kids
 
-    def screen_reader_enabled(self):
-        return self.screen_reader
-
     def set_screen_reader(self, enabled):
-        if self._sr_fail_set:
-            return False
+        # A spy only. The backend must never call this; recording a call is how
+        # a test proves no screen-reader write happened on a thin read. Revealing
+        # sr_children on a True write models the toolkit the removed pulse chased,
+        # so a regression that re-added the write would light up both assertions.
         self.sr_log.append(enabled)
-        self.screen_reader = enabled
         if enabled:
             self._sr_ever = True
         return True
@@ -1041,12 +1039,12 @@ class TestPlatformDefaultIsHonest:
 
 
 def _thin_flutter_tree():
-    """A window that answers with no content: the pre-enablement Flutter shape.
+    """A window that answers with no content: a thin already-running toolkit.
 
-    The frame is on screen and healthy, but it exposes no children until the
-    screen-reader flag is raised on the bus; then the search field appears and
-    stays (the observed stickiness). The nodes the pulse reveals live in the
-    client's sr_children, not the node's own child list.
+    The frame is on screen and healthy, but it exposes no children. Its would-be
+    content lives in the client's sr_children, which a set_screen_reader(True)
+    write would reveal. The tier must never make that write, so the content stays
+    hidden and the window reads tree-only.
     """
     nodes = {
         ("reg", "/root"): FakeNode("desktop frame", "main",
@@ -1066,91 +1064,35 @@ def _thin_flutter_tree():
     return nodes, sr_children
 
 
-class TestScreenReaderPulse:
-    """A thin read pulses the screen-reader flag, bounded, and restores it.
+class TestNoScreenReaderWrite:
+    """A thin read never raises the screen-reader flag.
 
-    Some toolkits (Flutter's GTK embedder) build their semantics tree only when
-    the bus says an assistive tool is present. A window that answers with no
-    content gets one bounded pulse: raise org.a11y.Status.ScreenReaderEnabled,
-    wait for the tree to populate, re-read, and drop the flag in every case.
-    The tree stays populated after the flag drops, so the pulse is one-shot.
+    On GNOME setting org.a11y.Status.ScreenReaderEnabled autostarts a screen
+    reader (and speech), so the tier never sets it. A thin already-running
+    toolkit degrades honestly to tree-only. The sr_log spy on the client records
+    every write, so an empty log is proof no screen-reader write happened.
     """
 
-    def _fast_pulse(self, monkeypatch):
-        # The live wait gives a real toolkit seconds; the fake reveals nodes
-        # instantly, so the tests only need the loop to run, not to last.
-        monkeypatch.setattr(atspi, "_PULSE_WAIT_SECONDS", 0.05)
-        monkeypatch.setattr(atspi, "_PULSE_POLL_SECONDS", 0.01)
-
-    def test_thin_find_pulses_rereads_and_restores(self, monkeypatch):
-        self._fast_pulse(monkeypatch)
+    def test_thin_find_makes_no_screen_reader_write(self):
         nodes, sr_children = _thin_flutter_tree()
         be = _backend(nodes, sr_children=sr_children)
         found = be.find("text", "", "")
-        assert [e.name for e in found] == ["Search for apps"]
-        # The flag was raised exactly once and dropped, in that order.
-        assert be._client.sr_log == [True, False]
+        # The content lives behind the flag; the tier never raises it, so the
+        # window reads tree-only and the search field never appears.
+        assert found == []
+        assert be._client.sr_log == []
 
-    def test_thin_tree_pulses_rereads_and_restores(self, monkeypatch):
-        self._fast_pulse(monkeypatch)
+    def test_thin_tree_makes_no_screen_reader_write(self):
         nodes, sr_children = _thin_flutter_tree()
         be = _backend(nodes, sr_children=sr_children)
         out = be.tree(6, "")
-        names = [c["name"] for c in out["root"]["children"]]
-        assert "Search for apps" in names
-        assert be._client.sr_log == [True, False]
+        assert out["root"]["children"] == []
+        assert be._client.sr_log == []
 
-    def test_a_rich_window_never_pulses(self):
+    def test_a_rich_window_makes_no_screen_reader_write(self):
         be = _backend(_tree_with_button())
         found = be.find("push button", "", "")
         assert [e.name for e in found] == ["Save"]
-        assert be._client.sr_log == []
-
-    def test_the_pulse_fires_at_most_once_per_app(self, monkeypatch):
-        # A window that stays thin (a toolkit that ignores the flag) is asked
-        # once; every later read returns the thin answer with no second pulse.
-        self._fast_pulse(monkeypatch)
-        nodes, _ = _thin_flutter_tree()
-        be = _backend(nodes)  # no sr_children: the pulse reveals nothing
-        assert be.find("text", "", "") == []
-        assert be.find("text", "", "") == []
-        assert be._client.sr_log == [True, False]
-
-    def test_the_flag_is_restored_when_the_rewalk_raises(self, monkeypatch):
-        self._fast_pulse(monkeypatch)
-        nodes, sr_children = _thin_flutter_tree()
-        be = _backend(nodes, sr_children=sr_children)
-
-        calls = {"n": 0}
-        real_children = be._client.children
-
-        def exploding_children(node):
-            # Healthy until the flag goes up; then every read blows up, the
-            # worst moment to be holding a session-wide flag.
-            if be._client.screen_reader:
-                raise RuntimeError("bus fell over mid-pulse")
-            return real_children(node)
-
-        monkeypatch.setattr(be._client, "children", exploding_children)
-        found = be.find("text", "", "")
-        # The read still answers (the thin result), and the flag is back down.
-        assert found == []
-        assert be._client.sr_log == [True, False]
-
-    def test_no_pulse_when_a_screen_reader_is_already_on(self):
-        # A real assistive tool owns the flag; the backend must never toggle it
-        # under a user who depends on it.
-        nodes, sr_children = _thin_flutter_tree()
-        be = _backend(nodes, screen_reader=True, sr_children=sr_children)
-        be.find("text", "", "")
-        assert be._client.sr_log == []
-
-    def test_a_refused_set_is_not_retried(self, monkeypatch):
-        self._fast_pulse(monkeypatch)
-        nodes, _ = _thin_flutter_tree()
-        be = _backend(nodes, sr_fail_set=True)
-        assert be.find("text", "", "") == []
-        assert be.find("text", "", "") == []
         assert be._client.sr_log == []
 
 

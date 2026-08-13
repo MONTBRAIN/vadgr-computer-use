@@ -318,19 +318,24 @@ grounding rung.
   `ui_tree` reaches the deep tree. The process's own cmdline carries the flag,
   read from /proc outside the session.
 
-### Group 9: the screen-reader pulse on a window with no content
+### Group 9: no screen-reader flag, and honest tree-only degradation
 
-- **Trigger**: `ui_find` against an app whose walk meets no meaningful node
-  (the unflagged Chromium is the live thin case). The first read runs the
-  bounded pulse; an outside witness samples
-  `org.a11y.Status.ScreenReaderEnabled` through it.
-- **Pass**: the witness sees the flag rise and drop within the bound; the
-  second identical read runs with no second pulse (once per app); the flag is
-  `false` after; no Orca process exists at any point (the bus property does
-  not start Orca; GNOME starts it from its own gsetting only).
-- The enrichment arm (a thin Flutter window growing its tree under the pulse)
-  is unit-held: no pre-existing thin Flutter instance could be produced on
-  this box to drive it live (three recorded attempts below).
+There is no pulse. The tier never raises `org.a11y.Status.ScreenReaderEnabled`,
+because on GNOME that property is bridged to the
+`org.gnome.desktop.a11y.applications screen-reader-enabled` gsetting, which
+autostarts a screen reader that then speaks.
+
+- **Trigger**: `ui_find` against an app whose walk meets no meaningful node (an
+  unflagged already-running Chromium is the live thin case). An outside witness
+  samples `org.a11y.Status.ScreenReaderEnabled` across the whole read.
+- **Pass**: the witness sees the flag stay `false` the whole time; the tier
+  never sets it. No screen reader (Orca) starts at any point: no Orca process
+  appears, and the `screen-reader-enabled` gsetting stays `false`. The thin
+  window reads tree-only, returning the frames it has with no forced content.
+- **Remedy**: a thin already-running Chromium or Electron window is relaunched
+  through `app_open` (Group 8), which appends `--force-renderer-accessibility`
+  and then exposes the full tree; Chrome itself is driven through the browser
+  tier. These are the honest path in place of a forced enable.
 
 ### Group 10: post-navigation reads on Flutter
 
@@ -358,7 +363,7 @@ group plus the probe transcripts. Every cell is read from those files.
 | regression: App Center read, click, set_text | **pass**: 72 elements, search field `set_text` read back `"firefox"`, sidebar click landed, post-click read settled | `v2-appcenter.jsonl` |
 | regression: app_open single-instance snap | **pass**: `libreoffice_writer.desktop` confirmed by the new window `Untitled 3 - LibreOffice Writer` in 5.7 s | `v3b-appopen-snap.jsonl` |
 | 8: Chromium launch enablement | **pass**: VS Code via `method: "exec"`, cmdline carries the flag, 7 menu items with real bounds, about 111 KB tree at depth 5; the unflagged Chrome exposes 2 nodes per frame | `w1-vscode-launch.jsonl`, `probe-pulse-chrome.txt` |
-| 9: the pulse | **pass**: first thin read 3.5 s (the bounded pulse), witness saw the flag rise then drop (18 samples true), second read 53 ms with no re-pulse, flag `false` after, Orca never present | `w2-chrome-pulse.jsonl`, `w2-pulse-flag-witness.txt` |
+| 9: no screen-reader flag | **not run**: superseded. The pulse this row measured was removed (setting `ScreenReaderEnabled` autostarts a screen reader on GNOME). The rewritten Group 9 (never sets the flag, thin read stays tree-only) is owed a live re-run. | pending |
 | 10: post-navigation reads | **pass**: three page changes, each immediate header read settled (117 ms, 462 ms, 151 ms), old headers gone | `w4-flutter-nav.jsonl` |
 | 11: grounded click | **pass**: File menu item `coordinate_trust: "real"`, pixel click at (120, 49) opened the menu (`New Text File` found structurally), Escape closed it (empty list confirmed) | `w3b-grounding.jsonl` |
 
@@ -390,16 +395,18 @@ ever asks for it, is the portal window-cast with a persisted restore token,
 which trades a one-time user grant for per-window streams; it is a project,
 not a patch.
 
-### The thin-Flutter reproduction attempts
+### The screen-reader pulse was removed
 
-The pulse's enrichment arm could not be driven live because no thin Flutter
-instance could be produced on this box today: a kill-and-relaunch under live
-clients, a fresh launch probed after 12 s, and a clean-room launch with zero
-AT-SPI clients first read 25 s later were all rich
-(`probe-cleanroom-snapstore-firstread.txt`). The thin shape is real (recorded
-on 2026-08-12: an App Center frame answering zero children), and the pulse's
-trigger, bound, restore and once-per-app rule are all driven live against the
-thin Chromium; the growth arm is held by the unit suite.
+The pulse set `org.a11y.Status.ScreenReaderEnabled` to force a thin toolkit to
+build its tree. On GNOME that property is bridged to the
+`org.gnome.desktop.a11y.applications screen-reader-enabled` gsetting, which
+autostarts a screen reader within about 130 ms (probed live on GNOME 50.1); the
+screen reader then speaks on the user's desktop. The pulse's original
+beneficiary, thin Flutter, no longer needs it: modern Flutter exposes its tree
+with every accessibility flag false. So the pulse was removed. A thin
+already-running Chromium or Electron window now reads tree-only, and the remedy
+is `app_open` (which appends `--force-renderer-accessibility`) or the browser
+tier.
 
 ## Per-app results, GNOME Shell 50 / Wayland, driven 2026-08-12
 
@@ -448,7 +455,7 @@ about 6.5 KB.
 | `app_open` confirming a real window before `ok` | 1 to 6 |
 | `app_open` confirming a single-instance snap by window newness | finish pass |
 | Chromium and Electron launched with the tree enabled | 8 |
-| the bounded screen-reader pulse: trigger, bound, restore, once per app | 9 |
+| the tier never raises `ScreenReaderEnabled`; a thin read stays tree-only | 9 |
 | reads immediately after a Flutter navigation return the settled tree | 10 |
 | per-window `coordinate_trust`, and a grounded Tier 2 click on `real` | 11 |
 | on Wayland, untrusted bounds are not aimed at | 0, 11 |
@@ -482,7 +489,7 @@ by a real agent; the others are owed, and closing a `not run` is running
 | 6: Characters | **pass** | not run | not run | not run | read-only breadth |
 | 7: unfocused by name | **pass** | not run | not run | not run | `18` computed on an inactive window |
 | 8: Chromium launch enablement | **pass** | not run | not run | not run | VS Code full tree under the injected flag |
-| 9: the screen-reader pulse | **pass** | not run | not run | not run | trigger, bound, restore and once-per-app driven live; growth arm unit-held |
+| 9: no screen-reader flag | not run | not run | not run | not run | superseded: the pulse this cell measured was removed; the rewritten group (never sets the flag, thin read stays tree-only) is owed a live re-run |
 | 10: Flutter post-navigation reads | **pass** | not run | not run | not run | three immediate reads, all settled |
 | 11: grounded click (Tier 1.5) | **pass** | not run | not run | not run | XWayland window: `real` trust, click landed, confirmed structurally |
 | grounding on Wayland-native windows | Not-Needed | not run | not run | not run | probed fundamental: every origin source denied or absent (see the boundary section); native actions and focus cover the need; the X11 round trip is owed on X11 |
@@ -629,9 +636,10 @@ their own bundles beside it.
 - **X11-session grounding**, because there is no X11 session here; the
   XWayland round trip (find bounds with `real` trust, click them, land) was
   driven, and the pure-X11 session remains owed on X11.
-- **The pulse's growth arm on a live thin Flutter window**: the precondition
-  did not reproduce on this box (three recorded attempts); the arm is held by
-  the unit suite and the rest of the pulse was driven live.
+- **The new Group 9 (no screen-reader flag) live.** The pulse it replaced was
+  removed because setting `ScreenReaderEnabled` autostarts a screen reader on
+  GNOME; the rewritten group is owed a live re-run, held for now by the unit
+  suite.
 - **Structural activation of GTK4 list rows.** Nautilus and Settings export
   no activation action on their sidebar rows; the tier reports that honestly
   and the runbook records it as the app's boundary, not a pass.
