@@ -17,6 +17,11 @@ there is nothing there to run yet.
 
 **The e2e drives only apps that ship by default on a stock GNOME desktop**, so
 the runbook reproduces on a standard machine with nothing extra installed.
+The exception is the enablement and grounding groups (8 to 11), whose whole
+subject is the non-default toolkits: they drive whatever Chromium, Electron
+and Flutter apps the box already has (here Chrome, VS Code and the App
+Center), and a box without one marks that group `not run` naming the missing
+app.
 Nothing is pulled in for the occasion, not an editor and not a Qt app. The suite
 is one group per app: **Calculator, Text Editor, Files, Settings, Clocks and
 Characters**, plus a cross-cutting group and an unfocused-targeting group. A
@@ -184,8 +189,8 @@ four hold:
 ### Group 0: cross-cutting capability and honest failures
 
 - `get_platform_info` returns the `structured` block: `backend: "atspi"`,
-  `bus_reachable`, `available`, `coordinate_trust` (`none` on Wayland), and a
-  non-empty `toolkits_seen`.
+  `bus_reachable`, `available`, `coordinate_trust` (`per_window` on Wayland,
+  `real` on X11), and a non-empty `toolkits_seen`.
 - `ui_act(ref="atspi:deadbeef", action="click")` is `element_gone` and clicks
   nothing.
 - `ui_find(app="NoSuchAppZzz", role="button")` is `no_tree` naming the app.
@@ -294,6 +299,108 @@ marked. The first pass of this runbook did exactly that seven times (F1 to
 F7); this per-app pass did it twice more (F8, F9) and kept each failing
 attempt's journal in the evidence bundle next to the re-run.
 
+## The enablement and grounding groups (added with the finish pass)
+
+The first passes drove GTK4 defaults. Real desktops also run the toolkits that
+do not expose a tree unless asked: Chromium and Electron gate it at launch,
+and Flutter builds it only for assistive tools. This pass adds those, plus the
+grounding rung.
+
+### Group 8: Chromium and Electron launch enablement
+
+- **Baseline**: a Chromium-family app launched without the flag exposes only
+  bare frames. Read one with `ui_tree(app=...)` and record the node count.
+- **Open**: `app_open` a Chromium or Electron entry (VS Code here). The result
+  must report `method: "exec"`: the launchers run the `Exec` line as written
+  and cannot carry the flag, so the entry dispatches the expanded `Exec` with
+  `--force-renderer-accessibility` appended.
+- **Read**: `ui_find(app, role="menu item")` returns the real menu bar;
+  `ui_tree` reaches the deep tree. The process's own cmdline carries the flag,
+  read from /proc outside the session.
+
+### Group 9: the screen-reader pulse on a window with no content
+
+- **Trigger**: `ui_find` against an app whose walk meets no meaningful node
+  (the unflagged Chromium is the live thin case). The first read runs the
+  bounded pulse; an outside witness samples
+  `org.a11y.Status.ScreenReaderEnabled` through it.
+- **Pass**: the witness sees the flag rise and drop within the bound; the
+  second identical read runs with no second pulse (once per app); the flag is
+  `false` after; no Orca process exists at any point (the bus property does
+  not start Orca; GNOME starts it from its own gsetting only).
+- The enrichment arm (a thin Flutter window growing its tree under the pulse)
+  is unit-held: no pre-existing thin Flutter instance could be produced on
+  this box to drive it live (three recorded attempts below).
+
+### Group 10: post-navigation reads on Flutter
+
+- Click a navigation element in the App Center, then call `ui_find`
+  immediately, with no pause. The read must return the settled new page: the
+  new page's headers present, the old page's gone. Repeat across three pages.
+
+### Group 11: the grounded pixel click (Tier 1.5)
+
+- `ui_find` an element in an XWayland window on the Wayland session; it must
+  carry `coordinate_trust: "real"`. A Tier 2 `click` at the bounds center must
+  land: confirm structurally (the effect appears in an immediate `ui_find`),
+  then revert (Escape) and confirm the revert structurally.
+- A Wayland-native window's elements carry `coordinate_trust: "none"` and are
+  not aimed at; their paths are native actions and `focus` plus a key.
+
+## Finish-pass results, GNOME Shell 50 / Wayland, driven 2026-08-13
+
+Run id `20260813-034845-finish-070`, one timestamped `stream-json` journal per
+group plus the probe transcripts. Every cell is read from those files.
+
+| group | result | evidence |
+|---|---|---|
+| regression: LibreOffice read and write | **pass**: two Writer drafts read by role, `set_text` landed in the targeted draft only, both texts read back verbatim, each element naming its window | `v1-libreoffice.jsonl`, `v1b-lo-write.jsonl` |
+| regression: App Center read, click, set_text | **pass**: 72 elements, search field `set_text` read back `"firefox"`, sidebar click landed, post-click read settled | `v2-appcenter.jsonl` |
+| regression: app_open single-instance snap | **pass**: `libreoffice_writer.desktop` confirmed by the new window `Untitled 3 - LibreOffice Writer` in 5.7 s | `v3b-appopen-snap.jsonl` |
+| 8: Chromium launch enablement | **pass**: VS Code via `method: "exec"`, cmdline carries the flag, 7 menu items with real bounds, about 111 KB tree at depth 5; the unflagged Chrome exposes 2 nodes per frame | `w1-vscode-launch.jsonl`, `probe-pulse-chrome.txt` |
+| 9: the pulse | **pass**: first thin read 3.5 s (the bounded pulse), witness saw the flag rise then drop (18 samples true), second read 53 ms with no re-pulse, flag `false` after, Orca never present | `w2-chrome-pulse.jsonl`, `w2-pulse-flag-witness.txt` |
+| 10: post-navigation reads | **pass**: three page changes, each immediate header read settled (117 ms, 462 ms, 151 ms), old headers gone | `w4-flutter-nav.jsonl` |
+| 11: grounded click | **pass**: File menu item `coordinate_trust: "real"`, pixel click at (120, 49) opened the menu (`New Text File` found structurally), Escape closed it (empty list confirmed) | `w3b-grounding.jsonl` |
+
+### The Wayland-native grounding boundary, probed
+
+A Wayland-native window's elements cannot ground a pixel click, and this pass
+proved that as a probed verdict rather than an impression. Every plausible
+path was tried on the real target:
+
+- `org.gnome.Shell.Introspect.GetWindows` (window origins) and
+  `org.gnome.Shell.Screenshot.ScreenshotWindow` (a window image to locate in
+  the full screenshot): both **Access denied**; GNOME allowlists their
+  callers. `gnome-screenshot -w` is not on the allowlist either and falls to
+  a broken X11 path (transcripts in the evidence bundle).
+- Mutter `ScreenCast.RecordWindow` (window-relative input injection): callable
+  from this session, but with no `window-id` it returns a stage-sized stream,
+  and the only source of window ids is the denied Introspect API
+  (`probe-mutter-recordwindow.txt`, `probe-recordwindow-groundclick.txt`).
+- The gnome-shell accessibility stage exposes only the shell's own chrome,
+  no client window geometry (`probe-shell-a11y-geometry.txt`).
+- GTK4 reports screen extents of (0, 0) and real extents only in window
+  coordinates (`probe-gtk4-coordtypes.txt`), so even its own bounds carry no
+  origin.
+
+The quantified need is small: across five real apps, 94.3 percent of 264
+interactive elements expose a native action, and the remainder are mostly
+focusable (`probe-actionability-census2.txt`). The forward path, if demand
+ever asks for it, is the portal window-cast with a persisted restore token,
+which trades a one-time user grant for per-window streams; it is a project,
+not a patch.
+
+### The thin-Flutter reproduction attempts
+
+The pulse's enrichment arm could not be driven live because no thin Flutter
+instance could be produced on this box today: a kill-and-relaunch under live
+clients, a fresh launch probed after 12 s, and a clean-room launch with zero
+AT-SPI clients first read 25 s later were all rich
+(`probe-cleanroom-snapstore-firstread.txt`). The thin shape is real (recorded
+on 2026-08-12: an App Center frame answering zero children), and the pulse's
+trigger, bound, restore and once-per-app rule are all driven live against the
+thin Chromium; the growth arm is held by the unit suite.
+
 ## Per-app results, GNOME Shell 50 / Wayland, driven 2026-08-12
 
 Run id `20260812-041617-per-app-suite`, one timestamped `stream-json` journal
@@ -339,7 +446,12 @@ about 6.5 KB.
 | `ui_wait` for a panel to appear | 4 |
 | target a non-focused app by name | 7 (and 3, 4 incidentally) |
 | `app_open` confirming a real window before `ok` | 1 to 6 |
-| on Wayland, `coordinate_trust` is `none`, bounds not aimed at | 0 |
+| `app_open` confirming a single-instance snap by window newness | finish pass |
+| Chromium and Electron launched with the tree enabled | 8 |
+| the bounded screen-reader pulse: trigger, bound, restore, once per app | 9 |
+| reads immediately after a Flutter navigation return the settled tree | 10 |
+| per-window `coordinate_trust`, and a grounded Tier 2 click on `real` | 11 |
+| on Wayland, untrusted bounds are not aimed at | 0, 11 |
 | every Tier 2 desktop tool still works, unchanged | **not run**: owed as Part F, surface held by the unit suite |
 | Qt read | **not run**: no Qt app installed by default here |
 | X11 grounding round trip | **not run**: no X11 session here |
@@ -369,7 +481,11 @@ by a real agent; the others are owed, and closing a `not run` is running
 | 5: Clocks | **pass** | not run | not run | not run | tab selection moved and confirmed |
 | 6: Characters | **pass** | not run | not run | not run | read-only breadth |
 | 7: unfocused by name | **pass** | not run | not run | not run | `18` computed on an inactive window |
-| grounding (bounds are screen pixels) | Not-Needed | not run | not run | not run | Wayland withholds origins, `coordinate_trust: none` observed; the X11 round trip is owed on X11 |
+| 8: Chromium launch enablement | **pass** | not run | not run | not run | VS Code full tree under the injected flag |
+| 9: the screen-reader pulse | **pass** | not run | not run | not run | trigger, bound, restore and once-per-app driven live; growth arm unit-held |
+| 10: Flutter post-navigation reads | **pass** | not run | not run | not run | three immediate reads, all settled |
+| 11: grounded click (Tier 1.5) | **pass** | not run | not run | not run | XWayland window: `real` trust, click landed, confirmed structurally |
+| grounding on Wayland-native windows | Not-Needed | not run | not run | not run | probed fundamental: every origin source denied or absent (see the boundary section); native actions and focus cover the need; the X11 round trip is owed on X11 |
 | F: Tier 2 regression | not run | not run | not run | not run | owed; the surface being unchanged is unit-covered |
 | overall | **pass (structured)** | not run | not run | not run | six default apps driven end to end on real glass |
 
@@ -510,9 +626,12 @@ their own bundles beside it.
   (Qt), wlroots, or GNOME X11; the per-desktop table keeps each `not run`.
 - **Qt**, because no Qt app ships by default on this GNOME image and the
   runbook does not install one.
-- **X11 grounding**, because there is no X11 session here; on X11 the bounds
-  are true screen coordinates and the round trip (find bounds, click them,
-  land) is owed.
+- **X11-session grounding**, because there is no X11 session here; the
+  XWayland round trip (find bounds with `real` trust, click them, land) was
+  driven, and the pure-X11 session remains owed on X11.
+- **The pulse's growth arm on a live thin Flutter window**: the precondition
+  did not reproduce on this box (three recorded attempts); the arm is held by
+  the unit suite and the rest of the pulse was driven live.
 - **Structural activation of GTK4 list rows.** Nautilus and Settings export
   no activation action on their sidebar rows; the tier reports that honestly
   and the runbook records it as the app's boundary, not a pass.

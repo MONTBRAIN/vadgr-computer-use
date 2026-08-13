@@ -91,10 +91,45 @@ never altered.
     element reads as boundless, the app reads live), a gathered bulk read is
     bounded per call so one silent app cannot sink the batch, and a node the
     app will not answer for is `element_gone`, which walks already skip.
+- **A Chromium or Electron app is launched with its tree enabled.** Chromium
+  reads its accessibility gate once at startup and never again, so `app_open`
+  detects a Chromium-family desktop entry (the Exec program's basename, the
+  `StartupWMClass`, or the entry id, matched exactly against the known family)
+  and dispatches its expanded `Exec` line first with
+  `--force-renderer-accessibility` appended and the enabling environment set
+  (`ACCESSIBILITY_ENABLED=1`, and Qt's gate rides beside it). `gio` and
+  `gtk-launch` run the `Exec` line as written and cannot carry the flag, so
+  they stay on that ladder as fallbacks. Driven live: a cua-launched VS Code
+  exposes its full tree (menu bar, explorer, about 111 KB at depth 5) where an
+  unflagged launch exposes two nodes per window. Every non-Chromium entry
+  keeps the unchanged ladder and gets neither the flag nor the environment.
+- **A window that answers with no content gets one bounded screen-reader
+  pulse.** Some toolkits (Flutter's GTK embedder was the observed case) build
+  their semantics tree only when the bus says an assistive tool is present. A
+  read whose walk meets no meaningful node raises
+  `org.a11y.Status.ScreenReaderEnabled`, waits up to three seconds for the
+  window to grow content, re-reads only if it did, and drops the flag in every
+  case, including mid-pulse failure. The pulse fires at most once per
+  application, never over a real screen reader, and does not start Orca (GNOME
+  starts Orca from its own gsetting, not the bus property; verified live with
+  an outside witness sampling the property through the pulse). The tree stays
+  populated after the flag drops.
+- **Per-window coordinate trust on Wayland, and a grounded pixel click where
+  it is `real`.** Wayland is two answers, not one: a Wayland-native window's
+  bounds are window-relative, while an XWayland client's bounds are true
+  screen pixels the X server vouches for. Each found element now carries
+  `coordinate_trust` (`real` or `none`) on Wayland, earned by an exact match
+  between the frame's claimed geometry and a mapped X toplevel; a
+  Wayland-native popup that guesses a nonzero origin never passes, and a
+  zero-origin frame is refused without an X round trip. Driven live: the VS
+  Code File menu item's bounds grounded a Tier 2 `click` that opened the menu,
+  confirmed structurally. Elements the check refuses keep the coordinate-free
+  paths: native actions cover 94 percent of the interactive elements measured
+  across five real apps, and `focus` plus a key covers most of the rest.
 - **A `structured` block on `get_platform_info`.** Reports the backend, whether
   the bus is reachable and enabled, the toolkits seen, and `coordinate_trust`:
-  `real` on X11, `none` on Wayland, where the compositor withholds a window's
-  screen origin so bounds are window-relative and must not ground a pixel click.
+  `real` on X11, and `per_window` on Wayland, where each found element carries
+  its own verdict as above.
 - **The AT-SPI stack in `vadgr-cua install-deps`.** When the accessibility bus
   is not reachable, the plan now installs `at-spi2-core` plus the ATK bridge
   (package names resolved per distro), alongside the existing clipboard and

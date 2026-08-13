@@ -1214,7 +1214,7 @@ class TestPerWindowCoordinateTrust:
         # A Wayland-native popup reports its parent-relative guess as a nonzero
         # origin; no X toplevel matches it, so its bounds stay untrusted.
         be = _backend(_xwayland_tree(frame_origin=(99, 25)), server="wayland")
-        monkeypatch.setattr(atspi, "_x_toplevel_geometries", lambda: [])
+        monkeypatch.setattr(atspi, "_x_toplevel_geometries", list)
         found = be.find("push button", "", "")
         assert found[0].coordinate_trust == "none"
 
