@@ -253,6 +253,15 @@ two things**: a genuine decision only the owner can make - surfaced with the
 options and a recommendation - or a defined approval gate, which is running the
 e2e (its runbook is approved before it runs) and merge, tag and release.
 
+**Complete means complete: a feature is not done while an implementable part is
+left as a follow-up.** "Scoped but not built", "one more thing remaining" and
+"the last piece is a small fix" are not stopping points, and implementable
+leftover work is never handed to the owner as a choice - it is built. The only
+things that end the build short of complete are a genuine owner decision or an
+approval gate; more work that can be built is never one of them. A part that is
+genuinely impossible ships proved-impossible with its probe (see "Impossible is a
+probed verdict"), never deferred with a promise.
+
 **Write your replies to the owner in Simplified Technical English, ASD-STE100.**
 In Claude Code, set the output style to it; a CLI with no such setting applies
 the rules below directly. This applies on every machine and in every repo, so
