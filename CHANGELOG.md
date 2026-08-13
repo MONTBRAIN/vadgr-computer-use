@@ -141,6 +141,14 @@ never altered.
   Linux. The previous foreground-window path imported PyGObject under an extra
   that did not exist, so it was dead on every install this package produces;
   migrating it onto `dbus-fast` makes it work.
+- **`apps` and `app_open` resolve one provider per OS behind a seam**, the same
+  shape the structured tier uses. The Linux behaviour is unchanged: it still
+  lists the XDG desktop entries and launches through `gio`, `gtk-launch` and the
+  `Exec` expansion, with the a11y-bus window confirmation and every launch fix
+  intact. On Windows and macOS the two tools now return a named
+  `apps_unsupported` result with a reason, rather than an empty list or a crash,
+  until those platforms get their own provider. The Linux provider is split into
+  desktop-entry reading, window confirmation, and launch orchestration.
 
 ## [0.6.6] - 2026-08-09
 

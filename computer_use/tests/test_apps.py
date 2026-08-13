@@ -19,6 +19,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from computer_use.tools import apps
+from computer_use.tools.apps import desktop_entries, linux, window_confirm
+from computer_use.tools.apps.backend import APPS_UNSUPPORTED, resolve_apps_backend
+from computer_use.tools.apps.linux import LinuxAppsBackend
+from computer_use.tools.apps.macos import MacOSAppsBackend
+from computer_use.tools.apps.windows import WindowsAppsBackend
 
 
 def _write(path: Path, body: str) -> None:
@@ -79,8 +84,8 @@ class TestListApps:
 
 class TestExpandExec:
     def test_drops_file_codes_and_expands_specials(self):
-        argv = apps._expand_exec("myapp %F --flag %c %k %%literal",
-                                 name="My App", path=Path("/x/my.desktop"))
+        argv = desktop_entries._expand_exec("myapp %F --flag %c %k %%literal",
+                                            name="My App", path=Path("/x/my.desktop"))
         assert "%F" not in argv
         assert "My App" in argv  # %c -> Name
         assert "/x/my.desktop" in argv  # %k -> path
@@ -88,7 +93,7 @@ class TestExpandExec:
         assert "myapp" in argv and "--flag" in argv
 
     def test_drops_deprecated_codes(self):
-        argv = apps._expand_exec("myapp %d %D %n", name="n", path=Path("/x"))
+        argv = desktop_entries._expand_exec("myapp %d %D %n", name="n", path=Path("/x"))
         assert argv == ["myapp"]
 
 
@@ -137,7 +142,7 @@ def _install_launch_fakes(monkeypatch, *, have=("gio", "gtk-launch"), rcs=None):
         return type("P", (), {"pid": 4242})()
 
     monkeypatch.setattr(
-        apps,
+        linux,
         "subprocess",
         type(
             "S",
@@ -168,7 +173,7 @@ class TestOpenApp:
         _dirs(monkeypatch, home, tmp_path / "system")
         calls = _install_launch_fakes(monkeypatch, have=("gio",))
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -205,7 +210,7 @@ class TestOpenAppConfirmsWindow:
         self._calc(tmp_path, monkeypatch)
         _install_launch_fakes(monkeypatch)
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -216,7 +221,7 @@ class TestOpenAppConfirmsWindow:
     def test_no_window_within_timeout_is_a_named_error(self, tmp_path, monkeypatch):
         self._calc(tmp_path, monkeypatch)
         _install_launch_fakes(monkeypatch)
-        monkeypatch.setattr(apps, "_structured_backend", lambda: _FakeBackend([[]]))
+        monkeypatch.setattr(window_confirm, "_structured_backend", lambda: _FakeBackend([[]]))
         result = apps.open_app("Calculator", timeout_ms=50)
         assert result["ok"] is False
         assert result["error"] == "no_window"
@@ -233,7 +238,7 @@ class TestOpenAppConfirmsWindow:
         self._calc(tmp_path, monkeypatch, extra="DBusActivatable=true\n")
         calls = _install_launch_fakes(monkeypatch)
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -254,7 +259,7 @@ class TestOpenAppConfirmsWindow:
                 return {"windows": wins}
 
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _WindowAfterGtkLaunch()
+            window_confirm, "_structured_backend", lambda: _WindowAfterGtkLaunch()
         )
         result = apps.open_app("Calculator", timeout_ms=1)
         assert result["ok"] is True
@@ -265,7 +270,7 @@ class TestOpenAppConfirmsWindow:
         self._calc(tmp_path, monkeypatch)
         calls = _install_launch_fakes(monkeypatch)
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -279,7 +284,7 @@ class TestOpenAppConfirmsWindow:
     def test_unconfirmed_when_the_backend_is_unavailable(self, tmp_path, monkeypatch):
         self._calc(tmp_path, monkeypatch)
         _install_launch_fakes(monkeypatch)
-        monkeypatch.setattr(apps, "_structured_backend", lambda: None)
+        monkeypatch.setattr(window_confirm, "_structured_backend", lambda: None)
         result = apps.open_app("Calculator")
         assert result["ok"] is True
         assert result["confirmed"] is False
@@ -298,11 +303,11 @@ class TestOpenAppConfirmsWindow:
         soffice_win = {"app_name": "soffice", "title": "Untitled 1",
                        "active": True, "ref": "atspi:3", "pid": 4242}
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [soffice_win]]),
         )
-        monkeypatch.setattr(apps, "_proc_pids", lambda: {1, 2}, raising=False)
-        monkeypatch.setattr(apps, "_proc_comm", lambda pid: "", raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", lambda: {1, 2}, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_comm", lambda pid: "", raising=False)
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
         assert result["ok"] is True
         assert result["method"] == "exec"
@@ -321,7 +326,7 @@ class TestOpenAppConfirmsWindow:
         soffice_win = {"app_name": "soffice", "title": "Untitled 1",
                        "active": True, "ref": "atspi:3", "pid": 0}
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [soffice_win]]),
         )
         pid_reads = {"count": 0}
@@ -331,9 +336,9 @@ class TestOpenAppConfirmsWindow:
             # The baseline snapshot, then soffice.bin appears after dispatch.
             return {100} if pid_reads["count"] == 1 else {100, 555}
 
-        monkeypatch.setattr(apps, "_proc_pids", fake_pids, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", fake_pids, raising=False)
         monkeypatch.setattr(
-            apps, "_proc_comm",
+            window_confirm, "_proc_comm",
             lambda pid: {555: "soffice.bin"}.get(pid, ""), raising=False,
         )
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
@@ -353,7 +358,7 @@ class TestOpenAppConfirmsWindow:
         chrome_win = {"app_name": "chrome", "title": "Tab", "active": True,
                       "ref": "atspi:8", "pid": 0}
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [chrome_win]]),
         )
         pid_reads = {"count": 0}
@@ -362,10 +367,10 @@ class TestOpenAppConfirmsWindow:
             pid_reads["count"] += 1
             return {100} if pid_reads["count"] == 1 else {100, 555}
 
-        monkeypatch.setattr(apps, "_proc_pids", fake_pids, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", fake_pids, raising=False)
         # 100 (pre-existing) and 555 (new) are both 'chrome': a renderer.
         monkeypatch.setattr(
-            apps, "_proc_comm", lambda pid: "chrome", raising=False,
+            window_confirm, "_proc_comm", lambda pid: "chrome", raising=False,
         )
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
         assert result["ok"] is False
@@ -394,12 +399,12 @@ class TestOpenAppConfirmsWindow:
                    "title": "Untitled 2 - LibreOffice Writer",
                    "active": True, "ref": "atspi:9", "pid": 900}
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[old_win], [old_win], [old_win, new_win]]),
         )
-        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 900}, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", lambda: {100, 900}, raising=False)
         monkeypatch.setattr(
-            apps, "_proc_comm", lambda pid: "soffice.bin", raising=False,
+            window_confirm, "_proc_comm", lambda pid: "soffice.bin", raising=False,
         )
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=3000)
         assert result["ok"] is True
@@ -419,11 +424,11 @@ class TestOpenAppConfirmsWindow:
         stray = {"app_name": "zulip", "title": "New message",
                  "active": True, "ref": "atspi:7", "pid": 700}
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[], [stray]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[], [stray]]),
         )
-        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 700}, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", lambda: {100, 700}, raising=False)
         monkeypatch.setattr(
-            apps, "_proc_comm", lambda pid: "zulip", raising=False,
+            window_confirm, "_proc_comm", lambda pid: "zulip", raising=False,
         )
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
         assert result["ok"] is False
@@ -442,11 +447,11 @@ class TestOpenAppConfirmsWindow:
         old_win = {"app_name": "soffice", "title": "Untitled 1",
                    "active": True, "ref": "atspi:3", "pid": 900}
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[old_win]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[old_win]]),
         )
-        monkeypatch.setattr(apps, "_proc_pids", lambda: {100, 900}, raising=False)
+        monkeypatch.setattr(window_confirm, "_proc_pids", lambda: {100, 900}, raising=False)
         monkeypatch.setattr(
-            apps, "_proc_comm", lambda pid: "soffice.bin", raising=False,
+            window_confirm, "_proc_comm", lambda pid: "soffice.bin", raising=False,
         )
         result = apps.open_app("libreoffice_writer.desktop", timeout_ms=50)
         assert result["ok"] is False
@@ -463,7 +468,7 @@ class TestOpenAppConfirmsWindow:
 
         self._calc(tmp_path, monkeypatch)
         _install_launch_fakes(monkeypatch)
-        monkeypatch.setattr(apps, "_structured_backend", lambda: _FakeBackend([[]]))
+        monkeypatch.setattr(window_confirm, "_structured_backend", lambda: _FakeBackend([[]]))
         start = _time.monotonic()
         result = apps.open_app("Calculator", timeout_ms=300)
         elapsed = _time.monotonic() - start
@@ -479,7 +484,7 @@ class TestOpenAppConfirmsWindow:
         self._calc(tmp_path, monkeypatch)
         calls = _install_launch_fakes(monkeypatch, have=())
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -517,7 +522,7 @@ class TestChromiumLaunchEnablement:
         calls = _install_launch_fakes(monkeypatch)  # gio and gtk-launch present
         window = dict(_CALC_WINDOW, app_name="Google Chrome")
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[], [window]]),
         )
         result = apps.open_app("Google Chrome")
         assert result["ok"] is True
@@ -539,7 +544,7 @@ class TestChromiumLaunchEnablement:
         calls = _install_launch_fakes(monkeypatch, have=())
         window = dict(_CALC_WINDOW, app_name="code")
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[], [window]]),
         )
         result = apps.open_app("Visual Studio Code")
         assert result["ok"] is True
@@ -556,7 +561,7 @@ class TestChromiumLaunchEnablement:
         calls = _install_launch_fakes(monkeypatch, have=())
         window = dict(_CALC_WINDOW, app_name="chromium-browser")
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[], [window]]),
         )
         result = apps.open_app("My Browser")
         assert result["ok"] is True
@@ -569,7 +574,7 @@ class TestChromiumLaunchEnablement:
         )
         calls = _install_launch_fakes(monkeypatch, have=())
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -586,7 +591,7 @@ class TestChromiumLaunchEnablement:
         )
         calls = _install_launch_fakes(monkeypatch)
         monkeypatch.setattr(
-            apps, "_structured_backend",
+            window_confirm, "_structured_backend",
             lambda: _FakeBackend([[], [_CALC_WINDOW]]),
         )
         result = apps.open_app("Calculator")
@@ -606,9 +611,49 @@ class TestChromiumLaunchEnablement:
         calls = _install_launch_fakes(monkeypatch)
         window = dict(_CALC_WINDOW, app_name="Google Chrome")
         monkeypatch.setattr(
-            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+            window_confirm, "_structured_backend", lambda: _FakeBackend([[], [window]]),
         )
         result = apps.open_app("Google Chrome")
         assert result["ok"] is True
         assert result["method"] in ("gio", "gtk-launch")
         assert calls[0]["argv"][0] in ("gio", "gtk-launch")
+
+
+class TestProviderResolution:
+    """The apps tools resolve one provider per OS behind the AppsBackend seam.
+
+    A new OS plugs in a provider; the tools and the resolver callers never
+    change. These tests exercise the seam directly, without driving any OS.
+    """
+
+    def test_resolves_the_linux_provider_on_linux(self):
+        # The suite runs on Linux, so the resolver must return the Linux
+        # provider - the concrete class the tools delegate to here.
+        backend = resolve_apps_backend()
+        assert isinstance(backend, LinuxAppsBackend)
+
+    def test_windows_provider_reports_unsupported_never_raises(self):
+        backend = WindowsAppsBackend()
+        opened = backend.open_app("Notepad", 5000)
+        assert opened["ok"] is False
+        assert opened["error"] == APPS_UNSUPPORTED
+        assert opened["target"] == "Notepad"
+        assert "Windows" in opened["reason"]
+
+    def test_windows_list_is_flagged_not_a_silent_empty(self):
+        # A bare empty list would read as "nothing installed"; the stub flags
+        # the tier as not built so the caller can tell the two apart.
+        listed = WindowsAppsBackend().list_apps()
+        assert listed["apps"] == []
+        assert listed["ok"] is False
+        assert listed["error"] == APPS_UNSUPPORTED
+
+    def test_macos_provider_reports_unsupported_never_raises(self):
+        backend = MacOSAppsBackend()
+        opened = backend.open_app("Safari", 5000)
+        assert opened["ok"] is False
+        assert opened["error"] == APPS_UNSUPPORTED
+        assert "macOS" in opened["reason"]
+        listed = backend.list_apps()
+        assert listed["apps"] == []
+        assert listed["error"] == APPS_UNSUPPORTED
