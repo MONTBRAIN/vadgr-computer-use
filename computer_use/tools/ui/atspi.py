@@ -112,6 +112,21 @@ _MAX_EXAMINED = _MAX_NODES * 10
 # poll is simpler, needs no signal plumbing, and cannot outlive its timeout.
 _WAIT_POLL_SECONDS = 0.1
 
+# The screen-reader pulse, for the toolkits that build their semantics tree
+# only when the bus says an assistive tool is present (Flutter's GTK embedder
+# was the observed case: a frame answering zero children until
+# org.a11y.Status.ScreenReaderEnabled went up, and a tree that stayed after it
+# dropped). The pulse is bounded twice over: it waits at most this long for the
+# tree to populate, and it fires at most once per application per session.
+# Setting this property does not start Orca - GNOME starts Orca from its own
+# gsetting, not from the bus property (verified live: the property alone left
+# no Orca process) - so the pulse is silent for the user.
+_PULSE_WAIT_SECONDS = 3.0
+_PULSE_POLL_SECONDS = 0.25
+# How many nodes the populate-poll may examine before giving up: enough to find
+# one meaningful node in a wrapper-heavy tree, small enough to stay cheap.
+_PULSE_SCAN_CAP = 500
+
 # The most characters one text read returns, so a huge document body never
 # turns a tree read into a megabyte transfer.
 _TEXT_READ_CAP = 5000
@@ -248,6 +263,8 @@ class _Client(Protocol):
 
     def reachable(self) -> bool: ...
     def is_enabled(self) -> bool: ...
+    def screen_reader_enabled(self) -> bool: ...
+    def set_screen_reader(self, enabled: bool) -> bool: ...
     def root(self) -> Node: ...
     def warm_caches(self, bus_names: list[str]) -> None: ...
     def invalidate(self, node: Node) -> None: ...
@@ -298,6 +315,11 @@ class AtspiBackend:
         self._refs: dict[str, Node] = {}
         self._rev: dict[Node, str] = {}
         self._counter = 0
+        # Applications already given their one screen-reader pulse. Membership
+        # is what bounds the pulse to once per app: a toolkit that ignored it
+        # once will ignore it every time, and re-pulsing on every thin read
+        # would tax every read of a genuinely empty window.
+        self._pulsed: set[str] = set()
 
     # -- ref bookkeeping ---------------------------------------------------
 
@@ -475,21 +497,37 @@ class AtspiBackend:
 
     def tree(self, depth: int, app: str = "") -> dict:
         self._require_bus()
+        result, spent, frames = self._tree_pass(depth, app)
+        # A tree with no meaningful descendant at all is the enablement shape,
+        # not a real window: pulse once, and rebuild only if content appeared.
+        if spent == 0 and self._pulse_screen_reader(frames):
+            try:
+                result, _, _ = self._tree_pass(depth, app)
+            except StructuredError:
+                pass  # the world moved; the first read is the answer
+        return result
+
+    def _tree_pass(self, depth: int, app: str) -> tuple[dict, int, list[Node]]:
+        """One full tree read: the result, its meaningful-node count, its frames."""
         frames = self._resolve_frames(app)
+        spent = 0
 
         def one(frame: Node) -> dict:
+            nonlocal spent
             budget = [_MAX_NODES]
-            return self._node_dict(frame, max(depth, 0), budget)
+            out = self._node_dict(frame, max(depth, 0), budget)
+            spent += _MAX_NODES - budget[0]
+            return out
 
         try:
             if len(frames) == 1:
                 # The default and the by-name single-window case: unchanged shape.
-                return {"root": one(frames[0]), "depth": depth}
+                return {"root": one(frames[0]), "depth": depth}, spent, frames
             return {
                 "roots": [one(f) for f in frames],
                 "count": len(frames),
                 "depth": depth,
-            }
+            }, spent, frames
         except ElementGone:
             raise StructuredError(NO_TREE, "the target window's tree went away")
 
@@ -503,7 +541,12 @@ class AtspiBackend:
         return not (name and name.lower() not in self._client.name(node).lower())
 
     def _search_frame(
-        self, frame: Node, role: str, name: str, gone: list[int]
+        self,
+        frame: Node,
+        role: str,
+        name: str,
+        gone: list[int],
+        meaningful: list[int] | None = None,
     ) -> list[Element]:
         found: list[Element] = []
         try:
@@ -528,6 +571,18 @@ class AtspiBackend:
                 if not is_root and not showing:
                     continue
                 visited += 1
+                if (
+                    meaningful is not None
+                    and not is_root
+                    and _is_meaningful(
+                        self._client.role_name(node), self._client.name(node)
+                    )
+                ):
+                    # Whether the window answered with any content at all: the
+                    # signal the screen-reader pulse triggers on. Frames do not
+                    # count (an empty window still has its frame), and neither
+                    # do the anonymous wrappers.
+                    meaningful[0] += 1
                 if showing and self._matches(node, role, name):
                     found.append(self._element(node, window=window))
                 children = self._client.children(node)
@@ -541,29 +596,104 @@ class AtspiBackend:
                 stack.append((child, False))
         return found
 
-    def _find_pass(self, role: str, name: str, app: str) -> tuple[list, int]:
+    def _find_pass(
+        self, role: str, name: str, app: str
+    ) -> tuple[list, int, int, list[Node]]:
         gone = [0]
+        meaningful = [0]
         found: list[Element] = []
-        for frame in self._resolve_frames(app):
-            found.extend(self._search_frame(frame, role, name, gone))
-        return found, gone[0]
+        frames = self._resolve_frames(app)
+        for frame in frames:
+            found.extend(self._search_frame(frame, role, name, gone, meaningful))
+        return found, gone[0], meaningful[0], frames
 
     def find(self, role: str, name: str, app: str = "") -> list[Element]:
         self._require_bus()
-        found, gone = self._find_pass(role, name, app)
-        if gone == 0:
-            return found
-        # The walk lost at least one subtree to a node that stopped answering,
-        # so this pass read a tree in mid-mutation (the App Center replaces
-        # nodes while it navigates and the replaced ones answer nothing). One
-        # retry reads the settled tree; observed live, the second pass is clean
-        # and fast. If the tree is still churning, the retry's result stands:
-        # the retry is bounded at one, not a poll.
+        found, gone, meaningful, frames = self._find_pass(role, name, app)
+        if gone:
+            # The walk lost at least one subtree to a node that stopped
+            # answering, so this pass read a tree in mid-mutation (the App
+            # Center replaces nodes while it navigates and the replaced ones
+            # answer nothing). One retry reads the settled tree; observed live,
+            # the second pass is clean and fast. If the tree is still churning,
+            # the retry's result stands: the retry is bounded at one, not a poll.
+            try:
+                found, _, meaningful, frames = self._find_pass(role, name, app)
+            except StructuredError:
+                return found  # the world moved again; the first pass is the answer
+        # A walk that met no meaningful node at all read an un-enabled toolkit,
+        # not an empty screen: pulse once, and re-read only if content appeared.
+        if meaningful == 0 and self._pulse_screen_reader(frames):
+            try:
+                found, _, _, _ = self._find_pass(role, name, app)
+            except StructuredError:
+                pass  # the first pass is the answer
+        return found
+
+    # -- the screen-reader pulse --------------------------------------------
+
+    def _pulse_screen_reader(self, frames: list[Node]) -> bool:
+        """One bounded screen-reader pulse for a window that answered empty.
+
+        Raises ScreenReaderEnabled on the bus, waits (bounded) for the window
+        to grow a meaningful node, and always drops the flag again, whatever
+        happened in between: the flag is session state, and leaving it up
+        would announce an assistive tool that is not there. Never pulses over
+        a real screen reader, and never pulses the same application twice.
+        Returns whether content appeared, so the caller knows a re-read is
+        worth it.
+        """
+        bus_names = {frame[0] for frame in frames}
+        if not bus_names or bus_names & self._pulsed:
+            return False
+        self._pulsed |= bus_names
         try:
-            retried, _ = self._find_pass(role, name, app)
-        except StructuredError:
-            return found  # the world moved again; the first pass is the answer
-        return retried
+            if self._client.screen_reader_enabled():
+                return False  # a real assistive tool owns the flag
+            if not self._client.set_screen_reader(True):
+                return False
+        except Exception:
+            return False
+        grew = False
+        try:
+            deadline = time.monotonic() + _PULSE_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                time.sleep(_PULSE_POLL_SECONDS)
+                for frame in frames:
+                    self._client.invalidate(frame)
+                if any(self._frame_has_content(f) for f in frames):
+                    grew = True
+                    break
+        except Exception:
+            grew = False  # the re-scan failed; the flag still comes down
+        finally:
+            try:
+                self._client.set_screen_reader(False)
+            except Exception:
+                pass
+        return grew
+
+    def _frame_has_content(self, frame: Node) -> bool:
+        """Whether the frame now has any meaningful showing descendant."""
+        try:
+            stack = list(self._client.children(frame))
+        except ElementGone:
+            return False
+        examined = 0
+        while stack and examined < _PULSE_SCAN_CAP:
+            node = stack.pop()
+            examined += 1
+            try:
+                if not _presumed_showing(self._client.states(node)):
+                    continue
+                if _is_meaningful(
+                    self._client.role_name(node), self._client.name(node)
+                ):
+                    return True
+                stack.extend(self._client.children(node))
+            except ElementGone:
+                continue
+        return False
 
     # -- acting ------------------------------------------------------------
 
@@ -1029,6 +1159,40 @@ class _DbusClient:
         except Exception:
             return False
 
+    def screen_reader_enabled(self) -> bool:
+        try:
+            reply = self._bus.run(
+                self._bus.session_call(
+                    _A11Y_BUS, _A11Y_BUS_PATH, _PROPERTIES, "Get", "ss",
+                    ["org.a11y.Status", "ScreenReaderEnabled"],
+                )
+            )
+            if _is_error(reply):
+                return False
+            return bool(reply.body[0].value)
+        except Exception:
+            return False
+
+    def set_screen_reader(self, enabled: bool) -> bool:
+        # The bus property, not the GNOME gsetting: the property is what the
+        # toolkits watch, and it does not start Orca (GNOME starts Orca from
+        # its own gsetting; verified live that the property alone does not).
+        from dbus_fast.signature import Variant
+
+        try:
+            reply = self._bus.run(
+                self._bus.session_call(
+                    _A11Y_BUS, _A11Y_BUS_PATH, _PROPERTIES, "Set", "ssv",
+                    [
+                        "org.a11y.Status", "ScreenReaderEnabled",
+                        Variant("b", bool(enabled)),
+                    ],
+                )
+            )
+        except Exception:
+            return False
+        return not _is_error(reply)
+
     # -- tree --------------------------------------------------------------
 
     def root(self) -> Node:
@@ -1243,17 +1407,23 @@ class _DbusClient:
 # desktop's own accessibility settings. GTK4 exposes its tree without any of
 # this on a stock GNOME session; Qt and Chromium need to be told.
 _QT_A11Y_ENV = ("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "1")
+_CHROMIUM_A11Y_ENV = ("ACCESSIBILITY_ENABLED", "1")
 _CHROMIUM_A11Y_FLAGS = ("--force-renderer-accessibility",)
 
 
 def accessibility_launch_env(base: dict | None = None) -> dict:
-    """Environment for launching a Qt app so it exposes its accessible tree.
+    """Environment for launching an app so it exposes its accessible tree.
 
-    Qt gates AT-SPI behind QT_LINUX_ACCESSIBILITY_ALWAYS_ON; a Qt app cua spawns
-    without it is invisible to the structured tier however healthy the bus is.
+    Qt gates AT-SPI behind QT_LINUX_ACCESSIBILITY_ALWAYS_ON, and Chromium reads
+    ACCESSIBILITY_ENABLED beside its command-line flag; an app cua spawns
+    without its toolkit's gate is invisible to the structured tier however
+    healthy the bus is. Both ride in one environment because the launcher does
+    not always know which toolkit an entry is, and each variable is inert for
+    the other's toolkit.
     """
     env = dict(os.environ if base is None else base)
     env[_QT_A11Y_ENV[0]] = _QT_A11Y_ENV[1]
+    env[_CHROMIUM_A11Y_ENV[0]] = _CHROMIUM_A11Y_ENV[1]
     return env
 
 

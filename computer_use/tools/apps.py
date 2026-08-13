@@ -38,6 +38,27 @@ from pathlib import Path
 _DROP_IF_NO_FILE = ("%f", "%F", "%u", "%U")
 _DEPRECATED_CODES = ("%d", "%D", "%n", "%N", "%v", "%m")
 
+# Identities of the Chromium family and the Electron apps built on it, in the
+# normalized (lowercase alphanumeric) form the matcher compares. A launched
+# Chromium process exposes no accessible tree unless it is told to
+# (--force-renderer-accessibility, or the screen-reader signal on the bus), so
+# app_open injects the flag for exactly these entries. Matching is exact per
+# identity token, never substring: "code" as a substring would claim half the
+# desktop.
+_CHROMIUM_IDENTITIES = frozenset(
+    _id.replace("-", "").replace(".", "")
+    for _id in (
+        "chromium", "chromium-browser", "chrome", "google-chrome",
+        "google-chrome-stable", "google-chrome-beta", "google-chrome-unstable",
+        "brave", "brave-browser", "microsoft-edge", "microsoft-edge-stable",
+        "microsoft-edge-beta", "microsoft-edge-dev", "vivaldi",
+        "vivaldi-stable", "opera", "electron",
+        "code", "code-insiders", "codium", "vscodium",
+        "slack", "discord", "signal-desktop", "element-desktop", "obsidian",
+        "postman", "teams", "teams-for-linux",
+    )
+)
+
 
 def _data_dirs() -> list[Path]:
     """The XDG applications directories, in precedence order (home first)."""
@@ -252,6 +273,41 @@ def _window_candidates(app_id: str, entry: dict, path: Path) -> set[str]:
     return {norm for norm in (_normalize(token) for token in raw) if len(norm) >= 3}
 
 
+def _exec_program(exec_line: str) -> str:
+    """The program a desktop Exec line runs, skipping an ``env VAR=x`` prefix."""
+    try:
+        tokens = shlex.split(exec_line)
+    except ValueError:
+        tokens = exec_line.split()
+    for index, token in enumerate(tokens):
+        if index == 0 and os.path.basename(token) == "env":
+            continue
+        if "=" in token and not token.startswith(("/", ".")):
+            continue
+        return os.path.basename(token)
+    return ""
+
+
+def _is_chromium_entry(app_id: str, entry: dict) -> bool:
+    """Whether this desktop entry launches a Chromium or Electron app.
+
+    Decided from the identities the entry itself declares: the Exec program's
+    basename, the StartupWMClass, the id stem and its last reverse-DNS segment.
+    Each is compared exactly (normalized) against the known Chromium family, so
+    a GTK entry never matches by accident.
+    """
+    stem = app_id.removesuffix(".desktop")
+    tokens = {stem, stem.split(".")[-1], stem.split("_")[-1]}
+    wm_class = entry.get("StartupWMClass")
+    if wm_class:
+        tokens.add(wm_class)
+    exec_line = entry.get("Exec")
+    if exec_line:
+        tokens.add(_exec_program(exec_line))
+    normalized = {_normalize(token) for token in tokens if token}
+    return bool(normalized & _CHROMIUM_IDENTITIES)
+
+
 def _window_key(window: dict) -> tuple:
     """A window's identity for the new-since-dispatch comparison."""
     return (window.get("app_name") or "", window.get("title") or "")
@@ -414,6 +470,14 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
             return False
         return result.returncode == 0
 
+    # A Chromium or Electron app exposes no accessible tree unless launched
+    # with the accessibility flag, and gio and gtk-launch run the Exec line as
+    # written, so a detected Chromium entry dispatches the expanded Exec first
+    # with the flag appended and the enabling environment set. The launchers
+    # stay on its ladder as fallbacks: a launch without the flag still beats no
+    # launch, and the tree can be enabled later over the bus.
+    chromium = _is_chromium_entry(app_id, entry)
+
     def _launch_exec() -> tuple[bool, dict | None]:
         if not entry.get("Exec"):
             return False, None
@@ -423,9 +487,18 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
         if entry.get("Terminal", "").strip().lower() == "true":
             term = os.environ.get("TERMINAL") or "x-terminal-emulator"
             argv = [term, "-e", *argv]
+        env = None
+        if chromium:
+            from computer_use.tools.ui.atspi import (
+                accessibility_launch_env,
+                chromium_accessibility_flags,
+            )
+
+            argv = [*argv, *chromium_accessibility_flags()]
+            env = accessibility_launch_env()
         try:
             proc = subprocess.Popen(
-                argv, start_new_session=True,
+                argv, start_new_session=True, env=env,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         except (OSError, ValueError) as exc:
@@ -436,7 +509,10 @@ def open_app(target: str, timeout_ms: int = 5000) -> dict:
 
     dbus_activatable = entry.get("DBusActivatable", "").strip().lower() == "true"
     ladder = ["gtk-launch", "gio"] if dbus_activatable else ["gio", "gtk-launch"]
-    ladder.append("exec")
+    if chromium:
+        ladder.insert(0, "exec")
+    else:
+        ladder.append("exec")
 
     dispatched: list[str] = []
     exec_error: dict | None = None

@@ -487,3 +487,125 @@ class TestOpenAppConfirmsWindow:
         kw = calls[0]["kwargs"]
         assert kw.get("stdout") is _DEVNULL and kw.get("stderr") is _DEVNULL
         assert kw.get("start_new_session") is True
+
+
+class TestChromiumLaunchEnablement:
+    """A Chromium or Electron app only exposes its tree when launched with the
+    accessibility flag, so app_open injects it for exactly those entries.
+
+    gio and gtk-launch run the entry's Exec line as written and cannot carry an
+    extra flag, so a detected Chromium entry dispatches the expanded Exec first,
+    with the flag appended and the enabling environment set. Every other entry
+    keeps the unchanged ladder and gets neither the flag nor the environment.
+    """
+
+    def _entry_at(self, tmp_path, monkeypatch, filename, body):
+        home = tmp_path / "home"
+        _write(home / "applications" / filename, body)
+        _dirs(monkeypatch, home, tmp_path / "system")
+
+    def test_chrome_entry_gets_flag_and_env_via_exec_first(
+        self, tmp_path, monkeypatch
+    ):
+        self._entry_at(
+            tmp_path, monkeypatch, "com.google.Chrome.desktop",
+            _entry("Google Chrome", exec_line="/usr/bin/google-chrome-stable %U"),
+        )
+        calls = _install_launch_fakes(monkeypatch)  # gio and gtk-launch present
+        window = dict(_CALC_WINDOW, app_name="Google Chrome")
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+        )
+        result = apps.open_app("Google Chrome")
+        assert result["ok"] is True
+        assert result["method"] == "exec"
+        # Dispatched by expanding Exec, not through gio: the flag has to ride
+        # the command line, and the launchers cannot carry it.
+        assert calls[0]["via"] == "popen"
+        assert "--force-renderer-accessibility" in calls[0]["argv"]
+        env = calls[0]["kwargs"].get("env")
+        assert env is not None
+        assert env.get("ACCESSIBILITY_ENABLED") == "1"
+
+    def test_electron_snap_detected_by_exec_basename(self, tmp_path, monkeypatch):
+        self._entry_at(
+            tmp_path, monkeypatch, "code_code.desktop",
+            _entry("Visual Studio Code",
+                   exec_line="/snap/bin/code --force-user-env %F"),
+        )
+        calls = _install_launch_fakes(monkeypatch, have=())
+        window = dict(_CALC_WINDOW, app_name="code")
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+        )
+        result = apps.open_app("Visual Studio Code")
+        assert result["ok"] is True
+        assert "--force-renderer-accessibility" in calls[0]["argv"]
+        # The entry's own arguments survive the injection.
+        assert "--force-user-env" in calls[0]["argv"]
+
+    def test_detected_by_startup_wm_class(self, tmp_path, monkeypatch):
+        self._entry_at(
+            tmp_path, monkeypatch, "mybrowser.desktop",
+            _entry("My Browser", exec_line="/opt/vendor/run %U",
+                   extra="StartupWMClass=chromium-browser\n"),
+        )
+        calls = _install_launch_fakes(monkeypatch, have=())
+        window = dict(_CALC_WINDOW, app_name="chromium-browser")
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+        )
+        result = apps.open_app("My Browser")
+        assert result["ok"] is True
+        assert "--force-renderer-accessibility" in calls[0]["argv"]
+
+    def test_gtk_entry_gets_neither_flag_nor_env(self, tmp_path, monkeypatch):
+        self._entry_at(
+            tmp_path, monkeypatch, "calc.desktop",
+            _entry("Calculator", exec_line="gnome-calculator"),
+        )
+        calls = _install_launch_fakes(monkeypatch, have=())
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert "--force-renderer-accessibility" not in calls[0]["argv"]
+        assert calls[0]["kwargs"].get("env") is None
+
+    def test_gtk_entry_keeps_the_launcher_ladder(self, tmp_path, monkeypatch):
+        # The unchanged default: a non-Chromium entry still dispatches gio
+        # first, so the injection path never becomes the default path.
+        self._entry_at(
+            tmp_path, monkeypatch, "calc.desktop",
+            _entry("Calculator", exec_line="gnome-calculator"),
+        )
+        calls = _install_launch_fakes(monkeypatch)
+        monkeypatch.setattr(
+            apps, "_structured_backend",
+            lambda: _FakeBackend([[], [_CALC_WINDOW]]),
+        )
+        result = apps.open_app("Calculator")
+        assert result["ok"] is True
+        assert result["method"] == "gio"
+        assert calls[0]["argv"][:2] == ["gio", "launch"]
+
+    def test_chromium_entry_falls_back_to_launchers_when_exec_fails(
+        self, tmp_path, monkeypatch
+    ):
+        # The flag is an enhancement, not a gate: when the Exec dispatch cannot
+        # run, the plain launchers still bring the app up (thin tree and all).
+        self._entry_at(
+            tmp_path, monkeypatch, "com.google.Chrome.desktop",
+            _entry("Google Chrome", exec_line=""),
+        )
+        calls = _install_launch_fakes(monkeypatch)
+        window = dict(_CALC_WINDOW, app_name="Google Chrome")
+        monkeypatch.setattr(
+            apps, "_structured_backend", lambda: _FakeBackend([[], [window]]),
+        )
+        result = apps.open_app("Google Chrome")
+        assert result["ok"] is True
+        assert result["method"] in ("gio", "gtk-launch")
+        assert calls[0]["argv"][0] in ("gio", "gtk-launch")

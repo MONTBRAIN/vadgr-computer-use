@@ -761,7 +761,16 @@ class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
     @patch("computer_use.platform.linux._find_evdev_mouse", return_value=None)
     @patch("computer_use.platform.linux._find_evdev_keyboard", return_value=None)
-    def test_wayland_no_mutter_no_evdev_raises(self, _kbd, _mouse, _mutter, _wayland):
+    @patch(
+        "computer_use.platform.linux.UinputActionExecutor",
+        side_effect=OSError("/dev/uinput not writable"),
+    )
+    def test_wayland_no_mutter_no_evdev_raises(
+        self, _uinput, _kbd, _mouse, _mutter, _wayland
+    ):
+        # Every environment probe on the ladder is controlled, the uinput one
+        # included: on a box whose /dev/uinput is writable the real fallback
+        # would succeed and the test would measure the machine, not the code.
         from computer_use.core.errors import PlatformNotSupportedError
         from computer_use.platform.linux import _create_action_executor
         with pytest.raises(PlatformNotSupportedError, match="Wayland input"):
