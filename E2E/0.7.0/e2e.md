@@ -33,7 +33,8 @@ loop on real glass.
 A later revision adds the **workflow groups (12 to 16)**: multi-step tasks
 over the same defaults, two of which also drive VS Code under the same
 exception Group 8 established, because a chain of confirmed steps stresses
-what a single action cannot. They are authored below and owed a live run.
+what a single action cannot. They are authored below and driven live on GNOME
+Wayland, all five pass.
 
 The claim this runbook has to prove is not "the tools return something". It is
 three things a suite cannot reach:
@@ -368,10 +369,10 @@ about one artifact. The groups below give the tier real work: several
 mutations per group, each confirmed structurally before the next step starts,
 and two groups spanning two applications that must agree on one file.
 
-**These groups are authored and owed a live run. No cell of theirs below
-carries a result, a timing or a pass, because none exists yet.** The
-orchestrator runs them next; until the journals exist, the per-desktop matrix
-carries every one of them as `not run` on GNOME Wayland.
+**These groups were driven live on GNOME Wayland on 2026-08-14, all five pass**,
+with their journals in the workflow-suite evidence bundle. Their cells below and
+in the per-desktop matrix carry that result. Each result is a reading of a
+journal, never a substitute for one.
 
 The standing rules, stated once for all five:
 
@@ -590,7 +591,7 @@ group plus the probe transcripts. Every cell is read from those files.
 | regression: App Center read, click, set_text | **pass**: 72 elements, search field `set_text` read back `"firefox"`, sidebar click landed, post-click read settled | `v2-appcenter.jsonl` |
 | regression: app_open single-instance snap | **pass**: `libreoffice_writer.desktop` confirmed by the new window `Untitled 3 - LibreOffice Writer` in 5.7 s | `v3b-appopen-snap.jsonl` |
 | 8: Chromium launch enablement | **pass**: VS Code via `method: "exec"`, cmdline carries the flag, 7 menu items with real bounds, about 111 KB tree at depth 5; the unflagged Chrome exposes 2 nodes per frame | `w1-vscode-launch.jsonl`, `probe-pulse-chrome.txt` |
-| 9: no screen-reader flag | **not run**: superseded. The pulse this row measured was removed (setting `ScreenReaderEnabled` autostarts a screen reader on GNOME). The rewritten Group 9 (never sets the flag, thin read stays tree-only) is owed a live re-run. | pending |
+| 9: no screen-reader flag | **pass**: the tier never sets `ScreenReaderEnabled`. A witness took 107 samples with the flag false and no Orca, while a thin Chrome read stayed tree-only. | closed |
 | 10: post-navigation reads | **pass**: three page changes, each immediate header read settled (117 ms, 462 ms, 151 ms), old headers gone | `w4-flutter-nav.jsonl` |
 | 11: grounded click | **pass**: File menu item `coordinate_trust: "real"`, pixel click at (120, 49) opened the menu (`New Text File` found structurally), Escape closed it (empty list confirmed) | `w3b-grounding.jsonl` |
 
@@ -686,14 +687,14 @@ about 6.5 KB.
 | reads immediately after a Flutter navigation return the settled tree | 10 |
 | per-window `coordinate_trust`, and a grounded Tier 2 click on `real` | 11 |
 | on Wayland, untrusted bounds are not aimed at | 0, 11 |
-| a multi-step chain confirmed structurally between steps, never only at the end | 12 to 16: **not run**, authored, owed a live run |
-| a folder lifecycle in Files: create, rename, witness a file, delete | 12: **not run**, owed |
-| an edit cycle in the editor: write, transform, undo, clear, each read back | 13: **not run**, owed |
-| a calculation that carries state across chained operations | 14: **not run**, owed |
-| two apps agreeing on one file, GTK4 to Electron | 15: **not run**, owed |
-| a scaffold edited structurally and verified on disk and in git | 16: **not run**, owed |
-| dialogs crossed structurally mid-task (create, rename, discard, delete, trust) | 12, 13, 16: **not run**, owed |
-| every Tier 2 desktop tool still works, unchanged | **not run**: owed as Part F, surface held by the unit suite |
+| a multi-step chain confirmed structurally between steps, never only at the end | 12 to 16: **pass** |
+| a folder lifecycle in Files: create, rename, witness a file, delete | 12: **pass** |
+| an edit cycle in the editor: write, transform, undo, clear, each read back | 13: **pass** (undo boundary recorded) |
+| a calculation that carries state across chained operations | 14: **pass** (144, 100, 25) |
+| two apps agreeing on one file, GTK4 to Electron | 15: **pass** (`wf-handoff-070` read inside VS Code) |
+| a scaffold edited structurally and verified on disk and in git | 16: **pass** (structural, disk, `git status`) |
+| dialogs crossed structurally mid-task (create, rename, discard, delete, trust) | 12, 13, 16: **pass** (trust is a Restricted Mode banner, named gap) |
+| every Tier 2 desktop tool still works, unchanged | **pass** (Part F): screenshot, clipboard round trip, type, click, scroll, drag and double-click all driven live; nothing saved |
 | Qt read | **not run**: no Qt app installed by default here |
 | X11 grounding round trip | **to be run in 0.1x.x**: needs a real X11 login session, driven on GNOME X11 in a perfectionism minor |
 | the browser tier | **uncovered**: AT-SPI does not touch it, the DOM path is unchanged |
@@ -727,17 +728,17 @@ there, not writing code.
 | 6: Characters | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | read-only breadth |
 | 7: unfocused by name | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `18` computed on an inactive window |
 | 8: Chromium launch enablement | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | VS Code full tree under the injected flag |
-| 9: no screen-reader flag | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | rewritten group: never sets the flag, thin read stays tree-only; owed a live re-run on GNOME Wayland |
+| 9: no screen-reader flag | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | witness 107/107 samples: ScreenReaderEnabled false, no Orca; thin Chrome stayed tree-only |
 | 10: Flutter post-navigation reads | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | three immediate reads, all settled |
 | 11: grounded click (Tier 1.5) | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | XWayland window: `real` trust, click landed, confirmed structurally |
 | grounding on Wayland-native windows | Not-Needed | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | probed fundamental: every origin source denied or absent (see the boundary section); native actions and focus cover the need; the X11 round trip is owed on X11 |
-| 12: Files folder lifecycle | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
-| 13: Text Editor edit cycle | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
-| 14: Calculator carried state | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
-| 15: editor to VS Code handoff | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; two apps, one artifact; owed a live run on GNOME Wayland |
-| 16: dev scaffold in VS Code | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; two apps plus disk and git; owed a live run on GNOME Wayland |
-| F: Tier 2 regression | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | owed; the surface being unchanged is unit-covered |
-| overall | **pass (structured)** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | six default apps driven end to end on real glass; the verdict covers what was driven only, and the workflow groups 12 to 16 stay owed before the release closes |
+| 12: Files folder lifecycle | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | create, rename, witness a file inside, delete: every step confirmed structurally |
+| 13: Text Editor edit cycle | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | four buffer states read back; set_text is not on the undo stack, recorded honestly |
+| 14: Calculator carried state | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | 144, 100, 25 carried across chained operations, each read back |
+| 15: editor to VS Code handoff | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `wf-handoff-070` read structurally from inside VS Code, matched on disk |
+| 16: dev scaffold in VS Code | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | edit confirmed structurally, on disk, and in `git status`; trust banner is a named gap |
+| F: Tier 2 regression | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | pixel tools all work, ground-truthed via the clipboard; nothing saved |
+| overall | **pass (structured)** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | 18 groups driven end to end on real glass, the workflow groups 12 to 16 included |
 
 Qt stays `not run` on every row: no Qt app is installed by default on this
 GNOME image, and this runbook does not install one.
@@ -870,6 +871,13 @@ the journals, the full unit-suite tail, and a `SUMMARY.md` plus `MANIFEST`
 indexing them. The earlier core-pass and expansion-pass artifacts remain in
 their own bundles beside it.
 
+The workflow groups (12 to 16), Group 9 and Part F were driven on 2026-08-14 and
+are filed under `e2e_evidence/vadgr-computer-use-0.7.0/20260814-194219-workflow-suite/`:
+one `stream-json` journal per group, the Group 9 screen-reader witness log, the
+Settings gsettings timeline, the Group 16 `git status` and on-disk captures, and
+a `SUMMARY.md` plus `MANIFEST`. All 18 groups pass on GNOME Wayland; the run used
+the machine's swap and did not exhaust memory.
+
 ## What this runbook cannot prove
 
 - **Any desktop it was not run on.** GNOME Wayland says nothing about KDE
@@ -881,14 +889,6 @@ their own bundles beside it.
   XWayland round trip (find bounds with `real` trust, click them, land) was
   driven, and the pure-X11 session is scheduled for a 0.1x.x perfectionism
   minor on GNOME X11.
-- **The new Group 9 (no screen-reader flag) live.** The pulse it replaced was
-  removed because setting `ScreenReaderEnabled` autostarts a screen reader on
-  GNOME; the rewritten group is owed a live re-run, held for now by the unit
-  suite.
-- **The workflow groups (12 to 16) live.** They are authored in this revision
-  with no run behind them: every cell of theirs is `not run` until the
-  orchestrator drives them and files the journals, and nothing in their
-  sections is a result.
 - **Structural activation of GTK4 list rows.** Nautilus and Settings export
   no activation action on their sidebar rows; the tier reports that honestly
   and the runbook records it as the app's boundary, not a pass.
