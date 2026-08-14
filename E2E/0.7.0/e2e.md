@@ -580,6 +580,31 @@ text-setting action, and cross-tier verification.
   read), the status check clean of surprises, and every dialog crossed on the
   way crossed structurally.
 
+### Group 17: Qt toolkit read and act (SpeedCrunch)
+
+The other groups drive GTK, Chromium, Electron and Flutter. This one proves the
+Qt toolkit, so a Qt app is read and driven over AT-SPI the same way. SpeedCrunch
+(Qt5) is installed for this group with `apt-get install speedcrunch`.
+
+- **Enablement (the finding this group exists for)**: Qt gates its AT-SPI tree on
+  `org.a11y.Status.IsEnabled`. With the flag false a Qt app registers nothing on
+  the bus. `IsEnabled` is the tier's safe flag and does not start a screen reader
+  (Orca stays absent, confirmed). Qt reads the flag at launch, so the app must
+  start with it already true.
+- **Open**: `app_open("SpeedCrunch")` returns `method: "exec"` and a confirmed
+  window (`SpeedCrunch`). A shell-launched detached instance did not map a
+  window; the session launcher did.
+- **Read**: `ui_tree` returns a real Qt tree: a menu bar with `Session`, `Edit`,
+  `View`, `Settings`, `Help` by name, a read-only result area, and an editable
+  expression input, each with roles and states.
+- **Act**: `ui_act(set_text, "6*7")` on the input, confirmed `state.text ==
+  "6*7"`; then Enter (the sanctioned keyboard step, SpeedCrunch evaluates on
+  Enter).
+- **Confirm**: an independent `ui_find(role="text")` re-read shows the result
+  area text `6*7\n= 42`, and the input cleared.
+- **Pass**: a Qt app read by role and name, driven, and its computed result read
+  back over AT-SPI.
+
 ## Finish-pass results, GNOME Shell 50 / Wayland, driven 2026-08-13
 
 Run id `20260813-034845-finish-070`, one timestamped `stream-json` journal per
@@ -695,7 +720,7 @@ about 6.5 KB.
 | a scaffold edited structurally and verified on disk and in git | 16: **pass** (structural, disk, `git status`) |
 | dialogs crossed structurally mid-task (create, rename, discard, delete, trust) | 12, 13, 16: **pass** (trust is a Restricted Mode banner, named gap) |
 | every Tier 2 desktop tool still works, unchanged | **pass** (Part F): screenshot, clipboard round trip, type, click, scroll, drag and double-click all driven live; nothing saved |
-| Qt read | **not run**: no Qt app installed by default here |
+| Qt read and act | 17: **pass** (SpeedCrunch): tree read by role and name, `6*7` set and evaluated, result `= 42` read back |
 | X11 grounding round trip | **to be run in 0.1x.x**: needs a real X11 login session, driven on GNOME X11 in a perfectionism minor |
 | the browser tier | **uncovered**: AT-SPI does not touch it, the DOM path is unchanged |
 
@@ -738,10 +763,17 @@ there, not writing code.
 | 15: editor to VS Code handoff | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `wf-handoff-070` read structurally from inside VS Code, matched on disk |
 | 16: dev scaffold in VS Code | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | edit confirmed structurally, on disk, and in `git status`; trust banner is a named gap |
 | F: Tier 2 regression | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | pixel tools all work, ground-truthed via the clipboard; nothing saved |
-| overall | **pass (structured)** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | 18 groups driven end to end on real glass, the workflow groups 12 to 16 included |
+| 17: Qt toolkit read and act | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | SpeedCrunch: tree read by role and name; `6*7` set, evaluated, result `= 42` read back |
+| overall | **pass (structured)** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | 19 groups driven end to end on real glass, the workflow groups 12 to 16 and the Qt group 17 included |
 
-Qt stays `not run` on every row: no Qt app is installed by default on this
-GNOME image, and this runbook does not install one.
+Qt is now covered on GNOME Wayland by Group 17 (SpeedCrunch, installed with
+`apt-get install speedcrunch`). Qt gates its AT-SPI tree on
+`org.a11y.Status.IsEnabled`: with the flag false a Qt app registers nothing, and
+with it true (the tier's safe flag, which does not start a screen reader) the
+app registers and reads and drives exactly like GTK. Qt reads the flag at launch,
+so the app must start with it already true; `app_open` launches it in the session
+and confirms the window. The KDE (Qt) desktop column stays `to be run in 0.1x.x`:
+that is the desktop, a separate target from the Qt toolkit proven here on GNOME.
 
 ### Windows, WSL and macOS: no structured tier this release
 
@@ -883,8 +915,6 @@ the machine's swap and did not exhaust memory.
 - **Any desktop it was not run on.** GNOME Wayland says nothing about KDE
   (Qt), wlroots, or GNOME X11; the per-desktop table schedules each for a
   0.1x.x perfectionism minor.
-- **Qt**, because no Qt app ships by default on this GNOME image and the
-  runbook does not install one.
 - **X11-session grounding**, because there is no X11 session here; the
   XWayland round trip (find bounds with `real` trust, click them, land) was
   driven, and the pure-X11 session is scheduled for a 0.1x.x perfectionism
