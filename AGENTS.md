@@ -196,6 +196,14 @@ its version beside the result, because two passes driven by two CLIs are still
 two observations, and a reader cannot compare them if the runbook does not say.
 A result with no CLI named is a result nobody can reproduce.
 
+**An e2e group proves the tier under real work, not one call per app.** Open the
+app and do one action is a smoke test, not an e2e group. A runbook must include
+groups that chain several steps and confirm the state structurally between each,
+and at least one group that spans two apps: make a thing in one, act on it in
+another, and confirm across the boundary. Depth is the bar the suite is judged
+on, not the count of apps it touches. A suite of open-and-click-once groups
+passes without proving the tier survives a real task.
+
 **Evidence is filed while the pass runs, never assembled after it.** The
 evidence directory exists before the first cell, each group files what it
 produced at its own boundary, and a group that captured nothing gets a note

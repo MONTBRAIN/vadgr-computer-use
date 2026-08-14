@@ -57,6 +57,13 @@ agent's summary is self-report, a mutating action counts only when a
 > not a tap. Order them so a later part can rely on an earlier one, and say when
 > it does.
 
+> **Depth is required, not optional.** A part that opens an app and performs one
+> action is a smoke test, not a part. Each part chains several steps and confirms
+> the state structurally between each, and at least one part spans two apps: make
+> a thing in one, act on it in another, and confirm across the boundary. A suite
+> of open-and-do-one-thing parts passes without proving the tier survives a real
+> task. Judge the suite on the deepest task it drives, not the count of apps.
+
 **Task given to the agent:**
 
 > The literal prompt. Goal-level.
