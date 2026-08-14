@@ -30,6 +30,11 @@ the set deliberately: it is the most complex default app, and a tier that can
 read it, act on it, confirm the change and revert it has proven the whole verb
 loop on real glass.
 
+A later revision adds the **workflow groups (12 to 16)**: multi-step tasks
+over the same defaults, two of which also drive VS Code under the same
+exception Group 8 established, because a chain of confirmed steps stresses
+what a single action cannot. They are authored below and owed a live run.
+
 The claim this runbook has to prove is not "the tools return something". It is
 three things a suite cannot reach:
 
@@ -352,6 +357,228 @@ autostarts a screen reader that then speaks.
 - A Wayland-native window's elements carry `coordinate_trust: "none"` and are
   not aimed at; their paths are native actions and `focus` plus a key.
 
+## Workflow groups: multi-step tasks that stress the tier (12 to 16, authored, not yet run)
+
+The groups above prove each verb once per app: open, one action, one
+read-back. That is the right first gate and the wrong last one, because real
+agent work is a chain, and a chain fails in ways a single action cannot show:
+a reference that goes stale after the app redraws, a dialog that swallows
+focus mid-task, a read that races the app's own settle, two tools disagreeing
+about one artifact. The groups below give the tier real work: several
+mutations per group, each confirmed structurally before the next step starts,
+and two groups spanning two applications that must agree on one file.
+
+**These groups are authored and owed a live run. No cell of theirs below
+carries a result, a timing or a pass, because none exists yet.** The
+orchestrator runs them next; until the journals exist, the per-desktop matrix
+carries every one of them as `not run` on GNOME Wayland.
+
+The standing rules, stated once for all five:
+
+- **The structured tier discovers and drives**: `ui_find` and `ui_tree`
+  locate, `ui_act` acts, and every mutation is confirmed by the act's own
+  re-read plus an independent `ui_find`, **between steps, never only at the
+  end**. A step's confirmation must appear in the journal before the next
+  step's first call. A screenshot may independently confirm an action
+  happened; it never locates, decides or drives.
+- **The keyboard is used only where the app exports no matching action** (the
+  sanction Group 4 established for Enter), and the effect of every key is
+  still confirmed structurally.
+- **Tier 0 (`shell`, `fs`) appears only for setup and for cross-tier
+  verification**, never to drive the app under test.
+- **Real, but safe**: everything created lives under a `mktemp -d` path and
+  is deleted at the end, every buffer that must not persist is discarded,
+  nothing is pushed anywhere. Each group names its cleanup.
+- **An unexported action stays a first-class honest result**: it is recorded
+  as `unsupported_action` with the element's real action list, never worked
+  around by dropping to pixels.
+- **The oracle is the `tool_use` / `tool_result` JSON in the journal**, never
+  the agent's prose, exactly as everywhere else in this runbook.
+
+### Group 12: Files (`nautilus`), a folder lifecycle
+
+Group 3 read the listing and flipped one toolbar toggle. This group does file
+management the way a user does: create a folder, rename it, watch a file land
+inside it, delete it, and read the listing between every step, so a stale
+listing snapshot or a dialog that never closed is caught at the step that
+caused it.
+
+- **Setup (Tier 0)**: `STAGE=$(mktemp -d)`; the group touches nothing outside
+  it.
+- **Open**: `app_open("Files")`; target with the returned `window.app_name`.
+  Navigate to `$STAGE`: nautilus exports no activation on its rows (Group 3's
+  boundary), so the sanctioned path is Ctrl+L, then `ui_find` the location
+  entry (`role="text box"`), `ui_act(set_text, "$STAGE")` confirmed from
+  `state.text`, then Enter. **Confirm**: `ui_windows` shows the window titled
+  with the stage directory's basename, and the listing has no grid cells
+  (`ok` with an empty list).
+- **Create**: Ctrl+Shift+N (no exported new-folder action); `ui_wait` for the
+  dialog's name entry; `ui_act(set_text, "wf-folder")` confirmed from
+  `state.text`; `ui_find` the dialog's `Create` button and click it by ref.
+  **Confirm**: an independent `ui_find(name="wf-folder")` returns exactly one
+  grid cell, and the dialog's entry is gone (`ok` with an empty list).
+- **Rename**: `ui_act(focus)` on the `wf-folder` cell (the cells export focus
+  even where they export no activation; if focus is also unexported, the
+  journal records `unsupported_action` with the real list and the group stops
+  honestly there), then F2; `ui_wait` for the rename entry, whose `text` must
+  read `wf-folder`; `ui_act(set_text, "wf-renamed")` confirmed from
+  `state.text`; Enter. **Confirm**: `ui_find(name="wf-renamed")` returns the
+  cell and `ui_find(name="wf-folder")` is `ok` with an empty list.
+- **A file lands**: Tier 0 writes `$STAGE/wf-renamed/inside.txt` (setup, not
+  driving); back in Files, `ui_act(focus)` on `wf-renamed` plus Enter opens
+  the folder (the same sanction), and the structured read
+  `ui_find(name="inside.txt")` must return the file's cell: **the app under
+  test witnesses the artifact**, which is the cross-tier point of the step.
+- **Delete**: Alt+Up back to `$STAGE` (confirmed from the window title in
+  `ui_windows`), focus `wf-renamed`, Shift+Delete; if a confirmation dialog
+  appears, its `Delete` button is found and clicked by ref. **Confirm**:
+  `ui_find(name="wf-renamed")` is `ok` with an empty list.
+- **Cleanup**: Ctrl+W closes the window, confirmed gone from `ui_windows`;
+  Tier 0 `rm -rf "$STAGE"`.
+- **Pass**: every confirmation above present in the journal in order; any
+  unexported step recorded as its named error, never skipped over.
+
+### Group 13: Text Editor (`gnome-text-editor`), an edit cycle read back at every step
+
+Group 2 wrote one sentence once. This group runs an editing session: write,
+transform, undo, clear, with the buffer read back before every next mutation,
+so the tier proves it can carry a document through several states rather than
+land one.
+
+- **Precondition**: as Group 2, the saved session is cleared and the window
+  must be a new draft; the agent stops rather than write into a window that
+  names an existing file.
+- **Open**: `app_open("Text Editor")`; find the document (`role="text box"`,
+  via `ui_tree` if needed).
+- **M1, write**: `ui_act(set_text, P1)` where P1 is a three-sentence
+  paragraph containing the token `wf-editor-p1`. **Confirm**: `state.text`
+  equals P1, and an independent `ui_find` re-read equals P1.
+- **M2, transform**: the agent builds P2 **from the read-back, not from
+  memory**: it takes the re-read text, replaces `wf-editor-p1` with
+  `wf-editor-p2`, and writes it with `ui_act(set_text, P2)`. **Confirm**: the
+  re-read equals P2 and no longer contains `wf-editor-p1`.
+- **M3, undo**: Ctrl+Z (the editor exports no undo action; the sanctioned
+  keyboard). **Confirm from the re-read, with two honest outcomes**: if the
+  text equals P1, the undo stack integrated the structured write; if it still
+  equals P2, the toolkit does not journal AT-SPI text replacement onto its
+  undo stack, and that is recorded as a documented boundary with the
+  read-back quoted, never a silent pass and never a failure invented over it.
+- **M4, clear**: `ui_act(set_text, "")`. **Confirm**: the re-read `text` is
+  empty.
+- **Cleanup**: the buffer is never saved. Ctrl+W closes; if the discard
+  dialog appears, its `Discard` button is found and clicked by ref; the
+  window is confirmed gone from `ui_windows`.
+- **Pass**: M1, M2 and M4 confirmed from `state.text` plus the independent
+  re-read; M3 resolved to one of its two named outcomes with the journal
+  quote.
+
+### Group 14: Calculator (`gnome-calculator`), a calculation that carries state
+
+Group 1 proved one sum. This group chains three operations where each step
+continues on the previous result, so one stale display read poisons every
+step after it, which is exactly the property worth stressing.
+
+- **Open**: `app_open("Calculator")`; target with the returned `app_name`.
+  The operator buttons (multiply, subtract, divide, equals) are discovered
+  with `ui_find(role="button")` and matched by the names the app itself
+  exports, never guessed from the labels printed here.
+- **Step 1**: click `1`, `2`, multiply, `1`, `2`, equals, each by ref.
+  **Confirm**: the display (`role="text box"`) reads `144` from its `text`
+  field, in the act's re-read and in an independent `ui_find`.
+- **Step 2**: continue on the result, never retyping it: click subtract, `4`,
+  `4`, equals. **Confirm**: the display's `text` is `100`.
+- **Step 3**: click divide, `4`, equals. **Confirm**: the display's `text` is
+  `25`.
+- The agent is told, as in Group 1, never to compute arithmetic itself: the
+  display element's `text` is the only valid value at every step, and each
+  step's confirmation must appear in the journal before the next step's first
+  click.
+- **Cleanup**: click the clear button; **confirm** the display reads `0`;
+  Ctrl+W closes the window, confirmed gone from `ui_windows`.
+- **Pass**: the three display reads are `144`, `100`, `25`, in order, each
+  from the journal.
+
+### Group 15 (two apps): Text Editor writes, VS Code reads the same file
+
+Two structured-tier apps must agree on one artifact: the editor writes and
+saves a file, VS Code opens the same path, and the structured read of VS
+Code's buffer must show the same content. The group crosses toolkits (GTK4 to
+Electron), exercises Group 8's Chromium enablement inside a real task, and
+keeps the file system as the meeting point rather than the oracle: the final
+confirmation is structural, in the second app.
+
+- **Setup (Tier 0)**: `STAGE=$(mktemp -d)`; `touch "$STAGE/handoff.txt"`;
+  launch `gnome-text-editor "$STAGE/handoff.txt"` from the shell (setup: the
+  editor must open this exact file, which `app_open` cannot express).
+  **Confirm**: `ui_windows` shows the editor window titled `handoff.txt`.
+  Group 2's stop rule does not fire here: the file is the group's own
+  artifact under `$STAGE`, created two lines up.
+- **Write**: find the document, `ui_act(set_text, S)` where S is a two-line
+  body containing the token `wf-handoff-070`. **Confirm**: `state.text`
+  equals S and an independent re-read agrees.
+- **Save**: Ctrl+S (the editor exports no save action). **Confirm across the
+  tiers**: Tier 0 `fs` reads `$STAGE/handoff.txt` back equal to S
+  (verification, not driving), and the title re-read from `ui_windows` no
+  longer carries the modified marker, recorded as observed.
+- **Open in VS Code**: `app_open` the VS Code entry, which must report
+  `method: "exec"` with the accessibility flag carried (Group 8's mechanism,
+  now inside a workflow); confirm its window in `ui_windows`. Then Tier 0
+  `code "$STAGE/handoff.txt"` hands the path to the flagged instance (setup:
+  the file must reach this exact window).
+- **The second app agrees**: `ui_wait` for an element named `handoff.txt` in
+  the VS Code window (the tab), then `ui_find` the editor document and read
+  its text. **Pass**: the structured read from inside VS Code contains
+  `wf-handoff-070`. If the document element exports no readable text over the
+  bus, the honest result is that named gap quoted from the journal, never a
+  screenshot standing in for the read.
+- **Cleanup**: close the VS Code window and the editor window (Ctrl+W each,
+  confirmed gone from `ui_windows`); Tier 0 `rm -rf "$STAGE"`.
+
+### Group 16 (two apps): a dev scaffold, shell to VS Code and back to disk
+
+The closing stress, shaped like real agent work: Tier 0 scaffolds a project,
+the structured tier does the editing inside VS Code, and the result is
+confirmed twice, structurally in the editor and independently on disk. It
+stacks the hard parts on purpose: Chromium enablement, a deep Electron tree,
+a workspace-trust dialog, keyboard input into an editor that exports no
+text-setting action, and cross-tier verification.
+
+- **Setup (Tier 0)**: `PROJ=$(mktemp -d)`; `git init "$PROJ"`; write
+  `$PROJ/main.py` containing the single line `print("wf-scaffold-070")`;
+  commit it with an inline throwaway identity
+  (`git -C "$PROJ" add -A`, then `git -C "$PROJ" -c user.name=wf -c
+  user.email=wf@example.invalid commit -m scaffold`), so the later status
+  check can tell an edit from an untracked file. The repository never gets a
+  remote and nothing is pushed at any point.
+- **Open**: `app_open` VS Code (`method: "exec"`, flag carried), confirmed in
+  `ui_windows`; Tier 0 `code "$PROJ"` hands the folder to the flagged
+  instance. If the workspace-trust dialog appears, its trust button is found
+  with `ui_find` and clicked with `ui_act`, and the dialog confirmed gone
+  from a follow-up find: the dialog is part of the test, not an obstacle.
+- **Open the file structurally**: Ctrl+P (quick open); `ui_wait` for the
+  picker's entry; prefer `ui_act(set_text, "main.py")` on it. If Chromium
+  exports no settable text there, the `unsupported_action` is recorded with
+  the element's real actions, and the sanctioned fallback is keyboard typing
+  into the focused entry, still confirmed structurally: the picker row for
+  `main.py` must appear in a `ui_find` before Enter is pressed. **Confirm**:
+  an element named `main.py` appears as the active editor tab.
+- **Edit**: `ui_act(focus)` on the editor document; Ctrl+End to the end, then
+  type a second line `print("wf-scaffold-edited")` (Monaco exports no
+  text-setting action; the keyboard here is the sanctioned path). **Confirm
+  structurally before saving**: a re-read of the editor document's accessible
+  text contains `wf-scaffold-edited`; if that text is not readable over the
+  bus, the gap is recorded honestly and the on-disk check below is stated as
+  the group's only confirmation of the edit.
+- **Save**: Ctrl+S. **Confirm on both sides**: Tier 0 `fs` reads
+  `$PROJ/main.py` and it contains both lines in order, and
+  `git -C "$PROJ" status --porcelain` shows `main.py` as the only change: the
+  scaffold, the editor and the disk tell the same story.
+- **Cleanup**: close the VS Code window, confirmed gone from `ui_windows`;
+  Tier 0 `rm -rf "$PROJ"`.
+- **Pass**: the edit witnessed twice (the structured read and the Tier 0 file
+  read), the status check clean of surprises, and every dialog crossed on the
+  way crossed structurally.
+
 ## Finish-pass results, GNOME Shell 50 / Wayland, driven 2026-08-13
 
 Run id `20260813-034845-finish-070`, one timestamped `stream-json` journal per
@@ -459,42 +686,58 @@ about 6.5 KB.
 | reads immediately after a Flutter navigation return the settled tree | 10 |
 | per-window `coordinate_trust`, and a grounded Tier 2 click on `real` | 11 |
 | on Wayland, untrusted bounds are not aimed at | 0, 11 |
+| a multi-step chain confirmed structurally between steps, never only at the end | 12 to 16: **not run**, authored, owed a live run |
+| a folder lifecycle in Files: create, rename, witness a file, delete | 12: **not run**, owed |
+| an edit cycle in the editor: write, transform, undo, clear, each read back | 13: **not run**, owed |
+| a calculation that carries state across chained operations | 14: **not run**, owed |
+| two apps agreeing on one file, GTK4 to Electron | 15: **not run**, owed |
+| a scaffold edited structurally and verified on disk and in git | 16: **not run**, owed |
+| dialogs crossed structurally mid-task (create, rename, discard, delete, trust) | 12, 13, 16: **not run**, owed |
 | every Tier 2 desktop tool still works, unchanged | **not run**: owed as Part F, surface held by the unit suite |
 | Qt read | **not run**: no Qt app installed by default here |
-| X11 grounding round trip | **not run**: no X11 session here |
+| X11 grounding round trip | **to be run in 0.1x.x**: needs a real X11 login session, driven on GNOME X11 in a perfectionism minor |
 | the browser tier | **uncovered**: AT-SPI does not touch it, the DOM path is unchanged |
 
 ## Per-OS results
 
-Legend: `pass` / `fail` mean it ran. `not run` means nobody ran it, which is
-honest and visibly owed. `Not-Needed` means there is genuinely no OS-specific
-surface, with its reason. A cell is marked from observation, never
-expectation.
+Legend: `pass` / `fail` mean it ran. `not run` means nobody ran it yet on a
+target this release did drive (GNOME Wayland), honest and visibly owed before
+the release closes. `to be run in 0.1x.x` means the target is scheduled for a
+future perfectionism minor in the 0.1x.x range, not this release: the other
+Linux desktops are driven there, not here. `Not-Needed` means there is genuinely
+no OS-specific surface, with its reason. A cell is marked from observation,
+never expectation.
 
 ### Linux, by desktop and display server
 
 The structured tier is Linux's, and its behaviour differs by desktop and
 display server, so the Linux column is its own table. GNOME Wayland was driven
-by a real agent; the others are owed, and closing a `not run` is running
-`vadgr-cua install-deps` plus this runbook there, not writing code.
+by a real agent; the other desktops are scheduled for a 0.1x.x perfectionism
+minor, and closing one is running `vadgr-cua install-deps` plus this runbook
+there, not writing code.
 
 | group | GNOME Wayland | GNOME X11 | KDE (Qt) | wlroots | notes |
 |---|---|---|---|---|---|
-| 0: capability and honest failure | **pass** | not run | not run | not run | structured block, `element_gone`, `no_tree` all observed |
-| 1: Calculator | **pass** | not run | not run | not run | `15` read off the display element |
-| 2: Text Editor | **pass** | not run | not run | not run | `set_text` confirmed from `state.text` |
-| 3: Files | **pass** | not run | not run | not run | rich read; toggle acted and reverted; sidebar activation honestly unsupported |
-| 4: Settings | **pass** | not run | not run | not run | switch on, confirmed, reverted; gsettings false/true/false |
-| 5: Clocks | **pass** | not run | not run | not run | tab selection moved and confirmed |
-| 6: Characters | **pass** | not run | not run | not run | read-only breadth |
-| 7: unfocused by name | **pass** | not run | not run | not run | `18` computed on an inactive window |
-| 8: Chromium launch enablement | **pass** | not run | not run | not run | VS Code full tree under the injected flag |
-| 9: no screen-reader flag | not run | not run | not run | not run | superseded: the pulse this cell measured was removed; the rewritten group (never sets the flag, thin read stays tree-only) is owed a live re-run |
-| 10: Flutter post-navigation reads | **pass** | not run | not run | not run | three immediate reads, all settled |
-| 11: grounded click (Tier 1.5) | **pass** | not run | not run | not run | XWayland window: `real` trust, click landed, confirmed structurally |
-| grounding on Wayland-native windows | Not-Needed | not run | not run | not run | probed fundamental: every origin source denied or absent (see the boundary section); native actions and focus cover the need; the X11 round trip is owed on X11 |
-| F: Tier 2 regression | not run | not run | not run | not run | owed; the surface being unchanged is unit-covered |
-| overall | **pass (structured)** | not run | not run | not run | six default apps driven end to end on real glass |
+| 0: capability and honest failure | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | structured block, `element_gone`, `no_tree` all observed |
+| 1: Calculator | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `15` read off the display element |
+| 2: Text Editor | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `set_text` confirmed from `state.text` |
+| 3: Files | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | rich read; toggle acted and reverted; sidebar activation honestly unsupported |
+| 4: Settings | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | switch on, confirmed, reverted; gsettings false/true/false |
+| 5: Clocks | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | tab selection moved and confirmed |
+| 6: Characters | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | read-only breadth |
+| 7: unfocused by name | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | `18` computed on an inactive window |
+| 8: Chromium launch enablement | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | VS Code full tree under the injected flag |
+| 9: no screen-reader flag | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | rewritten group: never sets the flag, thin read stays tree-only; owed a live re-run on GNOME Wayland |
+| 10: Flutter post-navigation reads | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | three immediate reads, all settled |
+| 11: grounded click (Tier 1.5) | **pass** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | XWayland window: `real` trust, click landed, confirmed structurally |
+| grounding on Wayland-native windows | Not-Needed | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | probed fundamental: every origin source denied or absent (see the boundary section); native actions and focus cover the need; the X11 round trip is owed on X11 |
+| 12: Files folder lifecycle | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
+| 13: Text Editor edit cycle | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
+| 14: Calculator carried state | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; owed a live run on GNOME Wayland |
+| 15: editor to VS Code handoff | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; two apps, one artifact; owed a live run on GNOME Wayland |
+| 16: dev scaffold in VS Code | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | authored this revision; two apps plus disk and git; owed a live run on GNOME Wayland |
+| F: Tier 2 regression | not run | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | owed; the surface being unchanged is unit-covered |
+| overall | **pass (structured)** | to be run in 0.1x.x | to be run in 0.1x.x | to be run in 0.1x.x | six default apps driven end to end on real glass; the verdict covers what was driven only, and the workflow groups 12 to 16 stay owed before the release closes |
 
 Qt stays `not run` on every row: no Qt app is installed by default on this
 GNOME image, and this runbook does not install one.
@@ -630,16 +873,22 @@ their own bundles beside it.
 ## What this runbook cannot prove
 
 - **Any desktop it was not run on.** GNOME Wayland says nothing about KDE
-  (Qt), wlroots, or GNOME X11; the per-desktop table keeps each `not run`.
+  (Qt), wlroots, or GNOME X11; the per-desktop table schedules each for a
+  0.1x.x perfectionism minor.
 - **Qt**, because no Qt app ships by default on this GNOME image and the
   runbook does not install one.
 - **X11-session grounding**, because there is no X11 session here; the
   XWayland round trip (find bounds with `real` trust, click them, land) was
-  driven, and the pure-X11 session remains owed on X11.
+  driven, and the pure-X11 session is scheduled for a 0.1x.x perfectionism
+  minor on GNOME X11.
 - **The new Group 9 (no screen-reader flag) live.** The pulse it replaced was
   removed because setting `ScreenReaderEnabled` autostarts a screen reader on
   GNOME; the rewritten group is owed a live re-run, held for now by the unit
   suite.
+- **The workflow groups (12 to 16) live.** They are authored in this revision
+  with no run behind them: every cell of theirs is `not run` until the
+  orchestrator drives them and files the journals, and nothing in their
+  sections is a result.
 - **Structural activation of GTK4 list rows.** Nautilus and Settings export
   no activation action on their sidebar rows; the tier reports that honestly
   and the runbook records it as the app's boundary, not a pass.
