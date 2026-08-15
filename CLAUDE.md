@@ -68,6 +68,44 @@ there is genuinely no OS-specific surface, always stated with its reason.
 small text; pixels are the fallback, never the default. A change that quietly
 moves work down a tier makes every agent loop more expensive.
 
+**A tier is an abstraction, not one implementation.** Capture, input and the
+structured reads are provider-plus-resolver seams: detect the session (display
+server, compositor, session type), let each provider declare whether it applies
+and either build a validated backend or step aside, and take the highest that
+works. A new OS or desktop joins as one more provider and never forks the tool
+surface; a target no one has exercised yet degrades to a reported capability
+level rather than a crash. The matrix of distro, desktop, session type, toolkit
+and sandbox is too large for static rules, so capability is probed at runtime
+and reported, never assumed.
+
+**A tier designed on another OS is a hypothesis until it runs on the real
+target.** The facts an off-target author gets wrong are the runtime ones no unit
+suite reaches: which binding actually loads, whether element coordinates are
+real or withheld by the session (a Wayland client is told its own window sits at
+0,0, so accessibility bounds are not screen pixels there and a pixel-grounding
+step has nothing to aim at), how the native accessibility action model maps onto
+the tool's verbs, and how the capability is switched on - the bus first, then
+each app. Prove these on real glass before the design is trusted and before code
+starts.
+
+**Within Linux, the popular desktops are each first-class, the same way the four
+OSes are.** A Linux tier is not finished on the box it was built on: GNOME on
+Wayland and on X11, KDE Plasma (Qt), the minimal install (nothing pre-installed),
+and the wlroots compositors (Sway, Hyprland) are all targets it resolves for,
+each to a reported capability level - full, tree-only, or
+unavailable-with-a-remedy - never a crash. Their OS stacks are provisioned
+through `vadgr-cua install-deps`; capability is probed at runtime and reported. A
+Linux tier that only considered the developer's own desktop is not done.
+
+**This is a standing rule for every Linux minor, not a one-off.** A Linux minor
+that touches a tier reports its results as a per-desktop matrix across those
+targets - each row a `pass` or a `not run` with its reason - so Linux is never
+collapsed into a single verdict. The dev desktop that got driven is one desktop,
+never the platform; the rest are `not run` until driven on real hardware there,
+never `pass` by inheritance. Closing a `not run` is running `install-deps` plus
+the runbook on that desktop, not writing code - so there is no excuse to leave
+the matrix collapsed.
+
 **5. Design comes before code** for anything carrying a minor:
 
 ```bash
@@ -113,6 +151,18 @@ python3 ../vadgr-docs/scripts/check_iteration.py <phase> <iteration>
 Exit `0` is necessary and never sufficient: it checks that specs exist and are
 structurally complete, and it cannot review one.
 
+**When the implementation must diverge from the approved design, that is an
+owner decision, and the design doc is realigned after.** Implementation reveals
+what the design could not: a binding that will not load, a coordinate the
+session withholds, a toolkit that hides its tree until asked. Do not build the
+divergence silently and move on. Surface it to the owner with the decision and
+its fundamentals, the way every owner decision is surfaced, and let the owner
+judge it. If the owner approves, update the design doc to match what was built,
+so the design stays the source of truth and the next reader is not misled by a
+spec describing what was replaced. A design left describing the code that no
+longer exists is a defect, the same as a stale comment. This holds in every repo
+in this family.
+
 **CI is not an e2e pass.** The automated gate builds an environment and runs the
 unit suites. It drives no session, calls nothing over the wire and reaches no
 glass, so a green CI row on an OS says the suites pass there and **nothing at
@@ -121,6 +171,22 @@ marked `not run`, never `pass`, and a runbook's `overall` row never inherits a
 gate result: it is the weakest of the parts actually driven on that OS. This
 shipped once and was caught in review, with two platforms marked `pass (CI)`
 while their own live rows read `not run`. **A suite is not a session.**
+
+**The e2e is run before the PR is published, and the owner reviews the results,
+not a plan.** Whoever builds the change runs the e2e the feature needs - a browser
+change against real sites, a desktop or structured change against real
+applications, never a mock - and ships the results in the PR. There is no
+approve-the-runbook-before-it-runs step: the owner reviews the results and asks for
+changes if they do not convince. A PR that claims a feature works with its e2e left
+unrun is incomplete.
+
+**Drive the tool over its real wire, not by importing it.** Importing the module
+and calling the function tests the code, not the served tool a client calls: it
+skips the MCP server, its schema and the transport. Call it the way a client does
+(a `claude -p` subagent with the server mounted), and `claude -p` loads a fresh
+server from the current code, so it never tests a stale connection. cua `0.7.0`'s
+`app_open` passed its units and an import check while the wire e2e caught a
+two-minute hang and an `ok` returned before any window existed.
 
 **Close an e2e with three independent passes**, run concurrently, each with its
 **own port, database and daemon** - three observations rather than one run
@@ -141,6 +207,25 @@ working directory. **Detect the CLI, do not assume it.** Record which one ran an
 its version beside the result, because two passes driven by two CLIs are still
 two observations, and a reader cannot compare them if the runbook does not say.
 A result with no CLI named is a result nobody can reproduce.
+
+**An e2e group proves the tier under real work, not one call per app.** Open the
+app and do one action is a smoke test, not an e2e group. A runbook must include
+groups that chain several steps and confirm the state structurally between each,
+and at least one group that spans two apps: make a thing in one, act on it in
+another, and confirm across the boundary. Depth is the bar the suite is judged
+on, not the count of apps it touches. A suite of open-and-click-once groups
+passes without proving the tier survives a real task.
+
+**Clean install is a mandatory gate, checked on every PR.** A green suite says
+the code works where it was built, not that a first-time user can install the
+product and start it. Every repo that ships an installable artifact builds that
+artifact, installs it alone in a from-nothing container (no build toolchain, no
+dev dependencies), starts the entry point, and confirms it serves a readiness
+signal, driving the installed product from outside rather than the source tree.
+It holds for a Python wheel and a Rust binary alike; only the install step and
+the readiness signal differ. cua `0.6.6` shipped because a fresh install of
+`0.6.5` could not start at all, and nothing checked a clean install before
+publish. A suite is not an install.
 
 **Evidence is filed while the pass runs, never assembled after it.** The
 evidence directory exists before the first cell, each group files what it
@@ -177,6 +262,17 @@ nothing. **`not run`, `blocked` and `partial` are always available and always
 acceptable**; a fabricated pass never is. If a step could not run, say which,
 why, and what would let it run.
 
+**Impossible is a probed verdict, never an impression.** Nothing is declared
+fundamental, unfixable or out of scope until it was probed on the real target
+and every plausible fix was tried or ruled out with evidence: a different API,
+an enablement flag, a workaround at another layer. A "cannot be done" ships
+with the probe that showed it, exactly as a pass ships with its log - most
+"impossible" failures dissolve under a real probe, and the few true limits are
+worth naming only with the probe and the platform's own design notes in hand.
+**Hard bugs get the strongest tool before they get a verdict**: under Claude
+Code, switching the session or a subagent to the Fable 5 model (`fable`) is
+authorized for exactly these investigations, and only for them.
+
 **Implementation is delegated and driven to a finished PR, not hand-held slice
 by slice.** A minor's build runs the steps end to end and does not come back
 until the PR is review-ready: every slice implemented, the unit suites green,
@@ -187,6 +283,23 @@ sequence rather than the owner's to approve one at a time. **Stop for exactly
 two things**: a genuine decision only the owner can make - surfaced with the
 options and a recommendation - or a defined approval gate, which is running the
 e2e (its runbook is approved before it runs) and merge, tag and release.
+
+**Pushing to the PR branch is not a gate; merging is.** The PR branch is the
+working surface where the e2e runs, so commits go there as they are made, never
+held back on the local branch to wait for a nod. The owner's approval gates the
+merge, the tag and the release, not the push. A commit kept off the PR to wait
+for approval is the mistake: the branch is where the change is reviewed and
+tested, and the approval is asked at merge. This holds in every repo in this
+family.
+
+**Complete means complete: a feature is not done while an implementable part is
+left as a follow-up.** "Scoped but not built", "one more thing remaining" and
+"the last piece is a small fix" are not stopping points, and implementable
+leftover work is never handed to the owner as a choice - it is built. The only
+things that end the build short of complete are a genuine owner decision or an
+approval gate; more work that can be built is never one of them. A part that is
+genuinely impossible ships proved-impossible with its probe (see "Impossible is a
+probed verdict"), never deferred with a promise.
 
 **Write your replies to the owner in Simplified Technical English, ASD-STE100.**
 In Claude Code, set the output style to it; a CLI with no such setting applies
@@ -251,11 +364,28 @@ that name. Nothing here assumes a particular machine, user or absolute path.
   `cmd | head` reports `head`'s status.
 - After any mutating browser operation, confirm with a **structured read-back**,
   never a screenshot: web state changes faster than a screenshot can witness it.
+- **The structured (accessibility) tier is the ground truth for native apps, the
+  same way the DOM is for the browser tier.** When exercising or testing it,
+  discover elements with `ui_tree` / `ui_find` and drive with `ui_act`, and confirm
+  a mutation with a structured read-back (the act's re-read, or a fresh `ui_find`).
+  A screenshot may only independently confirm an action happened - never to locate
+  an element, decide what to do, or drive the app. Driving a structured-tier test
+  from pixels proves the pixel tier, not the structured one. This holds for every
+  backend: AT-SPI (Linux), UIA (Windows), AX (macOS).
 
 ## Conventions
 
 - Comments explain **why**, not what.
 - Branch, then PR. Never commit to `master`.
+- **`vadgr-cua install-deps` is the one cross-distro provisioner.** Every tier's
+  OS-level prerequisite - the accessibility stack for the structured reads, the
+  clipboard backend, `/dev/uinput` access - is registered there, and it already
+  maps apt, dnf, pacman and zypper and runs the whole plan under a single pkexec
+  or sudo prompt. A new system requirement is added to it, never left as a manual
+  package line the user has to find, and an error path points at
+  `vadgr-cua install-deps`, not a hand-typed `apt install`. Easy to install is a
+  contract: one command provisions every tier on every distro. The Python side
+  stays pip-only (pure-python, no system libs), so the two never overlap.
 - `CHANGELOG.md` is updated **in the PR**; CD publishes the extension keylessly
   on tag.
 - **`README.md` is updated in the same PR when the minor changed what it says**,

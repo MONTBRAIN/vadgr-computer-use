@@ -761,7 +761,16 @@ class TestCreateActionExecutor:
     @patch("computer_use.platform.linux._is_mutter_available", return_value=False)
     @patch("computer_use.platform.linux._find_evdev_mouse", return_value=None)
     @patch("computer_use.platform.linux._find_evdev_keyboard", return_value=None)
-    def test_wayland_no_mutter_no_evdev_raises(self, _kbd, _mouse, _mutter, _wayland):
+    @patch(
+        "computer_use.platform.linux.UinputActionExecutor",
+        side_effect=OSError("/dev/uinput not writable"),
+    )
+    def test_wayland_no_mutter_no_evdev_raises(
+        self, _uinput, _kbd, _mouse, _mutter, _wayland
+    ):
+        # Every environment probe on the ladder is controlled, the uinput one
+        # included: on a box whose /dev/uinput is writable the real fallback
+        # would succeed and the test would measure the machine, not the code.
         from computer_use.core.errors import PlatformNotSupportedError
         from computer_use.platform.linux import _create_action_executor
         with pytest.raises(PlatformNotSupportedError, match="Wayland input"):
@@ -874,31 +883,13 @@ class TestForegroundWindowXdotool:
 
 
 class TestForegroundWindowWayland:
-    """Tests for Wayland foreground window detection via AT-SPI2."""
+    """Tests for Wayland foreground window detection via AT-SPI2.
 
-    def _make_mock_window(self, app_name, title, pid, active, x, y, w, h):
-        """Build a mock AT-SPI2 window accessible."""
-        window = MagicMock()
-        window.get_name.return_value = title
-        window.get_process_id.return_value = pid
-
-        rect = MagicMock()
-        rect.x, rect.y, rect.width, rect.height = x, y, w, h
-        window.get_extents.return_value = rect
-
-        ss = MagicMock()
-        ss.contains.side_effect = lambda st: (
-            active if st.value_name == "ATSPI_STATE_ACTIVE" else False
-        )
-        window.get_state_set.return_value = ss
-        return window
-
-    def _make_mock_app(self, name, windows):
-        app = MagicMock()
-        app.get_name.return_value = name
-        app.get_child_count.return_value = len(windows)
-        app.get_child_at_index.side_effect = lambda i: windows[i]
-        return app
+    The Wayland query now delegates to the structured tier's dbus-fast client
+    (the gi.Atspi path was dead: an isolated venv cannot import gi). The
+    tree-walk logic itself is tested against a fake client in
+    test_atspi_backend.py; here we assert the dispatch and the delegation.
+    """
 
     @patch("computer_use.platform.linux._query_foreground_window_wayland")
     def test_dispatch_uses_wayland_on_wayland(self, mock_wayland):
@@ -945,105 +936,22 @@ class TestForegroundWindowWayland:
             result = _query_foreground_window()
         assert result.app_name == "xterm"
 
-    def test_picks_last_active_window(self):
-        """When multiple windows are ACTIVE, the last one in the tree wins."""
+    def test_delegates_to_the_atspi_client(self):
+        from computer_use.core.types import ForegroundWindow
         from computer_use.platform.linux import _query_foreground_window_wayland
 
-        win_chrome = self._make_mock_window(
-            "chrome", "Google Chrome", 100, True, 0, 0, 1920, 1080,
+        window = ForegroundWindow(
+            app_name="firefox", title="My App", x=10, y=20,
+            width=500, height=400, pid=42,
         )
-        win_terminal = self._make_mock_window(
-            "gnome-terminal-", "Terminal", 200, True, 0, 0, 800, 600,
-        )
-        app_chrome = self._make_mock_app("Google Chrome", [win_chrome])
-        app_terminal = self._make_mock_app("gnome-terminal-server", [win_terminal])
-
-        desktop = MagicMock()
-        desktop.get_child_count.return_value = 2
-        desktop.get_child_at_index.side_effect = [app_chrome, app_terminal]
-
-        mock_atspi = MagicMock()
-        mock_atspi.init.return_value = None
-        mock_atspi.get_desktop.return_value = desktop
-        mock_atspi.CoordType.SCREEN = "SCREEN"
-
-        # Mock StateType so .contains() comparison works
-        active_state = MagicMock()
-        active_state.value_name = "ATSPI_STATE_ACTIVE"
-        mock_atspi.StateType.ACTIVE = active_state
-
-        mock_gi = MagicMock()
-        mock_gi.repository.Atspi = mock_atspi
-
-        with patch.dict("sys.modules", {"gi": mock_gi, "gi.repository": mock_gi.repository}):
+        with patch("computer_use.tools.ui.atspi.foreground_window",
+                   return_value=window):
             result = _query_foreground_window_wayland()
+        assert result is window
 
-        assert result is not None
-        # Last active window wins - terminal is last in tree
-        assert result.pid == 200
-
-    def test_returns_none_when_no_active_windows(self):
+    def test_returns_none_when_the_client_finds_nothing(self):
         from computer_use.platform.linux import _query_foreground_window_wayland
 
-        win = self._make_mock_window("app", "Window", 100, False, 0, 0, 800, 600)
-        app = self._make_mock_app("SomeApp", [win])
-
-        desktop = MagicMock()
-        desktop.get_child_count.return_value = 1
-        desktop.get_child_at_index.side_effect = [app]
-
-        mock_atspi = MagicMock()
-        mock_atspi.init.return_value = None
-        mock_atspi.get_desktop.return_value = desktop
-        mock_atspi.CoordType.SCREEN = "SCREEN"
-
-        active_state = MagicMock()
-        active_state.value_name = "ATSPI_STATE_ACTIVE"
-        mock_atspi.StateType.ACTIVE = active_state
-
-        mock_gi = MagicMock()
-        mock_gi.repository.Atspi = mock_atspi
-
-        with patch.dict("sys.modules", {"gi": mock_gi, "gi.repository": mock_gi.repository}):
-            result = _query_foreground_window_wayland()
-
-        assert result is None
-
-    def test_returns_none_when_atspi_not_available(self):
-        from computer_use.platform.linux import _query_foreground_window_wayland
-
-        with patch.dict("sys.modules", {"gi": None}):
-            result = _query_foreground_window_wayland()
-        assert result is None
-
-    def test_reads_app_name_from_proc_comm(self):
-        from computer_use.platform.linux import _query_foreground_window_wayland
-
-        win = self._make_mock_window("", "My App", 42, True, 10, 20, 500, 400)
-        app = self._make_mock_app("MyApp", [win])
-
-        desktop = MagicMock()
-        desktop.get_child_count.return_value = 1
-        desktop.get_child_at_index.side_effect = [app]
-
-        mock_atspi = MagicMock()
-        mock_atspi.init.return_value = None
-        mock_atspi.get_desktop.return_value = desktop
-        mock_atspi.CoordType.SCREEN = "SCREEN"
-
-        active_state = MagicMock()
-        active_state.value_name = "ATSPI_STATE_ACTIVE"
-        mock_atspi.StateType.ACTIVE = active_state
-
-        mock_gi = MagicMock()
-        mock_gi.repository.Atspi = mock_atspi
-
-        with patch.dict("sys.modules", {"gi": mock_gi, "gi.repository": mock_gi.repository}):
-            with patch("builtins.open", mock_open(read_data="firefox\n")):
-                result = _query_foreground_window_wayland()
-
-        assert result is not None
-        assert result.app_name == "firefox"
-        assert result.title == "My App"
-        assert result.x == 10
-        assert result.width == 500
+        with patch("computer_use.tools.ui.atspi.foreground_window",
+                   return_value=None):
+            assert _query_foreground_window_wayland() is None

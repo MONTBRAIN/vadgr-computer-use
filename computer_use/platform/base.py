@@ -73,3 +73,17 @@ class PlatformBackend(ABC):
         Returns None if the information cannot be determined.
         """
         ...
+
+    def structured_capability(self) -> dict:
+        """Report the structured (accessibility) tier's capability.
+
+        Default is honest absence: the platform has no structured tier, said with
+        a reason rather than a stub. Linux overrides this with the AT-SPI probe;
+        Windows and macOS inherit this until their own tiers land, so all four
+        platforms answer the question rather than one of them raising.
+        """
+        return {
+            "available": False,
+            "backend": None,
+            "reason": "no structured tier on this platform",
+        }

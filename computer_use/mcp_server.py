@@ -393,6 +393,7 @@ from computer_use.tools.system import http as _http_impl
 from computer_use.tools.system import shell as _shell_impl
 from computer_use.tools.system import tempfile as _tempfile_impl
 from computer_use.tools.system import time as _time_impl
+from computer_use.tools.ui import tools as _ui_impl
 
 
 @mcp.tool()
@@ -750,6 +751,109 @@ def profiles(op: str, profile_id: str = None):
     CUA_BROWSER_PROFILE env var (a profile_id prefix or a tab-title substring).
     """
     return _browser_impl.profiles(op=op, profile_id=profile_id)
+
+
+# --- Tier 1: structured (AT-SPI on Linux; UIA and AX to follow) ---
+#
+# Read the accessibility tree and act on an element by reference: small text
+# instead of an image, tens of milliseconds instead of seconds, and correct under
+# a window that moved. The pixel tier stays exactly as it is - this is added
+# beside it, never a replacement, and the loop still chooses the rung.
+
+
+@mcp.tool()
+@tool(name="ui_tree", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_tree(depth: int = 6, app: str = "") -> dict:
+    """Read an accessible tree (Tier 1), filtered and depth-capped.
+
+    Returns small structured text, not an image. Prefer this over a screenshot to
+    understand a native (non-web) window. ``app=""`` reads the focused window;
+    ``app="Name"`` reads that application's window even if it is not focused;
+    ``app="*"`` reads every open window. On a box with no accessibility bus it
+    returns ``error: at_spi_unavailable`` with a one-line remedy.
+    """
+    return _ui_impl.ui_tree(depth=depth, app=app)
+
+
+@mcp.tool()
+@tool(name="ui_find", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_find(role: str = "", name: str = "", app: str = "") -> dict:
+    """Find native UI elements (Tier 1) by role, name, or both.
+
+    Each result carries an opaque ``ref`` for ui_act, plus ``bounds`` and
+    ``states``. An empty match is a successful read (``ok`` with an empty list),
+    not an error. Match by role (e.g. "push button"), by name, or both. ``app=""``
+    searches the focused window; ``app="Name"`` searches that application's window
+    even when unfocused; ``app="*"`` searches every open window.
+    """
+    return _ui_impl.ui_find(role=role, name=name, app=app)
+
+
+@mcp.tool()
+@tool(name="ui_windows", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_windows() -> dict:
+    """List open top-level windows across all apps (Tier 1).
+
+    Each entry has the app name, the window title, whether it is active, and an
+    opaque ``ref``. This is how to discover what is open before targeting a
+    window with ``ui_find(app=...)`` or ``ui_tree(app=...)``.
+    """
+    return _ui_impl.ui_windows()
+
+
+@mcp.tool()
+@tool(name="ui_act", tier=Tier.ONE, risk=Risk.MEDIUM)
+def ui_act(ref: str, action: str, text: str = "") -> dict:
+    """Act on a native UI element by ref (Tier 1): click, focus, set_text, toggle, expand.
+
+    Re-reads the element after acting and returns its new state, so a toggle that
+    did not toggle is visible in the response. A ref that no longer resolves fails
+    ``element_gone`` and never falls back to clicking its old coordinates. Pass
+    ``text`` for ``set_text``.
+    """
+    return _ui_impl.ui_act(ref=ref, action=action, text=text)
+
+
+@mcp.tool()
+@tool(name="ui_wait", tier=Tier.ONE, risk=Risk.READ_ONLY)
+def ui_wait(role: str = "", name: str = "", timeout_ms: int = 5000, app: str = "") -> dict:
+    """Block until a matching native element appears or the timeout elapses (Tier 1).
+
+    Bounded by ``timeout_ms``. Returns the element when it appears, or
+    ``error: timeout`` with the elapsed milliseconds. ``app`` scopes the wait the
+    same way ``ui_find`` does.
+    """
+    return _ui_impl.ui_wait(role=role, name=name, timeout_ms=timeout_ms, app=app)
+
+
+@mcp.tool()
+@tool(name="apps", tier=Tier.ZERO, risk=Risk.READ_ONLY)
+def apps() -> dict:
+    """List installed launchable apps (Tier 0): id, name, and icon where present.
+
+    Read from the XDG desktop entries. Use an entry's ``id`` (or its ``name``)
+    with ``app_open`` to launch it.
+    """
+    from computer_use.tools import apps as _apps_impl
+
+    return _apps_impl.list_apps()
+
+
+@mcp.tool()
+@tool(name="app_open", tier=Tier.ZERO, risk=Risk.MEDIUM)
+def app_open(target: str, timeout_ms: int = 5000) -> dict:
+    """Launch an installed app by id or name and confirm it opened (Tier 0).
+
+    Resolves the target against the XDG desktop entries, launches with the
+    desktop's own launcher, then watches the a11y bus for the app's window.
+    ``ok`` means a matching window is open and the result carries it (with
+    ``already_open`` when it predates the launch); a launch that dispatched but
+    mapped no window within ``timeout_ms`` is the named error ``no_window``.
+    Where the a11y bus cannot answer, the result says ``confirmed: false``.
+    """
+    from computer_use.tools import apps as _apps_impl
+
+    return _apps_impl.open_app(target, timeout_ms=timeout_ms)
 
 
 # --- CLI: management subcommands ---

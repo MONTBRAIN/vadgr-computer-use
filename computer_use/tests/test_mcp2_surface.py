@@ -51,6 +51,13 @@ WIRE_TOOLS = frozenset({
     "tempfile",
     "time",
     "type_text",
+    "ui_act",
+    "ui_find",
+    "ui_tree",
+    "ui_wait",
+    "ui_windows",
+    "apps",
+    "app_open",
     "windows",
 })
 
@@ -66,8 +73,12 @@ class TestWireSurfaceIsTheWholeCatalog:
     def test_exactly_these_tools_are_exposed(self):
         assert _wire_tool_names() == WIRE_TOOLS
 
-    def test_the_catalog_is_twenty_six(self):
-        assert len(WIRE_TOOLS) == 26
+    def test_the_catalog_is_thirty_three(self):
+        # 0.7.0 adds the four structured-tier tools (ui_tree/find/act/wait), and
+        # the 0.7.x expansion adds ui_windows, apps and app_open, to the 26 that
+        # 0.6.6 proved stable across the mcp major bump. The 26 stay byte-for-byte;
+        # the surface is added to, never altered.
+        assert len(WIRE_TOOLS) == 33
 
 
 class TestRemovedModuleIsNotImported:

@@ -1394,62 +1394,17 @@ def _get_foreground_window_linux() -> ForegroundWindow | None:
 def _query_foreground_window_wayland() -> ForegroundWindow | None:
     """Get the focused window on Wayland via AT-SPI2 accessibility.
 
-    AT-SPI requires the [linux-atspi] extra (PyGObject). When the import or
-    runtime call fails, this returns None so the engine keeps running.
+    Speaks AT-SPI over the pure-python dbus-fast client (the structured tier's
+    own client), not PyGObject: an isolated venv cannot import gi, so the old
+    gi.Atspi path was dead on every install this package produces. Any failure,
+    including no accessibility bus, returns None so the engine keeps running and
+    the caller falls back to XWayland.
     """
     try:
-        import gi
-        gi.require_version("Atspi", "2.0")
-        from gi.repository import Atspi
-    except (ImportError, ValueError):
-        return None
-
-    try:
-        Atspi.init()
-        desktop = Atspi.get_desktop(0)
+        from computer_use.tools.ui.atspi import foreground_window
     except Exception:
         return None
-
-    best: ForegroundWindow | None = None
-
-    for i in range(desktop.get_child_count()):
-        app = desktop.get_child_at_index(i)
-        if app is None:
-            continue
-        try:
-            for j in range(app.get_child_count()):
-                window = app.get_child_at_index(j)
-                if window is None:
-                    continue
-                ss = window.get_state_set()
-                if not ss.contains(Atspi.StateType.ACTIVE):
-                    continue
-
-                rect = window.get_extents(Atspi.CoordType.SCREEN)
-                pid = window.get_process_id()
-                app_name = ""
-                if pid > 0:
-                    try:
-                        with open(f"/proc/{pid}/comm") as f:
-                            app_name = f.read().strip()
-                    except OSError:
-                        pass
-                if not app_name:
-                    app_name = app.get_name()
-
-                # Last ACTIVE window in the tree is typically the most
-                # recently focused one on GNOME.
-                best = ForegroundWindow(
-                    app_name=app_name,
-                    title=window.get_name() or "",
-                    x=rect.x, y=rect.y,
-                    width=rect.width, height=rect.height,
-                    pid=pid,
-                )
-        except Exception:
-            continue
-
-    return best
+    return foreground_window()
 
 
 def _query_foreground_window_xdotool() -> ForegroundWindow | None:
@@ -1592,4 +1547,13 @@ class LinuxBackend(PlatformBackend):
 
     def get_foreground_window(self) -> ForegroundWindow | None:
         return _get_foreground_window_linux()
+
+    def structured_capability(self) -> dict:
+        # The AT-SPI tier's own report: bus reachability, whether it is enabled,
+        # the coordinate trust (real on X11, none on Wayland) and the toolkits
+        # seen. Imported here so a box with no accessibility stack still loads
+        # the backend and answers, rather than failing at import.
+        from computer_use.tools.ui.backend import structured_capability
+
+        return structured_capability()
 

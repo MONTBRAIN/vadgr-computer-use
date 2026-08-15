@@ -90,6 +90,48 @@ class TestEscalation:
         assert deps.detect_escalation() is None
 
 
+class TestAccessibilityDiagnosis:
+    """The structured Tier 1 needs the AT-SPI stack; diagnose must name it."""
+
+    def test_unreachable_bus_is_flagged_on_linux(self, monkeypatch):
+        monkeypatch.setattr(deps.sys, "platform", "linux")
+        monkeypatch.setattr(deps, "accessibility_bus_reachable", lambda: False)
+        monkeypatch.setattr("shutil.which", lambda c: None)
+        monkeypatch.setattr("os.access", lambda *a: True)
+        names = {item["name"] for item in deps.diagnose()["missing"]}
+        assert "at-spi2-core" in names
+
+    def test_reachable_bus_is_not_flagged(self, monkeypatch):
+        monkeypatch.setattr(deps.sys, "platform", "linux")
+        monkeypatch.setattr(deps, "accessibility_bus_reachable", lambda: True)
+        monkeypatch.setattr("shutil.which", lambda c: None)
+        monkeypatch.setattr("os.access", lambda *a: True)
+        names = {item["name"] for item in deps.diagnose()["missing"]}
+        assert "at-spi2-core" not in names
+
+    def test_not_probed_off_linux(self, monkeypatch):
+        # No AT-SPI stack exists to install on Windows or macOS, so it is never
+        # listed there however the probe would answer.
+        monkeypatch.setattr(deps.sys, "platform", "darwin")
+        monkeypatch.setattr(deps, "accessibility_bus_reachable",
+                            lambda: (_ for _ in ()).throw(AssertionError("probed")))
+        monkeypatch.setattr("shutil.which", lambda c: None)
+        monkeypatch.setattr("os.access", lambda *a: True)
+        names = {item["name"] for item in deps.diagnose()["missing"]}
+        assert "at-spi2-core" not in names
+
+    def test_apt_plan_pulls_bus_core_and_atk_bridge(self):
+        plan = deps.build_plan("apt", missing_names={"at-spi2-core"})
+        joined = "\n".join(plan)
+        assert "at-spi2-core" in joined
+        assert "libatk-bridge2.0-0" in joined
+
+    def test_dnf_plan_uses_at_spi2_atk(self):
+        plan = deps.build_plan("dnf", missing_names={"at-spi2-core"})
+        joined = "\n".join(plan)
+        assert "at-spi2-core" in joined and "at-spi2-atk" in joined
+
+
 class TestPrivilegedSteps:
     def test_apt_steps_are_unprefixed_commands(self):
         steps = deps._privileged_steps("apt", {"wl-clipboard", "uinput-access"})

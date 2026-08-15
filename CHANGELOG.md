@@ -2,6 +2,153 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-08-12
+
+Adds a structured Tier 1 on Linux: read the accessibility tree, find an element
+by role and name, act on it by reference, and wait for one to appear. Small text
+and tens of milliseconds instead of a full screenshot, and correct under a
+window that moved. Nothing in Tier 2 changes: the pixel path stays exactly as it
+is and remains the fallback.
+
+The surface goes from 26 tools to **33**: the four structured-tier tools plus the
+`0.7.x` expansion (`ui_windows`, `apps`, `app_open`). The 26 existing tools keep
+their names and their derived schemas byte-for-byte; the new tools are added,
+never altered.
+
+### Added
+- **Read any window, and read it fast.** `ui_find`, `ui_tree` and `ui_wait` gain
+  an optional `app` target. `app=""` is the focused window (unchanged behaviour
+  and token cost); `app="Name"` targets that application's window even when it is
+  not focused; `app="*"` searches every open window. Reads use a one-call bulk
+  read (`org.a11y.atspi.Cache.GetItems`) per app, fanned out concurrently, and
+  match in-process, so a warm single-window read is about eleven D-Bus round
+  trips against about seven hundred for the node walk. An app whose toolkit does
+  not export the cache degrades to the walk; an incomplete branch falls to a live
+  read that also warms it, so no element is missed.
+- **`ui_windows`** lists every open top-level window (app name, title, active
+  flag, and a `ref`), so the model can discover what is open before targeting a
+  window by name.
+- **`apps` and `app_open`** (Tier 0). `apps` lists installed launchable apps from
+  the XDG desktop entries (id, name, icon), dropping `Hidden` and `NoDisplay`
+  entries and keying by desktop-file-id with the home directory winning.
+  `app_open` launches one by id or name through the desktop's own launchers
+  (`gio launch`, `gtk-launch`, then a manual `Exec` field-code expansion) and
+  confirms the launch on the a11y bus before reporting `ok`: a launcher's exit
+  code only proves dispatch, so the tool polls for a window belonging to the
+  app, returns it in the result (with `already_open` when it predates the
+  launch, since a single-instance app presents its existing window), escalates
+  to the next launcher when a dispatched one maps nothing, and fails
+  `no_window` rather than claiming success. A window matches by the strongest
+  identity available: the launched process (or a descendant) owning it, a name
+  token from the desktop entry, the comm of a process that appeared after
+  dispatch, or, last, a window that did not exist before dispatch and whose
+  title carries an entry token. The last rule is what confirms a
+  single-instance snap: LibreOffice opens the new Writer window inside the
+  already-running `soffice` process, so no pid, token or new comm ever matches
+  it, and only the windows-since-dispatch diff plus the title
+  (`Untitled 2 - LibreOffice Writer`) identifies the launch. `timeout_ms`
+  (default 5s) is one total budget split across the launcher ladder, so
+  escalation never multiplies the caller's wait. A `DBusActivatable` entry tries `gtk-launch` before `gio launch`,
+  which exits 0 after queueing the D-Bus `Activate` call it never waits for;
+  the daemon drops the queued call once the sender is gone, so the service
+  starts, idles, and exits without a window. Where the a11y bus cannot answer,
+  the result says `confirmed: false` instead of guessing. The launcher
+  prerequisite is registered in `vadgr-cua install-deps` beside the
+  accessibility stack.
+- **Four structured-tier tools.** `ui_tree` reads the focused window's tree
+  (filtered, depth-capped). `ui_find` returns elements matching a role and/or
+  name, each with an opaque session-scoped `ref`, `bounds`, decoded `states`,
+  and the title of its owning `window`, which is what tells equal matches
+  apart (nine Writer documents expose nine paragraphs identical in role, name
+  and window-relative bounds); an empty match is a successful read, not an
+  error. A find whose walk lost a subtree to a node that stopped answering
+  mid-mutation (an app replacing its tree while it navigates) retries once and
+  returns the settled read. `ui_act` performs
+  `click`, `focus`, `set_text`, `toggle` or `expand` on a `ref`, then re-reads
+  the element and returns its new state; a stale `ref` fails `element_gone` and
+  never falls back to clicking an old coordinate, and an unsupported verb fails
+  `unsupported_action` listing what the element does support. `ui_wait` blocks
+  until a matching element appears or a timeout elapses. On a machine with no
+  accessibility bus every one returns `at_spi_unavailable` with a one-line
+  remedy, and the tools stay listed so a consumer's catalogue does not vary per
+  machine.
+- **The tier survives the toolkits as they are**, each behaviour observed on
+  real applications and encoded with a test:
+  - Text is read by the element's real range. LibreOffice answers
+    `GetText(0, end)` with an empty string whenever `end` exceeds the character
+    count (GTK clamps instead), so a fixed-cap read reported every Writer
+    paragraph as empty and made a landed `set_text` look like a no-op; an empty
+    read is re-checked against `CharacterCount` before it is believed.
+  - The `click` verb resolves the toolkit's own action name: GTK's `click`,
+    Qt's `Press`, Flutter's `Tap`. An element whose bulk `GetActions` reply
+    carries blank names (the Ubuntu App Center) is re-asked per index.
+  - `set_text` trusts only the read-back, because the bus adaptor reports
+    success unconditionally; a write that did not land (Flutter accepts
+    `SetTextContents` and writes nothing) is retried as delete-plus-insert,
+    which lands.
+  - An application that never answers a call cannot stall the tier: an
+    unanswered `GetExtents` or `Cache.GetItems` trips a per-app breaker (the
+    element reads as boundless, the app reads live), a gathered bulk read is
+    bounded per call so one silent app cannot sink the batch, and a node the
+    app will not answer for is `element_gone`, which walks already skip.
+- **A Chromium or Electron app is launched with its tree enabled.** Chromium
+  reads its accessibility gate once at startup and never again, so `app_open`
+  detects a Chromium-family desktop entry (the Exec program's basename, the
+  `StartupWMClass`, or the entry id, matched exactly against the known family)
+  and dispatches its expanded `Exec` line first with
+  `--force-renderer-accessibility` appended and the enabling environment set
+  (`ACCESSIBILITY_ENABLED=1`, and Qt's gate rides beside it). `gio` and
+  `gtk-launch` run the `Exec` line as written and cannot carry the flag, so
+  they stay on that ladder as fallbacks. Driven live: a cua-launched VS Code
+  exposes its full tree (menu bar, explorer, about 111 KB at depth 5) where an
+  unflagged launch exposes two nodes per window. Every non-Chromium entry
+  keeps the unchanged ladder and gets neither the flag nor the environment.
+- **The tier never raises `org.a11y.Status.ScreenReaderEnabled`.** On GNOME that
+  bus property is bridged to the `org.gnome.desktop.a11y.applications`
+  `screen-reader-enabled` gsetting, which autostarts a screen reader within about
+  130 ms (verified live on GNOME 50.1), and the screen reader then speaks. So a
+  read never sets it, even for a thin toolkit that would build its tree only
+  under an assistive tool. A thin already-running Chromium or Electron window
+  reads tree-only; the remedy is to relaunch it through `app_open`, which adds
+  `--force-renderer-accessibility`, or to drive it through the browser tier.
+  Modern Flutter, the original reason for a forced enable, now exposes its tree
+  with no such flag.
+- **Per-window coordinate trust on Wayland, and a grounded pixel click where
+  it is `real`.** Wayland is two answers, not one: a Wayland-native window's
+  bounds are window-relative, while an XWayland client's bounds are true
+  screen pixels the X server vouches for. Each found element now carries
+  `coordinate_trust` (`real` or `none`) on Wayland, earned by an exact match
+  between the frame's claimed geometry and a mapped X toplevel; a
+  Wayland-native popup that guesses a nonzero origin never passes, and a
+  zero-origin frame is refused without an X round trip. Driven live: the VS
+  Code File menu item's bounds grounded a Tier 2 `click` that opened the menu,
+  confirmed structurally. Elements the check refuses keep the coordinate-free
+  paths: native actions cover 94 percent of the interactive elements measured
+  across five real apps, and `focus` plus a key covers most of the rest.
+- **A `structured` block on `get_platform_info`.** Reports the backend, whether
+  the bus is reachable and enabled, the toolkits seen, and `coordinate_trust`:
+  `real` on X11, and `per_window` on Wayland, where each found element carries
+  its own verdict as above.
+- **The AT-SPI stack in `vadgr-cua install-deps`.** When the accessibility bus
+  is not reachable, the plan now installs `at-spi2-core` plus the ATK bridge
+  (package names resolved per distro), alongside the existing clipboard and
+  `/dev/uinput` steps.
+
+### Changed
+- **The structured tier and Wayland foreground-window detection speak AT-SPI
+  over `dbus-fast`**, a plain pure-Python wheel now pulled in automatically on
+  Linux. The previous foreground-window path imported PyGObject under an extra
+  that did not exist, so it was dead on every install this package produces;
+  migrating it onto `dbus-fast` makes it work.
+- **`apps` and `app_open` resolve one provider per OS behind a seam**, the same
+  shape the structured tier uses. The Linux behaviour is unchanged: it still
+  lists the XDG desktop entries and launches through `gio`, `gtk-launch` and the
+  `Exec` expansion, with the a11y-bus window confirmation and every launch fix
+  intact. On Windows and macOS the two tools now return a named
+  `apps_unsupported` result with a reason, rather than an empty list or a crash,
+  until those platforms get their own provider. The Linux provider is split into
+  desktop-entry reading, window confirmation, and launch orchestration.
+
 ## [0.6.6] - 2026-08-09
 
 Fixes #39: a fresh `pip install vadgr-computer-use` could not start. `mcp` 2.0.0

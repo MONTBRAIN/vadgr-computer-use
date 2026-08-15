@@ -133,8 +133,9 @@ class ComputerUseEngine:
         return self._platform
 
     def get_platform_info(self) -> dict:
-        """Return platform info."""
+        """Return platform info, including the structured tier's capability."""
         return {
             "platform": self._platform.value,
             "backend_available": self._backend.is_available(),
+            "structured": self._backend.structured_capability(),
         }
