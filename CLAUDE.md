@@ -151,6 +151,18 @@ python3 ../vadgr-docs/scripts/check_iteration.py <phase> <iteration>
 Exit `0` is necessary and never sufficient: it checks that specs exist and are
 structurally complete, and it cannot review one.
 
+**When the implementation must diverge from the approved design, that is an
+owner decision, and the design doc is realigned after.** Implementation reveals
+what the design could not: a binding that will not load, a coordinate the
+session withholds, a toolkit that hides its tree until asked. Do not build the
+divergence silently and move on. Surface it to the owner with the decision and
+its fundamentals, the way every owner decision is surfaced, and let the owner
+judge it. If the owner approves, update the design doc to match what was built,
+so the design stays the source of truth and the next reader is not misled by a
+spec describing what was replaced. A design left describing the code that no
+longer exists is a defect, the same as a stale comment. This holds in every repo
+in this family.
+
 **CI is not an e2e pass.** The automated gate builds an environment and runs the
 unit suites. It drives no session, calls nothing over the wire and reaches no
 glass, so a green CI row on an OS says the suites pass there and **nothing at
