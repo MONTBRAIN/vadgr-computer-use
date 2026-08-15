@@ -18,12 +18,33 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from computer_use.core.types import Platform
+from computer_use.platform.detect import detect_platform
 from computer_use.tools import apps
 from computer_use.tools.apps import desktop_entries, linux, window_confirm
 from computer_use.tools.apps.backend import APPS_UNSUPPORTED, resolve_apps_backend
 from computer_use.tools.apps.linux import LinuxAppsBackend
 from computer_use.tools.apps.macos import MacOSAppsBackend
 from computer_use.tools.apps.windows import WindowsAppsBackend
+
+
+@pytest.fixture(autouse=True)
+def _force_linux_apps_backend(monkeypatch):
+    """Drive the Linux provider on any CI host.
+
+    The apps entry functions resolve to the host OS provider, but these tests
+    exercise the Linux XDG parsing and launch contract, and the suite runs on
+    Ubuntu and macOS both. Forcing the Linux provider makes ``apps.list_apps``
+    and ``apps.open_app`` run the Linux logic everywhere, against the test fakes.
+    The provider-selection and stub tests call the backends directly, so this
+    patch does not touch them (it rebinds the backend module attribute, not the
+    name this test module imported).
+    """
+    from computer_use.tools.apps import backend as _backend
+
+    monkeypatch.setattr(_backend, "resolve_apps_backend", lambda: LinuxAppsBackend())
 
 
 def _write(path: Path, body: str) -> None:
@@ -626,11 +647,22 @@ class TestProviderResolution:
     change. These tests exercise the seam directly, without driving any OS.
     """
 
-    def test_resolves_the_linux_provider_on_linux(self):
-        # The suite runs on Linux, so the resolver must return the Linux
-        # provider - the concrete class the tools delegate to here.
+    def test_resolves_the_provider_for_the_host_os(self):
+        # The resolver returns the provider for whatever OS runs the suite, and
+        # CI runs it on Ubuntu and macOS, so assert against the detected
+        # platform rather than assuming Linux. This test uses the imported
+        # resolver name, which the autouse fixture does not rebind, so it sees
+        # the real host resolution.
         backend = resolve_apps_backend()
-        assert isinstance(backend, LinuxAppsBackend)
+        plat = detect_platform()
+        if plat in (Platform.LINUX, Platform.WSL2):
+            assert isinstance(backend, LinuxAppsBackend)
+        elif plat == Platform.MACOS:
+            assert isinstance(backend, MacOSAppsBackend)
+        elif plat == Platform.WINDOWS:
+            assert isinstance(backend, WindowsAppsBackend)
+        else:
+            assert backend is not None
 
     def test_windows_provider_reports_unsupported_never_raises(self):
         backend = WindowsAppsBackend()
