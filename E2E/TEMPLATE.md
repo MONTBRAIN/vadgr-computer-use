@@ -35,6 +35,12 @@ agent's summary is self-report, a mutating action counts only when a
 > credential, permission, destructive action and owner decision. Missing setup
 > blocks the already-written ids; it never removes them or reduces coverage.
 
+> Read credentials only from the workspace `../.env`. Never echo or copy a
+> value into commands, logs, screenshots, transcripts, process listings,
+> GitHub text, documentation or evidence. Run
+> `python3 scripts/check_no_secrets.py --env-file ../.env` before every commit
+> and before sealing evidence.
+
 | requirement | parts or cells | non-secret availability check | cost or destructive effect | cleanup |
 |---|---|---|---|---|
 | &lt;item&gt; | &lt;ids&gt; | &lt;check&gt; | &lt;boundary&gt; | &lt;action&gt; |
@@ -49,6 +55,35 @@ agent's summary is self-report, a mutating action counts only when a
 
 > Every command in full, from a stated working directory. The reader is setting
 > up a machine they have never set up before.
+
+## Remote-host handoff for Linux, macOS and Windows
+
+> Complete this section before a native-platform part runs. A new Codex session
+> must be able to execute the part without hidden context or access to the first
+> test machine. Include all of these items:
+
+1. Files to read first: `AGENTS.md`, `E2E/README.md`, this runbook and the public
+   installation and platform instructions.
+2. The exact PR head rule, wheel build command, wheel hash command and fresh
+   virtual-environment install command. Drive the installed wheel and
+   `vadgr-cua` entry point from outside the source tree. Never use an editable
+   install as the product under test.
+3. Paste-ready native setup for every claimed OS. Include Linux
+   `vadgr-cua install-deps --yes`, macOS Accessibility and Screen Recording for
+   the installed environment's Python, and native Windows execution without
+   routing through WSL.
+4. The exact display, browser extension, profile, permission and application
+   preconditions. Record `vadgr-cua doctor` before the first agent task.
+5. The part ids and order, goal text, independent JSON or OS read-backs,
+   evidence captured before cleanup and result rows that host updates.
+6. Cleanup boundaries. Remove only the fresh environment and reversible test
+   effects. Never stop unrelated processes, browsers or applications.
+7. Credential handling. Read only required values from the owner-only
+   workspace `../.env`; never print or persist them. Run the secret check before
+   the group and before evidence is sealed.
+
+> Use a separate evidence boundary for Linux, macOS and native Windows. A CI
+> matrix, type check or WSL pass never substitutes for these native sessions.
 
 ## Automated gate (necessary, never sufficient)
 

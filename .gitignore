@@ -63,6 +63,7 @@ opencode.jsonc
 docs/
 .env
 .env.*
+!.env.example
 
 # Agent-client local configs (personal / machine-specific)
 .claude/

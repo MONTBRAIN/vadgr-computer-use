@@ -97,3 +97,9 @@ destructive action and owner decision up front and map it to the affected ids.
 Inform the owner before that group runs. If setup is unavailable, keep the
 complete cases and mark them `blocked`; never reduce the test plan after live
 execution begins.
+
+Credentials come from the workspace `../.env` only. Never echo or copy them
+into commands, logs, screenshots, transcripts, process listings, GitHub text,
+documentation or evidence. Run
+`python3 scripts/check_no_secrets.py --env-file ../.env` before every commit and
+before sealing evidence.
