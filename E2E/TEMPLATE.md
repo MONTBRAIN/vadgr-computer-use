@@ -88,6 +88,10 @@ agent's summary is self-report, a mutating action counts only when a
    virtual-environment install command. Drive the installed wheel and
    `vadgr-cua` entry point from outside the source tree. Never use an editable
    install as the product under test.
+   The agent CLI's MCP config must invoke that `vadgr-cua` entry point. A Python
+   driver, `python -m`, a product import or a private function is acceptance
+   evidence and cannot close an e2e part. Helpers may prepare state, capture
+   streams and parse evidence, but they cannot drive the goal.
 3. Paste-ready native setup for every claimed OS. Include Linux
    `vadgr-cua install-deps --yes`, macOS Accessibility and Screen Recording for
    the installed environment's Python, and native Windows execution without

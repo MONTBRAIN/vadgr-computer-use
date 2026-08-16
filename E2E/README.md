@@ -11,6 +11,13 @@ actually did** - the `tool_use` calls it issued and the `tool_result` payloads c
 sent back (cua's real read-backs). A claimed success with no confirming
 `tool_result` read-back is a **fail**. Always judge from the JSON.
 
+Build the exact PR-head wheel and install it without editable mode in a fresh
+environment outside the checkout. The agent CLI's MCP config must invoke that
+environment's `vadgr-cua` entry point. Record the resolved command path, wheel
+hash and PR head. Never replace the entry point with `python -m`, a product
+import or a private function. A helper can prepare state, capture streams and
+parse evidence. It cannot drive the goal or replace the real agent session.
+
 ## Where the JSON is
 
 1. **The captured run stream (preferred).** Run the agent CLI headless and tee
