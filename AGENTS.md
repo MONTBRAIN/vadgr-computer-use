@@ -114,7 +114,7 @@ python3 ../vadgr-docs/scripts/check_iteration.py <phase> <iteration>
 
 (use whatever name the docs repo was cloned under beside this one.) Exit `0` or do not start.
 
-+## Cross-platform PR handoff
+## Cross-platform PR handoff
 
 **One real operating-system pass opens the PR; every required operating system
 still gates merge.** This applies to machine-side changes in `vadgr` and
