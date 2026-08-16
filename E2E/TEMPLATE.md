@@ -45,6 +45,23 @@ agent's summary is self-report, a mutating action counts only when a
 |---|---|---|---|---|
 | &lt;item&gt; | &lt;ids&gt; | &lt;check&gt; | &lt;boundary&gt; | &lt;action&gt; |
 
+## Billed model selection
+
+> Complete this table from current official provider pages and the
+> authenticated account catalog on the execution date. Pick the least expensive
+> model that supports the exact agent task and MCP/tool-use contract. Do not
+> start a billed call with a blank ceiling or an unrecorded escalation path.
+
+| parts or cells | provider/auth | required capabilities | selected model | official source and date | input/output price | hard iterations/tokens/cost | escalation condition |
+|---|---|---|---|---|---|---|---|
+| &lt;ids&gt; | &lt;provider/method&gt; | &lt;tools, content, continuation&gt; | &lt;authenticated id or snapshot&gt; | &lt;URL, YYYY-MM-DD&gt; | &lt;USD per MTok or subscription limitation&gt; | &lt;all three ceilings&gt; | &lt;recorded capability failure or none&gt; |
+
+> An automatic client-selected model is exercised once when that selection is
+> part of the delivered user path. Repeated provider-neutral work names an
+> explicit cost-effective model. Add another model only for a distinct protocol
+> or capability class or a prewritten model-specific cell. Record actual usage
+> and cost, and stop when any ceiling is reached.
+
 ## Prerequisites (per OS)
 
 > One block per operating system this pass covers. Display server, browser and
