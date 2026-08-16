@@ -60,7 +60,10 @@ agent's summary is self-report, a mutating action counts only when a
 > part of the delivered user path. Repeated provider-neutral work names an
 > explicit cost-effective model. Add another model only for a distinct protocol
 > or capability class or a prewritten model-specific cell. Record actual usage
-> and cost, and stop when any ceiling is reached.
+> and cost, and stop when any ceiling is reached. Pixel or screenshot CUA
+> requires image input for the selected endpoint and image-bearing tool-result
+> continuation into the next model turn; record both under required
+> capabilities. A text-only model cannot close that visual group.
 
 ## Prerequisites (per OS)
 
