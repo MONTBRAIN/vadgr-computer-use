@@ -85,3 +85,15 @@ deliberately different: `vadgr` proves an API and a CLI, `vadgr-mobile` proves a
 screen in someone's hand, and this one proves a real agent driving a real
 desktop. A shared template would have to drop everything that makes each pass
 worth running.
+
+Complete the runbook before the first live part. Every surface branch and
+enum-shaped edge case is a separately identified part or cell with a
+precondition, setup, goal, expected observable, structured JSON oracle,
+evidence boundary, cleanup and result slot. A prose edge-case list, unmatched
+coverage count or "remaining matrix" placeholder is unfinished.
+
+List every required OS, desktop, application, account, credential, permission,
+destructive action and owner decision up front and map it to the affected ids.
+Inform the owner before that group runs. If setup is unavailable, keep the
+complete cases and mark them `blocked`; never reduce the test plan after live
+execution begins.

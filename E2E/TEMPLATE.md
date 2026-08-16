@@ -28,6 +28,17 @@ agent's summary is self-report, a mutating action counts only when a
 > Name where this pass's JSON landed - the teed stream, or the driving CLI's
 > transcript path - so a reader can check your verdicts rather than trust them.
 
+## Owner and environment requirements
+
+> Complete this table before the first live part and inform the owner before an
+> affected group starts. Include each OS or desktop, application, account,
+> credential, permission, destructive action and owner decision. Missing setup
+> blocks the already-written ids; it never removes them or reduces coverage.
+
+| requirement | parts or cells | non-secret availability check | cost or destructive effect | cleanup |
+|---|---|---|---|---|
+| &lt;item&gt; | &lt;ids&gt; | &lt;check&gt; | &lt;boundary&gt; | &lt;action&gt; |
+
 ## Prerequisites (per OS)
 
 > One block per operating system this pass covers. Display server, browser and
@@ -56,6 +67,10 @@ agent's summary is self-report, a mutating action counts only when a
 > Parts, not cells: this repo's unit of work is an agent task with a verdict,
 > not a tap. Order them so a later part can rely on an earlier one, and say when
 > it does.
+
+> Every counted edge case has its own stable id, precondition, setup, goal,
+> expected observable, JSON oracle, evidence boundary, cleanup and result slot.
+> Do not collapse cases into prose or a "remaining matrix" row.
 
 > **Depth is required, not optional.** A part that opens an app and performs one
 > action is a smoke test, not a part. Each part chains several steps and confirms
