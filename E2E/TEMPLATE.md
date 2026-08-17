@@ -28,6 +28,43 @@ agent's summary is self-report, a mutating action counts only when a
 > Name where this pass's JSON landed - the teed stream, or the driving CLI's
 > transcript path - so a reader can check your verdicts rather than trust them.
 
+## Owner and environment requirements
+
+> Complete this table before the first live part and inform the owner before an
+> affected group starts. Include each OS or desktop, application, account,
+> credential, permission, destructive action and owner decision. Missing setup
+> blocks the already-written ids; it never removes them or reduces coverage.
+
+> Read credentials only from the workspace `../.env`. Never echo or copy a
+> value into commands, logs, screenshots, transcripts, process listings,
+> GitHub text, documentation or evidence. Run
+> `python3 scripts/check_no_secrets.py --env-file ../.env` before every commit
+> and before sealing evidence.
+
+| requirement | parts or cells | non-secret availability check | cost or destructive effect | cleanup |
+|---|---|---|---|---|
+| &lt;item&gt; | &lt;ids&gt; | &lt;check&gt; | &lt;boundary&gt; | &lt;action&gt; |
+
+## Billed model selection
+
+> Complete this table from current official provider pages and the
+> authenticated account catalog on the execution date. Pick the least expensive
+> model that supports the exact agent task and MCP/tool-use contract. Do not
+> start a billed call with a blank ceiling or an unrecorded escalation path.
+
+| parts or cells | provider/auth | required capabilities | selected model | official source and date | input/output price | hard iterations/tokens/cost | escalation condition |
+|---|---|---|---|---|---|---|---|
+| &lt;ids&gt; | &lt;provider/method&gt; | &lt;tools, content, continuation&gt; | &lt;authenticated id or snapshot&gt; | &lt;URL, YYYY-MM-DD&gt; | &lt;USD per MTok or subscription limitation&gt; | &lt;all three ceilings&gt; | &lt;recorded capability failure or none&gt; |
+
+> An automatic client-selected model is exercised once when that selection is
+> part of the delivered user path. Repeated provider-neutral work names an
+> explicit cost-effective model. Add another model only for a distinct protocol
+> or capability class or a prewritten model-specific cell. Record actual usage
+> and cost, and stop when any ceiling is reached. Pixel or screenshot CUA
+> requires image input for the selected endpoint and image-bearing tool-result
+> continuation into the next model turn; record both under required
+> capabilities. A text-only model cannot close that visual group.
+
 ## Prerequisites (per OS)
 
 > One block per operating system this pass covers. Display server, browser and
@@ -38,6 +75,39 @@ agent's summary is self-report, a mutating action counts only when a
 
 > Every command in full, from a stated working directory. The reader is setting
 > up a machine they have never set up before.
+
+## Remote-host handoff for Linux, macOS and Windows
+
+> Complete this section before a native-platform part runs. A new Codex session
+> must be able to execute the part without hidden context or access to the first
+> test machine. Include all of these items:
+
+1. Files to read first: `AGENTS.md`, `E2E/README.md`, this runbook and the public
+   installation and platform instructions.
+2. The exact PR head rule, wheel build command, wheel hash command and fresh
+   virtual-environment install command. Drive the installed wheel and
+   `vadgr-cua` entry point from outside the source tree. Never use an editable
+   install as the product under test.
+   The agent CLI's MCP config must invoke that `vadgr-cua` entry point. A Python
+   driver, `python -m`, a product import or a private function is acceptance
+   evidence and cannot close an e2e part. Helpers may prepare state, capture
+   streams and parse evidence, but they cannot drive the goal.
+3. Paste-ready native setup for every claimed OS. Include Linux
+   `vadgr-cua install-deps --yes`, macOS Accessibility and Screen Recording for
+   the installed environment's Python, and native Windows execution without
+   routing through WSL.
+4. The exact display, browser extension, profile, permission and application
+   preconditions. Record `vadgr-cua doctor` before the first agent task.
+5. The part ids and order, goal text, independent JSON or OS read-backs,
+   evidence captured before cleanup and result rows that host updates.
+6. Cleanup boundaries. Remove only the fresh environment and reversible test
+   effects. Never stop unrelated processes, browsers or applications.
+7. Credential handling. Read only required values from the owner-only
+   workspace `../.env`; never print or persist them. Run the secret check before
+   the group and before evidence is sealed.
+
+> Use a separate evidence boundary for Linux, macOS and native Windows. A CI
+> matrix, type check or WSL pass never substitutes for these native sessions.
 
 ## Automated gate (necessary, never sufficient)
 
@@ -51,11 +121,20 @@ agent's summary is self-report, a mutating action counts only when a
 > exercised, each with the part that exercises it. A surface with no part is
 > uncovered and is listed as such - silence reads as covered.
 
+> Any part that starts an owned subprocess has a separate cancellation case.
+> Cancel the live MCP request while that child is active. Prove the request has
+> no later successful result and the entire owned process tree exits within the
+> written bound. Test this on every OS the subprocess path supports.
+
 ## Part &lt;X&gt;: &lt;what it proves&gt;
 
 > Parts, not cells: this repo's unit of work is an agent task with a verdict,
 > not a tap. Order them so a later part can rely on an earlier one, and say when
 > it does.
+
+> Every counted edge case has its own stable id, precondition, setup, goal,
+> expected observable, JSON oracle, evidence boundary, cleanup and result slot.
+> Do not collapse cases into prose or a "remaining matrix" row.
 
 > **Depth is required, not optional.** A part that opens an app and performs one
 > action is a smoke test, not a part. Each part chains several steps and confirms

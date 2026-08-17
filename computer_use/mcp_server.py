@@ -413,7 +413,7 @@ def fs(op: str, path: str, content: str = "", recursive: bool = False):
 
 @mcp.tool()
 @tool(name="shell", tier=Tier.ZERO, risk=Risk.HIGH)
-def shell(
+async def shell(
     op: str,
     command=None,
     shell_mode: bool = False,
@@ -429,7 +429,7 @@ def shell(
 
     Classified HIGH risk: shell.run can mutate anything on the host.
     """
-    return _shell_impl.shell(
+    return await _shell_impl.shell_async(
         op=op, command=command, shell_mode=shell_mode, timeout=timeout, cwd=cwd
     )
 
