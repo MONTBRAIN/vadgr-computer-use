@@ -14,6 +14,7 @@ an ``op`` argument. After 0.3.0:
 - Tier breakdown: {"0": 8, "0.5": 0, "1": 0, "2": 13}.
 """
 
+import asyncio
 import json
 import os
 import sys
@@ -185,6 +186,31 @@ class TestShell:
         # Must resolve to an absolute path on PATH, or None when missing.
         if path is not None:
             assert os.path.isabs(path)
+
+    @pytest.mark.asyncio
+    async def test_async_cancellation_terminates_owned_process_group(self, tmp_path):
+        from computer_use.tools.system import shell
+
+        pid_file = tmp_path / "child.pid"
+        code = (
+            "import os, pathlib, sys, time; "
+            "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)"
+        )
+        task = asyncio.create_task(
+            shell.shell_async(
+                op="run", command=[sys.executable, "-c", code, str(pid_file)], timeout=35
+            )
+        )
+        for _ in range(20):
+            if pid_file.exists():
+                break
+            await asyncio.sleep(0.05)
+        child_pid = int(pid_file.read_text())
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
 
 
 class TestHttp:

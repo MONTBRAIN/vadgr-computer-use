@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.1] - 2026-08-17
+
+### Fixed
+- Cancelling an active `shell.run` MCP request now terminates its owned process
+  group on Unix and process tree on Windows.
+
 ## [0.7.0] - 2026-08-12
 
 Adds a structured Tier 1 on Linux: read the accessibility tree, find an element

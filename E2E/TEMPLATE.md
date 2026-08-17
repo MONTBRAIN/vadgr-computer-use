@@ -121,6 +121,11 @@ agent's summary is self-report, a mutating action counts only when a
 > exercised, each with the part that exercises it. A surface with no part is
 > uncovered and is listed as such - silence reads as covered.
 
+> Any part that starts an owned subprocess has a separate cancellation case.
+> Cancel the live MCP request while that child is active. Prove the request has
+> no later successful result and the entire owned process tree exits within the
+> written bound. Test this on every OS the subprocess path supports.
+
 ## Part &lt;X&gt;: &lt;what it proves&gt;
 
 > Parts, not cells: this repo's unit of work is an agent task with a verdict,
