@@ -20,6 +20,20 @@ All notable changes to this project are documented here. Format follows [Keep a 
   and that shell syntax needs `shell_mode=True`, so a caller does not have to
   discover the contract by failing.
 
+### Repository
+Nothing here changes the published package; it repairs the gate that guards it.
+
+- The credential gate can pass on Windows. `scripts/check_no_secrets.py` passed
+  the target path as a trailing argument to `powershell.exe -Command`, which
+  does not populate `$args`, so `Get-Acl` received nothing and the check failed
+  closed on every file. A protected file and an unprotected one produced the
+  same refusal, so the gate could not tell them apart. The target now arrives as
+  the `VADGR_ACL_TARGET` environment variable, which also keeps a path with
+  spaces or quotes out of the PowerShell parser.
+- The gate now runs on Linux, macOS and Windows in CI, and it has tests of its
+  own for the first time. It had only ever run on one platform, so its Windows
+  control had never been executed anywhere.
+
 ## [0.7.1] - 2026-08-17
 
 ### Fixed
