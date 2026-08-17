@@ -128,8 +128,13 @@ async def _run_async(
         raise subprocess.TimeoutExpired(command, timeout) from error
     return {
         "returncode": proc.returncode,
-        "stdout": stdout.decode(),
-        "stderr": stderr.decode(),
+        # Never strict. The synchronous path decoded with the locale codepage,
+        # so a command emitting cp1252 on Windows or any non-UTF-8 byte used to
+        # return its output. A strict decode here would raise instead, turning
+        # ordinary output into a failed tool call. Replacement keeps the result
+        # readable and keeps the failure mode out of the agent's way.
+        "stdout": stdout.decode(errors="replace"),
+        "stderr": stderr.decode(errors="replace"),
     }
 
 

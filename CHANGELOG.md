@@ -8,6 +8,13 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Cancelling an active `shell.run` MCP request now terminates its owned process
   group on Unix and process tree on Windows.
 
+### Changed
+- `shell` is asynchronous, so a cancelled request reaches the child rather than
+  leaving it running.
+- Command output decodes with replacement rather than strictly. The synchronous
+  path used the locale codepage, so output that is not valid UTF-8 kept working;
+  a strict decode would have turned ordinary Windows output into a failed call.
+
 ## [0.7.0] - 2026-08-12
 
 Adds a structured Tier 1 on Linux: read the accessibility tree, find an element

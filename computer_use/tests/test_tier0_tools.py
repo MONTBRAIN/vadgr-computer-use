@@ -209,6 +209,11 @@ class TestShell:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+        # `os.kill(pid, 0)` is a POSIX liveness probe. On Windows `os.kill`
+        # has no signal-0 form and terminates the target instead, so the probe
+        # is skipped there rather than asserting something it cannot mean.
+        if sys.platform == "win32":
+            pytest.skip("no signal-0 liveness probe on Windows")
         with pytest.raises(ProcessLookupError):
             os.kill(child_pid, 0)
 
