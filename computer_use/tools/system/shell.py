@@ -37,6 +37,26 @@ _SHELL_SYNTAX = ("&&", "||", "|", ";", ">", "<", "$(", "`")
 _ops = OperationGroup("shell")
 
 
+def _split(command: str) -> list[str]:
+    """Tokenise a command line the way the running platform writes one.
+
+    POSIX and Windows disagree about the backslash, and the disagreement is not
+    cosmetic. ``shlex`` in its POSIX mode treats it as an escape, so a Windows
+    path handed to it comes back with its separators eaten:
+    ``C:\\Users\\me\\tool.exe`` becomes ``C:Usersmetool.exe``, a path that
+    names nothing. Windows therefore tokenises in non-POSIX mode, which keeps
+    the separators, and the surrounding quotes that mode leaves on a token are
+    stripped afterwards so a quoted program path still resolves.
+    """
+    if sys.platform == "win32":
+        tokens = shlex.split(command, posix=False)
+        return [
+            token[1:-1] if len(token) > 1 and token[0] == token[-1] == '"' else token
+            for token in tokens
+        ]
+    return shlex.split(command)
+
+
 def _argv(command: str | list[str]) -> list[str]:
     """Build argv for a run that does not go through a shell.
 
@@ -50,6 +70,13 @@ def _argv(command: str | list[str]) -> list[str]:
     program whose name was the entire command line, and the refusal read as
     ``No such file or directory: 'uname -a'``, which blames the machine for the
     caller's argument shape.
+
+    That one element form was right for exactly one input: a bare path to a
+    program, carrying no arguments and needing no quoting. An unquoted path
+    with a space in it is ambiguous to every tokeniser, so when the split finds
+    more than one token and the whole string names a file that exists, the
+    whole string wins. Without that, repairing the common case would have
+    broken the one case that used to work.
     """
     if not isinstance(command, str):
         argv = list(command)
@@ -63,9 +90,11 @@ def _argv(command: str | list[str]) -> list[str]:
             "not interpret. Pass shell_mode=True to run it through the user's "
             "shell, or send one plain command."
         )
-    argv = shlex.split(command)
+    argv = _split(command)
     if not argv:
         raise ValueError("shell.run requires a non-empty command")
+    if len(argv) > 1 and os.path.isfile(command):
+        return [command]
     return argv
 
 

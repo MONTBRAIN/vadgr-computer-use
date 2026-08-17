@@ -204,6 +204,52 @@ class TestShell:
         assert result["returncode"] == 0
         assert result["stdout"].strip() == "hi there"
 
+    def test_windows_tokenising_keeps_a_backslash_path_intact(self, monkeypatch):
+        # shlex in POSIX mode eats the backslash, so a Windows path handed to
+        # it comes back naming nothing. The one string form that worked before
+        # the split was added was exactly this one, a bare path with no
+        # arguments, so getting it wrong would trade one broken case for
+        # another. Driven with the platform patched so the Windows branch runs
+        # on every runner rather than only on a Windows one.
+        from computer_use.tools.system import shell
+
+        monkeypatch.setattr(shell.sys, "platform", "win32")
+        assert shell._split(r"C:\Users\me\tool.exe") == [r"C:\Users\me\tool.exe"]
+        assert shell._split(r"C:\Windows\System32\where.exe python") == [
+            r"C:\Windows\System32\where.exe",
+            "python",
+        ]
+
+    def test_windows_tokenising_strips_the_quotes_around_a_path(self, monkeypatch):
+        # Non-POSIX mode keeps the separators and also keeps the quote
+        # characters on the token, which would be passed to the kernel as part
+        # of the program name.
+        from computer_use.tools.system import shell
+
+        monkeypatch.setattr(shell.sys, "platform", "win32")
+        assert shell._split(r'"C:\Program Files\App\run.exe" --flag') == [
+            r"C:\Program Files\App\run.exe",
+            "--flag",
+        ]
+
+    def test_posix_tokenising_still_treats_the_backslash_as_an_escape(self):
+        # The Windows branch must not change what POSIX means by a backslash.
+        from computer_use.tools.system import shell
+
+        if sys.platform == "win32":
+            pytest.skip("this asserts the POSIX branch")
+        assert shell._split(r"echo one\ two") == ["echo", "one two"]
+
+    def test_run_keeps_an_existing_path_with_spaces_whole(self, tmp_path):
+        # An unquoted path with a space is ambiguous to every tokeniser. When
+        # the whole string names a real file, the file wins over the split.
+        from computer_use.tools.system import shell
+
+        spaced = tmp_path / "a program.sh"
+        spaced.write_text("#!/bin/sh\necho hi\n")
+        argv = shell._argv(str(spaced))
+        assert argv == [str(spaced)]
+
     def test_run_refuses_shell_syntax_by_name(self):
         # Splitting this would pass "&&" through as a literal argument and the
         # caller would never learn why. Naming the operator points at the fix.

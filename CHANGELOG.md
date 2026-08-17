@@ -14,6 +14,14 @@ All notable changes to this project are documented here. Format follows [Keep a 
   redirection, `$()`, backticks) and names the operator it found, instead of
   passing it through as a literal argument. The message points at
   `shell_mode=True`, which is what actually runs it.
+- The split follows the platform. POSIX reads a backslash as an escape and
+  Windows reads it as a path separator, so tokenising a Windows path in POSIX
+  mode turns `C:\Users\me\tool.exe` into `C:Usersmetool.exe`, which names
+  nothing. Windows tokenises in non-POSIX mode and the quotes that mode leaves
+  around a token are stripped, so a quoted program path still resolves. When a
+  split yields several tokens and the whole string names a file that exists,
+  the whole string wins, which keeps a bare unquoted path with a space in it
+  working exactly as it did before.
 
 ### Changed
 - The `shell` tool description states that a string command is split into argv
