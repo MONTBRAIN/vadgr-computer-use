@@ -138,14 +138,20 @@ worked around by installing or reconfiguring.
 From a stated working directory, `<checkout>` the branch under test.
 
 ```bash
-python3 -m venv /tmp/cua-070
-/tmp/cua-070/bin/pip install -e "<checkout>[dev]"
-/tmp/cua-070/bin/python -c "import dbus_fast; print('dbus-fast present')"
+python3 -m venv /tmp/cua-070-build
+/tmp/cua-070-build/bin/pip install build
+/tmp/cua-070-build/bin/python -m build --wheel --outdir /tmp/cua-070-dist <checkout>
+python3 -m venv /tmp/cua-070-installed
+/tmp/cua-070-installed/bin/pip install /tmp/cua-070-dist/vadgr_computer_use-0.7.0-py3-none-any.whl
+/tmp/cua-070-installed/bin/vadgr-cua doctor
+cd /tmp
+command -v /tmp/cua-070-installed/bin/vadgr-cua
 ```
 
-The `import dbus_fast` line is a check of its own: the structured tier needs
-it, and it is a plain wheel (not PyGObject), so a plain install must resolve
-it.
+The wheel install is the product under test. The driving agent's MCP config
+must invoke `/tmp/cua-070-installed/bin/vadgr-cua` from outside the checkout.
+Its `doctor` result proves the structured tier's `dbus-fast` dependency and
+the delivered 33-tool surface load through the installed command.
 
 Read every exit code directly. Do not pipe it into anything: `cmd | head`
 reports `head`'s status.
@@ -153,8 +159,10 @@ reports `head`'s status.
 ## Automated gate (necessary, never sufficient)
 
 ```bash
-/tmp/cua-070/bin/python -m pytest computer_use/tests -q
-/tmp/cua-070/bin/ruff check computer_use   # ruff==0.16.0, the CI pin
+python3 -m venv /tmp/cua-070-gates
+/tmp/cua-070-gates/bin/pip install "<checkout>[dev]"
+/tmp/cua-070-gates/bin/python -m pytest <checkout>/computer_use/tests -q
+/tmp/cua-070-gates/bin/ruff check <checkout>/computer_use   # ruff==0.16.0, the CI pin
 ```
 
 Expected: `pytest` all pass but one (the pre-existing, environment-sensitive
