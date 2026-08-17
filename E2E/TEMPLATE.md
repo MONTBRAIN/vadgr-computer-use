@@ -179,6 +179,18 @@ runbook ends "green with notes", which is not green.
 
 ## Per-OS results
 
+**The rows are this runbook's own parts, and nothing else.** A row named for a
+theme rather than a part cannot be read back to the cells that produced it, so a
+reader cannot check it and a reviewer cannot audit it. A sibling runbook shipped
+a matrix whose rows were `credential matrix`, `live providers` and `full engine`,
+none of which named a part or a cell, and it was unreadable for that reason.
+
+**Where a case runs on several platforms, put the platform in the cell id**, so
+the row and the cells agree by construction, and name those ids in the notes.
+
+**`overall` never inherits the automated gate.** A green CI row says the suites
+pass on that OS and nothing about whether the product works there.
+
 | part | Linux | Windows | macOS | notes |
 |---|---|---|---|---|
 | &lt;X&gt; | | | | |
