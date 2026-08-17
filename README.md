@@ -266,7 +266,7 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 
 ### Tier 0: system (10)
 - `fs(op, ...)`: read / write / list / stat / mkdir / remove on the filesystem.
-- `shell(op, ...)`: run a command, capture stdout / stderr / exit code.
+- `shell(op, ...)`: run a command, capture stdout / stderr / exit code. `command` is an argv list, or a string split into argv the way the running platform writes a command line, so `"uname -a"` runs and a Windows path keeps its separators. No shell is involved, so shell syntax (`&&`, `|`, `;`, redirection) is refused by name and needs `shell_mode=True`.
 - `http(op, ...)`: make an HTTP request.
 - `clipboard(op, ...)`: read / write the OS clipboard.
 - `env(op, ...)` / `time(op, ...)` / `tempfile(op, ...)` / `data(op, ...)`: environment variables, time, temp files, and structured-data helpers.

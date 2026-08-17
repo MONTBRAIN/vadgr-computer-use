@@ -427,6 +427,11 @@ async def shell(
       -> {returncode, stdout, stderr}
     - which(command) -> path or None
 
+    `command` is an argv list, or a string that is split into argv the way a
+    command line is split, so "uname -a" runs. No shell is involved, so nothing
+    is expanded. For shell syntax (&&, ||, |, ;, redirection, $(), backticks)
+    pass shell_mode=True; a plain run refuses it by name.
+
     Classified HIGH risk: shell.run can mutate anything on the host.
     """
     return await _shell_impl.shell_async(

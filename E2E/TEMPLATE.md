@@ -10,6 +10,62 @@
 > driver is a headless agent CLI session, the oracle is the JSON it emitted, and
 > the axis that has to be repeated is the **operating system**.
 
+## How a pass is run, before anything else in this file
+
+**These five rules come first because every one of them was learned by breaking
+it. They hold on every supported operating system, for every agent that drives a
+runbook, and they are not negotiable against a deadline or a token budget.**
+
+**1. Whatever needs the owner runs first.** Before a single automated cell,
+read the whole matrix, list every cell that cannot proceed without a human, and
+run those cells at the start of the pass. A browser approval, a physical
+handset, a hardware key, an elevation prompt, a permission dialog, a paid
+account that must be enabled: all of it is scheduled first, in one batch, with
+the owner told exactly what to click and when. The owner is not a resource you
+discover you needed after four hours of work. A pass that reaches its end and
+then asks for a click has wasted the owner's day and produced a runbook that is
+still `not run` where it matters most.
+
+**2. Do not stop the pass to report.** The pass runs to completion for the
+operating system it is on. Findings, blocked cells, corrections and questions
+are written into the runbook and the evidence as they happen, and they are
+reported when the pass ends. The only thing that stops a pass is a cell that
+physically cannot proceed without the owner, and rule 1 exists so that never
+happens after the start. Reporting a blocker mid-pass, and waiting, converts one
+run into many and leaves every later cell unexecuted.
+
+**3. A bug you find is a bug you fix, here, now.** The purpose of an e2e is not
+to catalogue defects. It is to establish that the product works on the target
+operating system. So when a cell fails, you fix the code, you add a test that
+fails without the fix and passes with it, you re-run the failing cell until it
+passes, you commit and push to the PR branch, and only then do you carry on with
+the rest of the matrix. **A finding recorded without a fix is a moved problem,
+not a found one.** The fix ships on the PR branch as it is made; the branch is
+the working surface, and holding a fix back to ask permission is the mistake.
+
+**4. A fix invalidates the cells it touched, on every operating system that
+already passed them.** A shared-behaviour fix means the earlier passes were
+observing different code. Name the affected cells in the finding, mark them
+`not run` again on the operating systems that had passed them, and say in the
+per-OS matrix which fix invalidated them. The host that made the fix re-runs
+them itself. The other hosts re-run them from the PR branch before merge. **No
+operating system inherits a result from a build that no longer exists.**
+
+**5. One command at a time, and read its output before the next.** Every
+product command is invoked on its own, and its output and exit code are read
+before the next command is chosen. A wrapper script that runs a whole group in
+one shot is not an execution of that group, even when every command inside it is
+the real public surface: it prints one wall of output that no line can be
+attributed to, it reports one exit code so the ones inside it are never read, a
+failure in the middle is carried past by the lines after it, and it fixes the
+order in advance when what the previous command returned is what tells you
+whether the next one is still the right one. A helper may build isolated state
+**before** a group and capture or parse evidence **after** a command has run. It
+may not sequence the product commands. The exception is a cell whose own
+definition is a matrix, such as one fixture per isolated copy: there the
+repetition is the cell, it is written that way in the table, and each iteration
+still prints its own labelled result.
+
 ## The approach: a headless agent CLI session
 
 > Say which CLI drove it (Codex or Claude Code, whichever the machine has) and

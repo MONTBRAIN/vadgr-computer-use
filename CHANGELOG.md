@@ -2,6 +2,46 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.2] - 2026-08-17
+
+### Fixed
+- `shell.run` splits a string command into argv instead of treating the whole
+  string as one program name. `command: "uname -a"` now runs. It used to fail
+  with `No such file or directory: 'uname -a'`, which reads as a missing binary
+  and blames the machine for the argument shape. No shell is involved, so
+  nothing is expanded and no operator is interpreted.
+- `shell.run` refuses a string carrying shell syntax (`&&`, `||`, `|`, `;`,
+  redirection, `$()`, backticks) and names the operator it found, instead of
+  passing it through as a literal argument. The message points at
+  `shell_mode=True`, which is what actually runs it.
+- The split follows the platform. POSIX reads a backslash as an escape and
+  Windows reads it as a path separator, so tokenising a Windows path in POSIX
+  mode turns `C:\Users\me\tool.exe` into `C:Usersmetool.exe`, which names
+  nothing. Windows tokenises in non-POSIX mode and the quotes that mode leaves
+  around a token are stripped, so a quoted program path still resolves. When a
+  split yields several tokens and the whole string names a file that exists,
+  the whole string wins, which keeps a bare unquoted path with a space in it
+  working exactly as it did before.
+
+### Changed
+- The `shell` tool description states that a string command is split into argv
+  and that shell syntax needs `shell_mode=True`, so a caller does not have to
+  discover the contract by failing.
+
+### Repository
+Nothing here changes the published package; it repairs the gate that guards it.
+
+- The credential gate can pass on Windows. `scripts/check_no_secrets.py` passed
+  the target path as a trailing argument to `powershell.exe -Command`, which
+  does not populate `$args`, so `Get-Acl` received nothing and the check failed
+  closed on every file. A protected file and an unprotected one produced the
+  same refusal, so the gate could not tell them apart. The target now arrives as
+  the `VADGR_ACL_TARGET` environment variable, which also keeps a path with
+  spaces or quotes out of the PowerShell parser.
+- The gate now runs on Linux, macOS and Windows in CI, and it has tests of its
+  own for the first time. It had only ever run on one platform, so its Windows
+  control had never been executed anywhere.
+
 ## [0.7.1] - 2026-08-17
 
 ### Fixed
