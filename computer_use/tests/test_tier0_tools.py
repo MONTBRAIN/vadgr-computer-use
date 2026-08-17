@@ -179,6 +179,46 @@ class TestShell:
         assert result["returncode"] == 0
         assert result["stdout"].strip() == "hi"
 
+    def test_run_splits_a_string_command_into_argv(self):
+        # A string command with arguments is the most natural call a model
+        # makes. It used to become a single argv element, so the kernel looked
+        # for a program named "echo hi there" and the refusal read as a missing
+        # file, which blames the machine for the argument shape.
+        from computer_use.tools.system import shell
+
+        result = shell.shell(op="run", command="echo hi there")
+        assert result["returncode"] == 0
+        assert result["stdout"].strip() == "hi there"
+
+    def test_run_keeps_quoted_argument_together(self):
+        from computer_use.tools.system import shell
+
+        result = shell.shell(op="run", command="echo 'one two'")
+        assert result["stdout"].strip() == "one two"
+
+    @pytest.mark.asyncio
+    async def test_async_run_splits_a_string_command_into_argv(self):
+        from computer_use.tools.system import shell
+
+        result = await shell.shell_async(op="run", command="echo hi there")
+        assert result["returncode"] == 0
+        assert result["stdout"].strip() == "hi there"
+
+    def test_run_refuses_shell_syntax_by_name(self):
+        # Splitting this would pass "&&" through as a literal argument and the
+        # caller would never learn why. Naming the operator points at the fix.
+        from computer_use.tools.system import shell
+
+        with pytest.raises(ValueError, match="shell_mode=True"):
+            shell.shell(op="run", command="echo a && echo b")
+
+    def test_run_honours_shell_mode_for_shell_syntax(self):
+        from computer_use.tools.system import shell
+
+        result = shell.shell(op="run", command="echo a && echo b", shell_mode=True)
+        assert result["returncode"] == 0
+        assert result["stdout"].split() == ["a", "b"]
+
     def test_which_returns_path_for_real_binary(self):
         from computer_use.tools.system import shell
 

@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.2] - 2026-08-17
+
+### Fixed
+- `shell.run` splits a string command into argv instead of treating the whole
+  string as one program name. `command: "uname -a"` now runs. It used to fail
+  with `No such file or directory: 'uname -a'`, which reads as a missing binary
+  and blames the machine for the argument shape. No shell is involved, so
+  nothing is expanded and no operator is interpreted.
+- `shell.run` refuses a string carrying shell syntax (`&&`, `||`, `|`, `;`,
+  redirection, `$()`, backticks) and names the operator it found, instead of
+  passing it through as a literal argument. The message points at
+  `shell_mode=True`, which is what actually runs it.
+
+### Changed
+- The `shell` tool description states that a string command is split into argv
+  and that shell syntax needs `shell_mode=True`, so a caller does not have to
+  discover the contract by failing.
+
 ## [0.7.1] - 2026-08-17
 
 ### Fixed
