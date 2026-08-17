@@ -54,7 +54,7 @@ from computer_use.browser.protocol import (
 # Keep in lockstep with the pyproject version - test_release_consistency.py
 # enforces it (a stale value here misleads handshake debugging; the negotiation
 # itself compares only the integer `proto`).
-CUA_VERSION = "0.7.1"
+CUA_VERSION = "0.7.2"
 
 
 def discovery_path() -> Path:
