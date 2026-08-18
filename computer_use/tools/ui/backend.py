@@ -23,6 +23,7 @@ on where something used to be is the exact failure a structured tier removes.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
@@ -36,10 +37,33 @@ UNSUPPORTED_ACTION = "unsupported_action"
 # The one-line remedy that ships with at_spi_unavailable. It points at the single
 # cross-distro provisioner rather than a hand-typed package line, per the family's
 # "easy to install is a contract" rule.
-UNAVAILABLE_REMEDY = (
+_LINUX_REMEDY = (
     "No accessibility bus reachable. Enable it and install the stack with "
     "`vadgr-cua install-deps` (at-spi2-core plus the toolkit bridges)."
 )
+
+# The structured native tier speaks AT-SPI, which only Linux has. Telling a macOS
+# or Windows caller to install at-spi2-core sends them after a package their
+# platform cannot have, and reads as a broken install rather than a tier that is
+# not offered there. The browser tier and the pixel tier both still work.
+_NO_ATSPI_PLATFORM_REMEDY = (
+    "The structured native tier needs AT-SPI, which is Linux only. On this "
+    "platform use the browser tier for web pages, or the screenshot and "
+    "pointer tools for native windows."
+)
+
+
+def unavailable_remedy(platform: str | None = None) -> str:
+    """The remedy that fits the platform being asked."""
+    name = platform if platform is not None else sys.platform
+    if name.startswith("linux"):
+        return _LINUX_REMEDY
+    return _NO_ATSPI_PLATFORM_REMEDY
+
+
+# Kept as a module attribute because callers import it by name. It resolves once
+# for the running platform, which is the only one a given process can report on.
+UNAVAILABLE_REMEDY = unavailable_remedy()
 
 
 @dataclass(frozen=True)
