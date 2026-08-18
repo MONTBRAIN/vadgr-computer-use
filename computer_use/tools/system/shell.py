@@ -203,6 +203,17 @@ async def _run_async(
     }
 
 
+
+def _expand_cwd(cwd: str | None) -> str | None:
+    """Expand a leading ``~`` in a working directory.
+
+    Same reason as the filesystem tool: a model offers ``~/project`` as
+    naturally as an absolute path, and a subprocess given a literal ``~``
+    fails with a confusing "no such file or directory" naming a tilde.
+    """
+    return os.path.expanduser(cwd) if cwd else cwd
+
+
 @_ops.operation("run")
 def _op_run(
     command: str | list[str] | None = None,
@@ -212,7 +223,7 @@ def _op_run(
 ) -> dict[str, Any]:
     if command is None:
         raise ValueError("shell.run requires a command")
-    return _run(command, shell=shell_mode, timeout=timeout, cwd=cwd)
+    return _run(command, shell=shell_mode, timeout=timeout, cwd=_expand_cwd(cwd))
 
 
 @_ops.operation("which")
@@ -260,4 +271,4 @@ async def shell_async(
         return shell(op=op, command=command, shell_mode=shell_mode, timeout=timeout, cwd=cwd)
     if command is None:
         raise ValueError("shell.run requires a command")
-    return await _run_async(command, shell=shell_mode, timeout=timeout, cwd=cwd)
+    return await _run_async(command, shell=shell_mode, timeout=timeout, cwd=_expand_cwd(cwd))

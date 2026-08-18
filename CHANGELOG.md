@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.3] - 2026-08-17
+
+### Fixed
+- `fs` expands a leading `~` in its path. `fs write` with `~/notes.txt` used to
+  create a directory literally named `~` beside the process working directory
+  and report success, and `fs read` of the same string found the file there, so
+  the round trip looked correct while nothing existed where the owner would
+  look. Found on macOS by a live model that wrote its result to `~/report.txt`
+  and confirmed it, leaving the file inside the daemon's checkout.
+- `shell.run` expands a leading `~` in `cwd`. A subprocess given a literal `~`
+  failed with a "no such file or directory" naming the tilde, which reads as a
+  broken tool rather than an unexpanded path.
+- The `at_spi_unavailable` remedy fits the platform it is reported on. The
+  structured native tier speaks AT-SPI, which only Linux has, but every
+  platform was told to install `at-spi2-core` with `vadgr-cua install-deps`.
+  On macOS and Windows that names a package the platform cannot have and
+  reads as a broken install rather than a tier that is not offered there.
+  Those platforms are now pointed at the browser tier and the pointer tools.
+
 ## [0.7.2] - 2026-08-17
 
 ### Fixed

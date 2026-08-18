@@ -265,7 +265,7 @@ If the WSL2 daemon can't start (e.g. no Windows Python available), the server fa
 Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 
 ### Tier 0: system (10)
-- `fs(op, ...)`: read / write / list / stat / mkdir / remove on the filesystem.
+- `fs(op, ...)`: read / write / list / stat / mkdir / remove on the filesystem. A leading `~` is expanded, so `~/notes.txt` lands in the home directory rather than in a directory named `~`, and the result reports the resolved path.
 - `shell(op, ...)`: run a command, capture stdout / stderr / exit code. `command` is an argv list, or a string split into argv the way the running platform writes a command line, so `"uname -a"` runs and a Windows path keeps its separators. No shell is involved, so shell syntax (`&&`, `|`, `;`, redirection) is refused by name and needs `shell_mode=True`.
 - `http(op, ...)`: make an HTTP request.
 - `clipboard(op, ...)`: read / write the OS clipboard.

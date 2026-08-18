@@ -189,3 +189,27 @@ class TestWaitContract:
         result = ui.ui_wait(name="Save")
         assert result["ok"] is True
         assert result["element"]["name"] == "Save"
+
+class TestTheUnavailableRemedyFitsThePlatform:
+    """The structured native tier is AT-SPI, and only Linux has it.
+
+    Sending a macOS or Windows caller after `at-spi2-core` points them at a
+    package their platform cannot have, so the tier reads as a broken install
+    rather than one that is not offered there.
+    """
+
+    def test_linux_is_told_how_to_install_the_bus(self):
+        from computer_use.tools.ui.backend import unavailable_remedy
+
+        remedy = unavailable_remedy("linux")
+        assert "install-deps" in remedy
+        assert "at-spi2-core" in remedy
+
+    def test_other_platforms_are_not_sent_after_a_linux_package(self):
+        from computer_use.tools.ui.backend import unavailable_remedy
+
+        for platform in ("darwin", "win32"):
+            remedy = unavailable_remedy(platform)
+            assert "at-spi2-core" not in remedy, platform
+            assert "install-deps" not in remedy, platform
+            assert "Linux only" in remedy, platform

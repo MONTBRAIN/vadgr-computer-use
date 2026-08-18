@@ -24,6 +24,20 @@ from computer_use.core.ops import OperationGroup
 _ops = OperationGroup("fs")
 
 
+def _expand(path: str) -> str:
+    """Expand a leading ``~`` the way every shell does.
+
+    A model writes ``~/notes.txt`` as readily as an absolute path, and ``Path``
+    treats the tilde as an ordinary directory name. Without this, ``write``
+    creates a directory literally called ``~`` beside the process working
+    directory, ``read`` of the same string finds the file there, and the round
+    trip reports success while nothing exists where the owner would look. The
+    expansion happens once at the dispatch boundary so every operation shares
+    it rather than each one remembering.
+    """
+    return os.path.expanduser(path)
+
+
 @_ops.operation("read")
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
@@ -83,4 +97,4 @@ def fs(
         content: Required when ``op="write"``.
         recursive: Required when deleting a directory.
     """
-    return _ops.run(op, path=path, content=content, recursive=recursive)
+    return _ops.run(op, path=_expand(path), content=content, recursive=recursive)
