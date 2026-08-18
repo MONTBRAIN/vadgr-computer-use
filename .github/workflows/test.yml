@@ -47,13 +47,26 @@ jobs:
         # green suite and an unreachable archive looked the same. Retried, and
         # asked for the five packages without their recommends, which are
         # ghostscript and SVG loaders that nothing in this suite renders.
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: |
           set -euo pipefail
+          # apt has no connection timeout by default, so one unreachable mirror
+          # stalls the whole step instead of failing over. The runner's sources
+          # list a fast regional mirror and archive.ubuntu.com, and it was the
+          # second one hanging: every other line came back in milliseconds while
+          # its InRelease fetch sat for fourteen minutes. These bound the wait so
+          # a dead mirror costs seconds and the retry can actually help. IPv4 is
+          # forced because the stall is the long-known IPv6 route to that host.
+          APT_OPTS="-o Acquire::Retries=3 \
+                    -o Acquire::http::Timeout=15 \
+                    -o Acquire::https::Timeout=15 \
+                    -o Acquire::ForceIPv4=true"
           for attempt in 1 2 3; do
-            if sudo apt-get update \
-              && sudo apt-get install -y --no-install-recommends \
-                   xvfb xdotool scrot python3-gi gir1.2-atspi-2.0; then
+            # A partial update is survivable: the packages below live on the
+            # regional mirror, so install is what decides the step.
+            sudo apt-get $APT_OPTS update || echo "update attempt $attempt was partial"
+            if sudo apt-get $APT_OPTS install -y --no-install-recommends \
+                 xvfb xdotool scrot python3-gi gir1.2-atspi-2.0; then
               exit 0
             fi
             echo "apt attempt $attempt failed, retrying"
