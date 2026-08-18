@@ -42,35 +42,45 @@ jobs:
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         # A slow Ubuntu mirror used to end the job here rather than in a test.
-        # The step had one attempt inside five minutes, and a single 11 MB font
-        # package pulled in as a recommend was enough to spend all of it, so a
-        # green suite and an unreachable archive looked the same. Retried, and
-        # asked for the five packages without their recommends, which are
-        # ghostscript and SVG loaders that nothing in this suite renders.
-        timeout-minutes: 10
+        # Retries and --no-install-recommends fixed the common case, and the
+        # Acquire timeouts fixed dead mirrors, but a job still burned its whole
+        # step limit on one transfer from archive.ubuntu.com. The step limit is
+        # now only a backstop; the loop below bounds each attempt itself.
+        timeout-minutes: 12
         run: |
           set -euo pipefail
-          # apt has no connection timeout by default, so one unreachable mirror
-          # stalls the whole step instead of failing over. The runner's sources
-          # list a fast regional mirror and archive.ubuntu.com, and it was the
-          # second one hanging: every other line came back in milliseconds while
-          # its InRelease fetch sat for fourteen minutes. These bound the wait so
-          # a dead mirror costs seconds and the retry can actually help. IPv4 is
-          # forced because the stall is the long-known IPv6 route to that host.
+          # apt's Acquire Timeout is an idle timeout: it restarts every time any
+          # byte arrives, and apt has no minimum-rate abort (Dl-Limit is a cap,
+          # not a floor). A transfer that trickles therefore never trips it, and
+          # apt prints nothing until a file completes, which is exactly the
+          # ten silent minutes the failing jobs showed after a Get line. The
+          # Acquire options still make dead mirrors fail in seconds, but the
+          # only reliable bound on a stalled transfer is external: coreutils
+          # timeout kills the attempt so the retry gets a fresh connection
+          # instead of waiting on a dying one. IPv4 is forced because the
+          # connect-level stall is the long-known IPv6 route to that host.
           APT_OPTS="-o Acquire::Retries=3 \
                     -o Acquire::http::Timeout=15 \
                     -o Acquire::https::Timeout=15 \
                     -o Acquire::ForceIPv4=true"
           for attempt in 1 2 3; do
-            # A partial update is survivable: the packages below live on the
-            # regional mirror, so install is what decides the step.
-            sudo apt-get $APT_OPTS update || echo "update attempt $attempt was partial"
-            if sudo apt-get $APT_OPTS install -y --no-install-recommends \
+            # A partial update is survivable: the runner image ships with usable
+            # package lists, so install is what decides the step.
+            sudo timeout -k 5 45 apt-get $APT_OPTS update \
+              || echo "update attempt $attempt was partial"
+            # These five packages fetch a few MB without recommends; a healthy
+            # mirror finishes in well under a minute, so 120s only ever cuts a
+            # stall short.
+            if sudo timeout -k 5 120 apt-get $APT_OPTS install -y --no-install-recommends \
                  xvfb xdotool scrot python3-gi gir1.2-atspi-2.0; then
               exit 0
             fi
-            echo "apt attempt $attempt failed, retrying"
-            sleep 10
+            echo "apt attempt $attempt failed or stalled, retrying"
+            # A kill that lands after unpack started leaves dpkg mid
+            # transaction, which would fail the next attempt for a reason that
+            # is not the network.
+            sudo timeout -k 5 30 dpkg --configure -a || true
+            sleep 5
           done
           echo "apt failed three times; the archive is unreachable, not the code" >&2
           exit 1
