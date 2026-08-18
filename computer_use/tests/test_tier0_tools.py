@@ -170,8 +170,66 @@ class TestFs:
         fs.fs(op="delete", path=str(p))
         assert not p.exists()
 
+    def test_a_leading_tilde_reaches_the_home_directory(self, tmp_path, monkeypatch):
+        """A model writes `~/notes.txt` as readily as an absolute path.
+
+        Without expansion `Path` treats the tilde as an ordinary directory
+        name, so the file lands in a directory called `~` beside the process
+        working directory. The read then finds it there and the round trip
+        reports success while nothing exists where the owner would look, which
+        is why this asserts the real location rather than the round trip.
+        """
+        from computer_use.tools.system import fs
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))  # the Windows spelling
+        monkeypatch.chdir(tmp_path)
+
+        fs.fs(op="write", path="~/notes.txt", content="landed")
+
+        assert (home / "notes.txt").read_text() == "landed"
+        assert not (tmp_path / "~").exists(), "a literal ~ directory was created"
+        assert fs.fs(op="read", path="~/notes.txt") == "landed"
+
+    def test_tilde_expands_for_every_operation(self, tmp_path, monkeypatch):
+        """The expansion sits at the dispatch boundary, so no operation misses it."""
+        from computer_use.tools.system import fs
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        monkeypatch.chdir(tmp_path)
+        (home / "seen.txt").write_text("abc")
+
+        assert "seen.txt" in fs.fs(op="list", path="~")
+        assert fs.fs(op="stat", path="~/seen.txt")["size"] == 3
+        fs.fs(op="delete", path="~/seen.txt")
+        assert not (home / "seen.txt").exists()
+
 
 class TestShell:
+    def test_a_tilde_working_directory_is_expanded(self, tmp_path, monkeypatch):
+        """`cwd="~/project"` must run in the home directory, not fail on a tilde.
+
+        A subprocess handed a literal `~` dies with a "no such file or
+        directory" naming a tilde, which reads as a broken tool rather than an
+        unexpanded path.
+        """
+        from computer_use.tools.system import shell
+
+        home = tmp_path / "home"
+        (home / "project").mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+
+        result = shell.shell(op="run", command=["pwd"], cwd="~/project")
+
+        assert result["returncode"] == 0
+        assert str((home / "project").resolve()) in result["stdout"]
+
     def test_run_captures_stdout(self):
         from computer_use.tools.system import shell
 
