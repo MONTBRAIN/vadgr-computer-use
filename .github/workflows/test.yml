@@ -41,10 +41,26 @@ jobs:
 
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
-        timeout-minutes: 5
+        # A slow Ubuntu mirror used to end the job here rather than in a test.
+        # The step had one attempt inside five minutes, and a single 11 MB font
+        # package pulled in as a recommend was enough to spend all of it, so a
+        # green suite and an unreachable archive looked the same. Retried, and
+        # asked for the five packages without their recommends, which are
+        # ghostscript and SVG loaders that nothing in this suite renders.
+        timeout-minutes: 15
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb xdotool scrot python3-gi gir1.2-atspi-2.0
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if sudo apt-get update \
+              && sudo apt-get install -y --no-install-recommends \
+                   xvfb xdotool scrot python3-gi gir1.2-atspi-2.0; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed, retrying"
+            sleep 10
+          done
+          echo "apt failed three times; the archive is unreachable, not the code" >&2
+          exit 1
 
       - name: Install package
         run: |
