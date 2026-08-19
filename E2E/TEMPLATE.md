@@ -99,6 +99,29 @@ it.
 > **goal-level** ("log in and confirm the banner"), never a script of tool calls:
 > a runbook that dictates the calls tests the runbook, not the runtime.
 
+## Paired surfaces this pass depends on
+
+> **This runtime depends on no sibling repository, and that is worth stating
+> rather than assuming.** It is an MCP server: a client launches it over stdio
+> and calls its tools. The daemon is one such client and the agent CLI driving
+> this pass is another, so the dependency runs towards this repository, never
+> out of it. A part here needs a released tag from nowhere else.
+>
+> That independence is a property to protect, not a permanent fact. **If a part
+> ever needs a surface a sibling repository serves**, it stops being true, and
+> then the rule applies: read that repository's released tag and the source
+> behind the route, name the version the part depends on in a table here, and
+> write a part whose surface arrives later into that release's runbook instead,
+> stating its absence rather than leaving it silent.
+>
+> | repository | released version | what this pass relies on |
+> |---|---|---|
+> | none | not applicable | this runtime is driven by its clients, and calls none of them |
+>
+> The rule exists because a sibling repository shipped a cell telling a tester
+> to start a run from the phone. That is the mobile app's next release; the
+> shipped app only reads. The owner found it holding the handset.
+
 ## The oracle is the JSON, never the agent's prose
 
 **`E2E/README.md` governs this and is not restated here.** In one line: the
