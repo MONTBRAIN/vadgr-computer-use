@@ -56,7 +56,12 @@ observing different code. Name the affected cells in the finding, mark them
 `not run` again on the operating systems that had passed them, and say in the
 per-OS matrix which fix invalidated them. The host that made the fix re-runs
 them itself. The other hosts re-run them from the PR branch before merge. **No
-operating system inherits a result from a build that no longer exists.**
+operating system inherits a result from a build that no longer exists.** And a
+rebuild is a new subject: rebuild the wheel, reinstall it, and re-record its
+hash **before any further part**. A sibling repo's pass filed a cell whose
+output only a later commit could produce, under a host record naming the
+earlier head; nothing tied any result to any build, and the whole pass was
+invalidated.
 
 **5. One command at a time, and read its output before the next.** Every
 product command is invoked on its own, and its output and exit code are read
@@ -101,6 +106,12 @@ agent's summary is self-report, a mutating action counts only when a
 `tool_result` read-back confirms it, the negative test must show
 `is_error: true`, and with neither stream nor transcript the result is
 **not verified** rather than a pass.
+
+**An oracle must be able to detect the failure it names.** Before the pass,
+ask each part's check what it returns when the runtime is wrong: if the answer
+is "the same thing", it is decoration, not an oracle, and the part can never
+fail. A sibling runbook once asserted a mint through a list the minted thing
+never appears in.
 
 > Name where this pass's JSON landed - the teed stream, or the driving CLI's
 > transcript path - so a reader can check your verdicts rather than trust them.
@@ -294,6 +305,11 @@ pass on that OS and nothing about whether the product works there.
 >
 > **A cell is marked from observation, never expectation.** Unwatched is
 > `not run`.
+>
+> The runbook's own header and tables are part of the deliverable: the status
+> line, the coverage table and this matrix are re-read against the part results
+> before the runbook is offered. A file whose header and cells disagree is
+> wrong twice, and a reader cannot tell which half to believe.
 
 ## Evidence
 
@@ -302,6 +318,11 @@ pass on that OS and nothing about whether the product works there.
 > were chosen once the answer was known. A part that captured nothing gets a
 > note saying so, never a reconstruction, and failures are kept alongside both
 > sides of any fix.
+>
+> A boundary contains the artifact it names, never a sentence about it: named
+> hashes are the hash lines themselves, a named transcript is the file.
+> "Unchanged: yes" is the product's word taken for the state, which is exactly
+> what the JSON-oracle rule exists to distrust.
 
 ## Findings
 
