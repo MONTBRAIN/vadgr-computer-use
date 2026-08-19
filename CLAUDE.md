@@ -56,8 +56,16 @@ cannot name what it points at is useless. The ban is on everything a stranger
 reads as the product: code, comments, docstrings, test names, the CHANGELOG and
 PR bodies. Those cite the substance, never the document.
 
-**2. No AI attribution, anywhere** - no `Co-Authored-By`, no "generated with",
-in commits, PR bodies or files.
+**2. No AI attribution, anywhere, and it is checked.** No `Co-Authored-By`, no
+"generated with", no credit to a tool - in commits, PR bodies, comments or
+generated files. `scripts/check_no_ai_attribution.py` runs in CI over the same
+range and event the credential gate uses, because this rule was a sentence for a
+year and **five commits still reached a release branch crediting a model**.
+
+**A credit is not a mention.** Naming a model is a fact this product states
+constantly: a catalog entry, a run's model id, the CLI that drove an e2e, "the
+model returned a 429". All legal. What fails is credit for the work: a trailer
+naming a model, a generated-with line, a claim that a tool wrote it.
 
 **3. The four-platform rule.** Linux, Windows, macOS and WSL are each first
 class. A change that touches a path, a process, a socket or a native API is
