@@ -99,6 +99,30 @@ it.
 > **goal-level** ("log in and confirm the banner"), never a script of tool calls:
 > a runbook that dictates the calls tests the runbook, not the runtime.
 
+## Paired surfaces this pass depends on
+
+> This runtime is one of several repositories that call each other, each on its
+> own version. **A part asks a paired repository only for what it has released.**
+> A part that asks the daemon for a route it has not shipped, or asks a client
+> for a screen it does not have, is specified against a surface nobody built,
+> and it fails for a reason that has nothing to do with the release under test.
+>
+> Before writing a part that touches a paired repository, **read that
+> repository, not its README**: its released tag and the source behind the route
+> or the screen you are about to use. Then name the version the part depends on
+> here:
+>
+> | repository | released version | what this pass relies on |
+> |---|---|---|
+> | vadgr | 0.4.9 | the MCP host launches the installed entry point over stdio |
+>
+> **A part whose surface arrives in a later release is written into that
+> release's runbook, and its absence here is stated rather than silent.**
+>
+> A sibling repository shipped a cell telling a tester to start a run from the
+> phone. That is the mobile app's next release; the shipped app only reads. The
+> owner found it holding the handset.
+
 ## The oracle is the JSON, never the agent's prose
 
 **`E2E/README.md` governs this and is not restated here.** In one line: the
