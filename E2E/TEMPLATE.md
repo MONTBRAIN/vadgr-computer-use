@@ -12,7 +12,7 @@
 
 ## How a pass is run, before anything else in this file
 
-**These five rules come first because every one of them was learned by breaking
+**These six rules come first because every one of them was learned by breaking
 it. They hold on every supported operating system, for every agent that drives a
 runbook, and they are not negotiable against a deadline or a token budget.**
 
@@ -65,6 +65,20 @@ may not sequence the product commands. The exception is a cell whose own
 definition is a matrix, such as one fixture per isolated copy: there the
 repetition is the cell, it is written that way in the table, and each iteration
 still prints its own labelled result.
+
+**6. The evidence is pushed, not left on the machine that produced it.** The
+boundary directory is created before the first cell, each group files its output
+at its own boundary, and **the whole boundary is committed on a branch and
+opened as a pull request as part of the pass, not after somebody asks for it**.
+A pass whose evidence sits in a temporary directory on the host that ran it is a
+pass nobody can check: the numbers in the runbook have nothing behind them, the
+next host cannot compare its own record against yours, and the directory is one
+reboot from gone. Filing it is the last cell of every pass, and a report that
+says the pass is complete while the artifacts are still local is wrong about
+what complete means. This is written here because it happened: a full native
+Linux pass was reported as done with its runbook results pushed and 51 evidence
+files still in `/tmp`, and only the owner asking "evidence are pushed?" caught
+it.
 
 ## The approach: a headless agent CLI session
 
