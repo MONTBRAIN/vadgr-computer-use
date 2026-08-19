@@ -10,6 +10,13 @@
 > driver is a headless agent CLI session, the oracle is the JSON it emitted, and
 > the axis that has to be repeated is the **operating system**.
 
+**A pass is finished, not paused, and reporting is not a stopping point.** A
+checkpoint or a progress summary does not end your turn: write it and keep
+driving in the same turn. A pass ends when every cell carries a verdict or a
+named blocker. Only a cell that cannot proceed without the owner, or a decision
+only the owner can make, ends one early. Stopping to report looks like progress
+and is the opposite, because the cells that were never run stay never run.
+
 ## How a pass is run, before anything else in this file
 
 **These six rules come first because every one of them was learned by breaking
