@@ -5,6 +5,18 @@ All notable changes to this project are documented here. Format follows [Keep a 
 ## [0.7.4] - 2026-08-20
 
 ### Fixed
+- **The supervisor imports on Windows, and `vadgr-cua doctor` runs there.**
+  `supervisor.py` imported `fcntl` at module scope, which does not exist on
+  Windows, so the module that supervises the Windows bridge could not be
+  imported on Windows and `doctor` died on a traceback. `fcntl` is optional
+  now, and the no-op lock the file already documented for Windows can finally
+  run.
+- **The test suite can be collected on Windows and macOS.** An autouse fixture
+  patched a Linux-only module, so every test errored in setup off Linux and the
+  suite could not run at all. `test_supervisor.py` was also skipped whole on
+  Windows, which removed the only tests that would have caught the import above.
+  On Windows the suite goes from uncollectable to 752 passed, 82 skipped and 11
+  failed; the 11 are Linux assumptions in tests, now visible and untouched.
 - **The clean install is proven on every platform this runtime claims.** It ran
   only on Linux, across three interpreters, so a first-time install on Windows
   or macOS was never checked at all. Linux still makes the machine with a
