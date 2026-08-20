@@ -19,7 +19,6 @@ or the filesystem.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import logging
 import subprocess
 import tempfile
@@ -30,6 +29,17 @@ from pathlib import Path
 from computer_use.bridge.client import BridgeClient
 from computer_use.bridge.deployer import DaemonDeployer
 from computer_use.bridge.protocol import get_port
+
+# Native Windows has no `fcntl`, and importing it at module scope made this
+# module unimportable there. That contradicted two things at once: this file
+# supervises the *Windows* bridge, and `_acquire_lock` below already documents a
+# no-op fallback "on platforms without flock (Windows native)" that could never
+# run, because the import failed long before the fallback was reached. Keeping
+# the name bound to `None` is what makes that documented behaviour real.
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised by the Windows test below
+    fcntl = None
 
 logger = logging.getLogger("computer_use.bridge.supervisor")
 
@@ -205,6 +215,10 @@ class DaemonSupervisor:
         without flock (Windows native), which is fine because the native
         Windows backend doesn't need a daemon at all.
         """
+        if fcntl is None:
+            logger.debug("flock unavailable on this platform; proceeding without lock")
+            yield
+            return
         self._LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
         # Open in append mode so we neither truncate nor race on creation.
         with open(self._LOCK_PATH, "a") as f:

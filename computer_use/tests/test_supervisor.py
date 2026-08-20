@@ -18,10 +18,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Supervisor uses fcntl; daemon path runs on WSL2/Linux only.",
-)
+"""This suite used to be skipped whole on Windows, with the reason "Supervisor
+uses fcntl". That skip is why the defect shipped: the module was unimportable on
+native Windows, `vadgr-cua doctor` died on a traceback there, and the only tests
+that would have noticed were the ones the skip removed. The supervisor no longer
+requires `fcntl`, so the suite runs on every platform and the import itself is
+now under test.
+"""
 
 
 # --- Fixtures ---
@@ -348,3 +351,44 @@ class TestStatus:
         supervisor = _supervisor(fake_deployer, dead_client)
         status = supervisor.status()
         assert status["windows_python"] is None
+
+
+class TestImportableWithoutFcntl:
+    """The module supervises the *Windows* bridge, so it must import on Windows.
+
+    `import fcntl` at module scope made that impossible, and it also made
+    `_acquire_lock`'s own documented fallback -- "no-op on platforms without
+    flock (Windows native)" -- unreachable, because the import failed long
+    before the fallback could run.
+    """
+
+    def test_the_module_imports_on_this_platform(self):
+        from computer_use.bridge import supervisor
+
+        assert supervisor.DaemonSupervisor is not None
+
+    def test_fcntl_is_optional_rather_than_required(self):
+        from computer_use.bridge import supervisor
+
+        # Bound either way: the real module on POSIX, None where it is absent.
+        assert hasattr(supervisor, "fcntl")
+
+    def test_the_lock_is_a_no_op_when_flock_is_unavailable(
+        self, fake_deployer, healthy_client
+    ):
+        """The documented fallback, now actually reachable."""
+        from computer_use.bridge import supervisor as supervisor_module
+
+        instance = _supervisor(fake_deployer, healthy_client)
+        with patch.object(supervisor_module, "fcntl", None):
+            with instance._acquire_lock():
+                pass  # acquiring must succeed rather than raise
+
+    def test_doctor_does_not_need_flock_to_report(self, fake_deployer, healthy_client):
+        """`vadgr-cua doctor` crashed on Windows because it built a supervisor
+        unconditionally. Building one must not depend on flock."""
+        from computer_use.bridge import supervisor as supervisor_module
+
+        with patch.object(supervisor_module, "fcntl", None):
+            instance = _supervisor(fake_deployer, healthy_client)
+            assert instance.status()["daemon_running"] is True
