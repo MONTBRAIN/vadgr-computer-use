@@ -137,7 +137,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          # From the wheel's own name, so it is the artifact under test that
+          # names the version. Reading pyproject needs tomllib, which is only in
+          # the standard library from 3.11, and this matrix includes 3.10.
+          wheel="$(ls dist/*.whl)"
+          version="$(basename "$wheel" | cut -d- -f2)"
           test -n "$version"
           echo "CLEAN_INSTALL_EXPECT_VERSION=$version" >> "$GITHUB_ENV"
           echo "the wheel under test is $version"
@@ -182,5 +186,3 @@ jobs:
           smoke="$PWD/scripts/clean_install_smoke.py"
           cd "$RUNNER_TEMP"
           "$bin/python" "$smoke"
-
-          '
