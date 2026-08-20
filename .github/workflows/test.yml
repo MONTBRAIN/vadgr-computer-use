@@ -94,19 +94,32 @@ jobs:
         run: pytest computer_use/tests -q
 
   clean-install:
-    # A first-time user's install, proven on a from-nothing machine on every PR.
+    # A first-time user's install, proven on every platform this runtime claims.
     # This is the gate the 0.6.6 break slipped through: a fresh install of 0.6.5
-    # could not start vadgr-cua at all, because a dependency floor let a breaking
-    # major through and nothing checked a clean install before publish. The wheel
-    # is built on the runner, then installed ALONE in a minimal container that
-    # carries no build tooling, no dev extras and no apt packages, so an
-    # undeclared dependency or a broken entry point fails here, not at a user's
-    # first run.
-    runs-on: ubuntu-latest
+    # could not start vadgr-cua at all, because a dependency floor let a
+    # breaking major through and nothing checked a clean install before publish.
+    #
+    # A clean machine is a normal user's machine: the operating system and its
+    # libraries, with no build tooling, no dev extras and no source tree in
+    # reach. It ran only on Linux, which said nothing about the other three
+    # platforms the README claims, and a sibling repository was caught by
+    # exactly that.
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -120,11 +133,54 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build --wheel --outdir dist
 
-      - name: Install ONLY the wheel in a from-nothing container and smoke it
+      - name: The version this run built, read from the manifest
+        shell: bash
         run: |
-          docker run --rm -v "$PWD:/w" "python:${{ matrix.python-version }}-slim" bash -c '
-            set -e
-            pip install --quiet /w/dist/*.whl
-            cd /tmp                         # a neutral cwd so the source tree cannot shadow the install
-            python /w/scripts/clean_install_smoke.py
+          set -euo pipefail
+          version="$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          test -n "$version"
+          echo "CLEAN_INSTALL_EXPECT_VERSION=$version" >> "$GITHUB_ENV"
+          echo "the wheel under test is $version"
+
+      # Linux has containers, so the machine is made rather than approximated:
+      # a python image with the wheel and nothing else, and a neutral working
+      # directory so the source tree cannot shadow the install.
+      - name: Install only the wheel on a machine with nothing else, and use it
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/w" \
+            -e CLEAN_INSTALL_EXPECT_VERSION="$CLEAN_INSTALL_EXPECT_VERSION" \
+            -e CLEAN_INSTALL_REQUIRE_CONSOLE_SCRIPT=1 \
+            "python:${{ matrix.python-version }}-slim" bash -c '
+              set -euo pipefail
+              pip install --quiet /w/dist/*.whl
+              cd /tmp
+              python /w/scripts/clean_install_smoke.py
+            '
+
+      # Windows and macOS have no container to escape the runner, so the machine
+      # is APPROXIMATED: a fresh virtual environment carrying the wheel and its
+      # declared dependencies, entered from a neutral directory. The runner's own
+      # tooling still exists on disk, so a green run here is a weaker claim than
+      # the Linux leg's, and it is the strongest available on these platforms.
+      - name: Install only the wheel in a fresh environment, and use it
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/clean"
+          if [ -d "$RUNNER_TEMP/clean/Scripts" ]; then
+            bin="$RUNNER_TEMP/clean/Scripts"
+          else
+            bin="$RUNNER_TEMP/clean/bin"
+          fi
+          "$bin/python" -m pip install --quiet --upgrade pip
+          "$bin/python" -m pip install --quiet dist/*.whl
+          # The console script must exist here: this is a real wheel install.
+          export CLEAN_INSTALL_REQUIRE_CONSOLE_SCRIPT=1
+          export PATH="$bin:$PATH"
+          smoke="$PWD/scripts/clean_install_smoke.py"
+          cd "$RUNNER_TEMP"
+          "$bin/python" "$smoke"
+
           '

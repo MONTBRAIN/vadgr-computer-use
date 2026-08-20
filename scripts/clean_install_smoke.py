@@ -17,6 +17,8 @@ minimal container with nothing else added.
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
+import os
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,28 @@ KEY_TOOLS = (
     "browser",     # browser tier
     "shell",       # system tier
 )
+
+
+def check_version() -> None:
+    """The installed package is the one this run built.
+
+    Without this, an older wheel left in ``dist/`` installs and every other
+    check passes against a version nobody is shipping. The expected value is
+    passed in rather than typed here, so it comes from ``pyproject.toml`` at run
+    time and cannot go stale.
+    """
+    expected = os.environ.get("CLEAN_INSTALL_EXPECT_VERSION")
+    if not expected:
+        raise SystemExit(
+            "FAIL: CLEAN_INSTALL_EXPECT_VERSION is unset, so this check would "
+            "pass without comparing anything"
+        )
+    installed = importlib.metadata.version("vadgr-computer-use")
+    if installed != expected:
+        raise SystemExit(
+            f"FAIL: installed vadgr-computer-use {installed}, expected {expected}"
+        )
+    print(f"OK: the installed package is {installed}")
 
 
 def check_surface() -> None:
@@ -62,6 +86,11 @@ def check_startup() -> None:
     """
     exe = shutil.which("vadgr-cua")
     if not exe:
+        # A skip that reads as a pass is how a check stops checking. Where the
+        # caller says the console script must be there, its absence is a
+        # failure rather than a shrug.
+        if os.environ.get("CLEAN_INSTALL_REQUIRE_CONSOLE_SCRIPT"):
+            raise SystemExit("FAIL: vadgr-cua is not on PATH after installing the wheel")
         print("SKIP: vadgr-cua not on PATH; the surface check already proved the import")
         return
     proc = subprocess.Popen(
@@ -83,6 +112,7 @@ def check_startup() -> None:
 
 
 def main() -> int:
+    check_version()
     check_surface()
     check_startup()
     print("clean-install smoke: PASS")
