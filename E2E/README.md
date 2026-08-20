@@ -2,6 +2,13 @@
 
 This applies to **every** runbook in this directory (`E2E/<version>/e2e.md`).
 
+**The rules in one place: `## The rules`, the first section of
+[`TEMPLATE.md`](TEMPLATE.md) and of every runbook copied from it.** That list is
+the index, and it is what gets read before a pass starts. This file is one of
+the long forms it points at: the cross-cutting rules are stated here in full,
+with the incidents that produced them. **A rule is stated in full in one place**,
+so the index stays an index and the two cannot drift.
+
 An e2e is driven by a real agent given a goal-level task, under whichever
 headless agent CLI the machine has, Codex or Claude Code: detect it, never
 assume it, and record the CLI and its version beside the result. The agent's prose
