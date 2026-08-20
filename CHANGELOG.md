@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.4] - 2026-08-20
+
+### Fixed
+- **The supervisor imports on Windows, and `vadgr-cua doctor` runs there.**
+  `supervisor.py` imported `fcntl` at module scope, which does not exist on
+  Windows, so the module that supervises the Windows bridge could not be
+  imported on Windows and `doctor` died on a traceback. `fcntl` is optional
+  now, and the no-op lock the file already documented for Windows can finally
+  run.
+- **The test suite can be collected on Windows and macOS.** An autouse fixture
+  patched a Linux-only module, so every test errored in setup off Linux and the
+  suite could not run at all. `test_supervisor.py` was also skipped whole on
+  Windows, which removed the only tests that would have caught the import above.
+  On Windows the suite goes from uncollectable to 752 passed, 82 skipped and 11
+  failed; the 11 are Linux assumptions in tests, now visible and untouched.
+- **The clean install is proven on every platform this runtime claims.** It ran
+  only on Linux, across three interpreters, so a first-time install on Windows
+  or macOS was never checked at all. Linux still makes the machine with a
+  container; Windows and macOS approximate it with a fresh virtual environment
+  entered from a neutral directory, and each step says which of the two it does
+  so a green run is read for what it is.
+- **The clean install checks that the wheel it tested is the wheel this run
+  built.** Nothing compared versions, so an older wheel left in `dist/` would
+  install and pass every other check. The expected version is read from
+  `pyproject.toml` at run time and the smoke test refuses to run without it,
+  rather than passing while comparing nothing.
+- **A missing console script is a failure where a wheel install is expected.**
+  The smoke test skipped that check when `vadgr-cua` was not on `PATH`, which is
+  right for an isolated site directory and wrong after a real install, where its
+  absence is the `0.6.6` failure exactly.
+
 ## [0.7.3] - 2026-08-17
 
 ### Fixed
