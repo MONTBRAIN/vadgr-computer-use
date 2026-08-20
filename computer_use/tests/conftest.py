@@ -33,7 +33,7 @@ def _block_real_session_bus():
     that runs on the four platforms.
     """
     try:
-        import computer_use.platform.linux  # noqa: F401
+        import computer_use.platform.linux
     except (ImportError, AttributeError):
         # No session bus on this platform, so there is nothing to block.
         yield
