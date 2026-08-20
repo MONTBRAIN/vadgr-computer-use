@@ -240,6 +240,20 @@ system discovering a blocker four groups in.
 > The unit and integration suites, with the command and the expected result.
 > Green here proves the code paths, and proves **nothing** about a real desktop:
 > that is the whole reason this document exists.
+>
+> **And the gate is not green until the pull request's checks have finished.**
+> The suites above ran on one machine, the one the pass was driven on. The pull
+> request runs them across the interpreter and operating system matrix, and
+> those are the machines nobody looked at. **A pass is not closed and a pull
+> request is not offered for review while a check is still running.** Waiting
+> costs minutes; a release announced green over a check still running is a claim
+> about machines nobody read.
+>
+> The last step of a pass is to watch the checks to completion and record their
+> result beside the local ones. A red check is a finding like any other: it is
+> fixed and the parts it invalidates are run again, or it is written down with
+> its reason. A sibling repository offered a release as finished while its
+> Windows job was still running, and that job went red.
 
 ## Coverage
 
