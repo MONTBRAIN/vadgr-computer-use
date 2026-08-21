@@ -230,3 +230,39 @@ def test_the_pull_request_rule_needs_a_range(tmp_path):
     result = gate(root, "--require-pull-request")
     assert result.returncode == 2, result.stdout
     assert "needs --range" in result.stdout
+
+
+def test_a_host_record_may_name_the_branch_beside_the_head(tmp_path):
+    """The macOS boundary was refused for saying more, not less.
+
+    `head: <sha> (vadgr, feat/0.4.9-the-cutover)` names its build and adds
+    where the build came from. The pattern demanded the line stop at the sha,
+    so a fuller record failed the check that a thinner one passed.
+    """
+    root = workspace(tmp_path)
+    pass_dir = file_a_pass(root, "20260821-macos")
+    (pass_dir / "host.txt").write_text(
+        "host: macOS 26.5.2 build 25F84, arm64\n"
+        "head: " + "5" * 40 + " (vadgr, feat/0.4.9-the-cutover)\n"
+    )
+    result = gate(root)
+    assert result.returncode == 0, result.stdout
+
+
+def test_a_bare_head_line_with_no_label_is_accepted(tmp_path):
+    """Some records write `vadgr head:` and some write `head:`. Both name it."""
+    root = workspace(tmp_path)
+    pass_dir = file_a_pass(root, "20260819-wsl")
+    (pass_dir / "host.txt").write_text("head: " + "a" * 12 + "\n")
+    result = gate(root)
+    assert result.returncode == 0, result.stdout
+
+
+def test_a_record_that_still_names_no_head_is_refused(tmp_path):
+    """The other half: widening the pattern must not open it."""
+    root = workspace(tmp_path)
+    pass_dir = file_a_pass(root, "20260819-wsl")
+    (pass_dir / "host.txt").write_text("host: a laptop\ndate: today\nahead: nothing\n")
+    result = gate(root)
+    assert result.returncode == 1, result.stdout
+    assert "names no head" in result.stdout

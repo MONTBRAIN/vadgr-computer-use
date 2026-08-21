@@ -45,7 +45,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EVIDENCE = "e2e_evidence/"
-HEAD_LINE = re.compile(r"^\s*\w[\w -]*head:\s*([0-9a-f]{7,40})\s*$", re.MULTILINE)
+# `head: <sha>`, with an optional label before it ("vadgr head:") and
+# optional context after it ("(vadgr, feat/0.4.9-the-cutover)"). Both
+# shapes are in use and both name the build, which is all this asks.
+HEAD_LINE = re.compile(
+    r"^\s*(?:\w[\w -]*\s)?head:\s*([0-9a-f]{7,40})\b", re.MULTILINE | re.IGNORECASE
+)
 
 
 def git(*args: str) -> str:
