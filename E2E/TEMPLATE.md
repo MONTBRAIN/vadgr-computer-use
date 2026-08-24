@@ -1,5 +1,15 @@
 # &lt;version&gt; - &lt;what this minor made true&gt;: e2e runbook
 
+> **&lt;repository&gt; &lt;version&gt; PR:**
+> `&lt;https://github.com/MONTBRAIN/&lt;repository&gt;/pull/&lt;number&gt;&gt;`.
+> **&lt;repository&gt; &lt;version&gt; evidence PR:**
+> `&lt;https://github.com/MONTBRAIN/vadgr-docs/pull/&lt;number&gt;&gt;`.
+>
+> Replace both placeholders before the first live cell. The evidence link names
+> the one private-docs branch for this minor. Every host adds its boundary to
+> that pull request; it does not open another evidence pull request. A runbook
+> without both resolved links is incomplete and does not start.
+
 > **Read this whole file before you run anything, and read
 > [`README.md`](README.md) beside it.** Not the rules that look relevant to the
 > cell in front of you: the whole file. Every rule in it was written because a
