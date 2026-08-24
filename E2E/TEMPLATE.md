@@ -274,6 +274,10 @@ never appears in.
 > credential, permission, destructive action and owner decision. Missing setup
 > blocks the already-written ids; it never removes them or reduces coverage.
 
+> Host networking is never e2e state. Do not change the host firewall, DNS,
+> routing, proxy, VPN or network service. Model a network failure in isolated
+> test state. A host network change is never an e2e cell.
+
 > Read credentials only from the workspace `../.env`. Never echo or copy a
 > value into commands, logs, screenshots, transcripts, process listings,
 > GitHub text, documentation or evidence. Run
