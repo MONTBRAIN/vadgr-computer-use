@@ -29,7 +29,7 @@ import { ensureProfileId, buildProfileContext } from "./target/profile";
 import type { WindowsEnumApi } from "./target/enumeration";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.4";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.5";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();

@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.5] - 2026-08-29
+
+### Fixed
+
+- Let the MCP `get_platform` probe report the detected operating system even
+  when that host's capture or input backend is unavailable or not configured.
+
 ## [0.7.4] - 2026-08-20
 
 ### Fixed
