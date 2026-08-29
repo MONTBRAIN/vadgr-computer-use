@@ -301,6 +301,8 @@ Input (8)
 
 Platform info (3)
 - `get_platform()` / `get_platform_info()` / `get_screen_size()`
+- `get_platform()` reports the detected OS even before a capture/input backend
+  is available; the richer capability and screen probes still require one.
 
 ## Daemon management (WSL2)
 

@@ -38,6 +38,7 @@ class TestDescribe:
     def test_wlroots_uinput_when_writable(self):
         with patch("computer_use.platform.backends.linux_providers.portal_available", return_value=False), \
              patch("computer_use.platform.backends.linux_providers._mutter_available", return_value=False), \
+             patch("computer_use.platform.backends.linux_providers._evdev_present", return_value=False), \
              patch("shutil.which", side_effect=lambda c: "/u/grim" if c == "grim" else None):
             d = describe_backends(_ctx(server="wayland", compositor="wlroots", has_uinput=True))
         assert d["capture"]["selected"] == "grim"

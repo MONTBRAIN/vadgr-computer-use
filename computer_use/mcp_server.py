@@ -37,6 +37,7 @@ from mcp.server.mcpserver import Image, MCPServer
 from PIL import Image as PILImage
 
 from computer_use.core import REGISTRY, Risk, Tier, tool
+from computer_use.platform.detect import detect_platform
 
 mcp = MCPServer(
     name="computer-use",
@@ -365,8 +366,11 @@ def get_screen_size() -> str:
 @tool(name="get_platform", tier=Tier.TWO, risk=Risk.READ_ONLY)
 def get_platform() -> str:
     """Returns detected platform: wsl2, linux, windows, or macos."""
-    engine = _get_engine()
-    return engine.get_platform().value
+    # Platform identity is available before a capture/input backend is. Keeping
+    # this probe behind full engine construction made it fail precisely when a
+    # caller needed to learn which unsupported or not-yet-configured platform
+    # it was running on.
+    return detect_platform().value
 
 
 @mcp.tool()

@@ -283,10 +283,17 @@ class TestInfoTools:
         result = get_screen_size()
         assert result == "1024x768"
 
-    def test_get_platform(self, mock_engine):
-        from computer_use.mcp_server import get_platform
+    def test_get_platform_does_not_require_an_available_backend(self, monkeypatch):
+        import computer_use.mcp_server as mod
 
-        result = get_platform()
+        monkeypatch.setattr(mod, "detect_platform", lambda: Platform.WSL2)
+        monkeypatch.setattr(
+            mod,
+            "_get_engine",
+            MagicMock(side_effect=AssertionError("backend must not be constructed")),
+        )
+
+        result = mod.get_platform()
         assert result == "wsl2"
 
     def test_get_platform_info(self, mock_engine):
