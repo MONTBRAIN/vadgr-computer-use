@@ -13,8 +13,8 @@
 available capture/input backend. This patch changes no mutating tool, native
 backend, path, socket, permission or machine configuration.
 
-> **Status: not started.** Automated gate: 916 passed, 14 skipped; ruff green.
-> The live WSL patch cell is owed. **One finding repaired:** released 0.7.4
+> **Status: run on WSL, 2026-08-29.** Automated gate: 916 passed, 14 skipped;
+> ruff green. The installed-wheel WSL patch cell passes. **One finding repaired:** released 0.7.4
 > constructed the unavailable WSL desktop backend before answering the identity
 > probe.
 
@@ -65,21 +65,21 @@ computer-use tools and report only the detected platform.
 
 | Part | Axes | Cells | Run | Open |
 |---|---|---:|---:|---:|
-| P: backend-independent platform probe | WSL2 x unavailable backend x MCP wire | 1 | 0 | 1 |
-| | | **1** | **0** | **1** |
+| P: backend-independent platform probe | WSL2 x unavailable backend x MCP wire | 1 | 1 | pass |
+| | | **1** | **1** | **pass** |
 
 ## Part P: backend-independent platform probe
 
 | # | Precondition and setup | Goal or action | Expected observable and independent oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| P1 | Exact `c80a0a4` wheel installed outside checkout; `doctor` detects WSL2 and reports the desktop backend unavailable; agent MCP config invokes installed `vadgr-cua` | Give the headless agent the goal above | Event stream contains exactly one `computer-use__get_platform` `tool_use`; matching `tool_result` is not an error and contains `wsl2`. Server stderr has no backend construction or `PlatformNotSupportedError` | Git head, wheel hash, installed path/version, doctor JSON, CLI/version, full agent stream and server stderr | stop only that MCP child; remove temporary roots after evidence is filed | not run: repaired wheel has not been driven yet |
+| P1 | Exact `c80a0a4` wheel installed outside checkout; `doctor` detects WSL2 and reports the desktop backend unavailable; agent MCP config invokes installed `vadgr-cua` | Give the headless agent the goal above | Event stream contains exactly one `computer-use__get_platform` `tool_use`; matching `tool_result` is not an error and contains `wsl2`. Server stderr has no backend construction or `PlatformNotSupportedError` | Git head, wheel hash, installed path/version, doctor JSON, CLI/version, full agent stream and server stderr | stop only that MCP child; remove temporary roots after evidence is filed | pass: Codex CLI 0.149.1 made exactly one MCP call; its successful structured result and text were `wsl2`; stderr contained zero backend-construction errors. Two earlier driver attempts were rejected and filed: one could not approve MCP, and one touched shell before its successful MCP call; neither supplies this verdict |
 
 ## Per-OS results
 
 | Part | WSL | Linux | Windows native | macOS |
 |---|---|---|---|---|
-| P: backend-independent platform probe | not run: repaired wheel has not been driven | not run: patch cell first runs on the reproducing WSL host | not run: patch cell first runs on the reproducing WSL host | not run: patch cell first runs on the reproducing WSL host |
-| **overall** | **not run: repaired wheel has not been driven** | **not run: patch cell is WSL-first** | **not run: patch cell is WSL-first** | **not run: patch cell is WSL-first** |
+| P: backend-independent platform probe | pass: exact installed wheel, unavailable backend, successful MCP result | not run: patch cell ran on the reproducing WSL host | not run: patch cell ran on the reproducing WSL host | not run: patch cell ran on the reproducing WSL host |
+| **overall** | **pass: one filed live patch cell** | **not run: patch cell was WSL-first** | **not run: patch cell was WSL-first** | **not run: patch cell was WSL-first** |
 
 ## Evidence
 
