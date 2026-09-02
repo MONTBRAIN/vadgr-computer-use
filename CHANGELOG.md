@@ -32,7 +32,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 ### Fixed
 
 - Deliver human-paced browser keystrokes through the same trusted CDP key-event
-  path as fast typing, including the event text required for editable controls.
+  path as fast typing, including the event text required for editable controls;
+  retain the actionability gate so covered inputs reject those trusted events.
 - Keep native Windows auto-registration on the packaged, content-addressed
   native-host executable. Starting a Windows MCP client no longer replaces the
   working Chrome registration with a Python batch launcher.
