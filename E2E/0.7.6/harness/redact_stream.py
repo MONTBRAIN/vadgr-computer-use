@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 SENSITIVE_KEYS = frozenset({"text", "value", "expression", "prompt"})
 
 
@@ -24,6 +23,13 @@ def marker(value: str) -> dict[str, object]:
 
 def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any:
     if isinstance(value, dict):
+        if value.get("type") in {"image", "audio"} and isinstance(value.get("data"), str):
+            return {
+                item_key: marker(item) if item_key == "data" else redact(
+                    item, literals, str(item_key).lower()
+                )
+                for item_key, item in value.items()
+            }
         return {
             item_key: redact(item, literals, str(item_key).lower())
             for item_key, item in value.items()

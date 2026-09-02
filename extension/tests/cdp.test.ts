@@ -15,6 +15,9 @@ function fakeSend(readValue: unknown, focusFound = true) {
     calls.push({ method, params });
     if (method === "Runtime.evaluate") {
       const e = String(params.expression);
+      if (e.includes("const covered")) {
+        return { result: { value: { x: 10, y: 20, covered: false, found: true } } };
+      }
       if (e.includes(".focus()")) return { result: { value: focusFound } };
       return { result: { value: readValue } };
     }
@@ -54,6 +57,35 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     await expect(exec(send).execute("fill", { selector: "#missing", text: "x" })).rejects.toThrow(
       /no element/i,
     );
+  });
+
+  it("rejects a covered typing target before focus or key dispatch", async () => {
+    const { send, calls } = fakeSend("");
+    const covered: CdpSend = async (method, params: any = {}) => {
+      if (
+        method === "Runtime.evaluate" &&
+        String(params.expression).includes("const covered")
+      ) {
+        calls.push({ method, params });
+        return { result: { value: { x: 10, y: 20, covered: true, found: true } } };
+      }
+      return send(method, params);
+    };
+
+    await expect(
+      exec(covered).execute("type", {
+        selector: "#covered",
+        text: "x",
+        human: true,
+        typing_plan: {
+          timing_profile: "us_adult_transcription_2026",
+          nominal_wpm: 38,
+          units: [{ text: "x", delay_before_ms: 0 }],
+        },
+      }),
+    ).rejects.toThrow(/covered/);
+    expect(calls.some((call) => call.method === "Input.dispatchKeyEvent")).toBe(false);
+    expect(calls.some((call) => String(call.params.expression).includes(".focus()"))).toBe(false);
   });
 
   it("human type dispatches ordered key events and returns timing metadata", async () => {

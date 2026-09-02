@@ -166,6 +166,11 @@ export class CdpExecutor implements Executor {
   private async typeText(send: CdpSend, p: Params) {
     const text = String(p.text ?? "");
     const selector = String(p.selector);
+    // Human typing deliberately uses CDP instead of the content-script fast
+    // path, but it must keep the same actionability contract. Validate the
+    // target before focus or any key event so an overlay cannot turn trusted
+    // input into a mutation of a covered control.
+    await this.centre(send, selector, p.force === true);
     const before = await this.readValue(send, selector);
     await this.focus(send, selector);
     if (p.clear !== false) await this.key(send, "a", CTRL); // select all → replaced
