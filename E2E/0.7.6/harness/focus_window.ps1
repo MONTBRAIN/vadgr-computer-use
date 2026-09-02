@@ -32,7 +32,7 @@ public static class VadgrE2EWindow {
     public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")]
+    [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")]
     public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
@@ -51,7 +51,10 @@ public static class VadgrE2EWindow {
             if (length == 0) return true;
             var text = new StringBuilder(length + 1);
             GetWindowText(hwnd, text, text.Capacity);
-            if (text.ToString() == title) matches.Add(hwnd);
+            string caption = text.ToString();
+            if (caption == title || caption == title + " - Google Chrome for Testing") {
+                matches.Add(hwnd);
+            }
             return true;
         }, IntPtr.Zero);
         return matches.ToArray();

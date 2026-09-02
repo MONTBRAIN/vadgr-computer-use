@@ -130,6 +130,15 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 
 ## Part D: pixel typing
 
+On WSL, invoke the committed foreground helper through a process-only execution
+policy override; it does not change the host policy:
+
+```bash
+FOCUS_SCRIPT=$(wslpath -w E2E/0.7.6/harness/focus_window.ps1)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
+  -ExactTitle "$TEST_TITLE"
+```
+
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | D01 | Native event-recording field focused. On WSL, give the isolated Windows test window a unique title and use `harness/focus_window.ps1 -ExactTitle` to verify its exact non-minimized HWND is foreground. | Run fast `type_text` and named-profile human `type_text` | Fast mode stays compatible; human mode emits ordered varied input and exact final text | Native event record with text removed; clear field | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |

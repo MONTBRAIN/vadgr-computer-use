@@ -73,6 +73,7 @@ def test_wsl_focus_helper_is_exact_and_refuses_minimized_windows():
     source = FOCUS_WINDOW.read_text(encoding="utf-8")
 
     assert "ExactVisibleTitle($ExactTitle)" in source
+    assert 'title + " - Google Chrome for Testing"' in source
     assert "$matches.Count -ne 1" in source
     assert "IsIconic($target)" in source
     assert "GetForegroundWindow() -ne $target" in source
