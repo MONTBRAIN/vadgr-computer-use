@@ -33,6 +33,7 @@ allowlist fix (issue #36).
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 import sys
 from pathlib import Path
@@ -143,6 +144,14 @@ _WIN_REGISTRY_KEYS = {
 }
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def windows_relay_path(windows_user: str | None = None) -> str:
     """The Windows-form path of the relay shim Chrome spawns on Windows (WSL).
 
@@ -152,10 +161,8 @@ def windows_relay_path(windows_user: str | None = None) -> str:
     (see ``computer_use/browser/winhost/``). Returns the ``C:\\...`` form
     written into the manifest + the registry.
     """
-    from computer_use.browser.bridge import windows_user_home_mnt
 
-    mnt = windows_user_home_mnt(windows_user) / "AppData" / "Local" / "vadgr-cua"
-    return _mnt_to_windows_path(mnt / "vadgr-cua-host.exe")
+    return _mnt_to_windows_path(relay_exe_dest(windows_user))
 
 
 def bundled_relay_exe() -> Path:
@@ -166,15 +173,23 @@ def bundled_relay_exe() -> Path:
     return Path(winhost.__file__).resolve().parent / "vadgr-cua-host.exe"
 
 
-def relay_exe_dest(windows_user: str | None = None) -> Path:
+def relay_exe_dest(
+    windows_user: str | None = None, *, src: Path | None = None
+) -> Path:
     """The ``/mnt/c`` destination the relay shim must live at for Windows Chrome
     to spawn it - the WSL view of
     ``%LOCALAPPDATA%\\vadgr-cua\\vadgr-cua-host.exe``."""
     from computer_use.browser.bridge import windows_user_home_mnt
 
+    source = Path(src) if src is not None else bundled_relay_exe()
     return (
         windows_user_home_mnt(windows_user)
-        / "AppData" / "Local" / "vadgr-cua" / "vadgr-cua-host.exe"
+        / "AppData"
+        / "Local"
+        / "vadgr-cua"
+        / "native-host"
+        / _file_sha256(source)
+        / "vadgr-cua-host.exe"
     )
 
 
@@ -187,13 +202,25 @@ def ensure_relay_exe(
     """Copy the packaged relay shim to the Windows-readable location the manifest
     points at, so the WSL bridge needs **no manual file placement**. Idempotent:
     copies only when the destination is missing or differs in size. Returns the
-    destination path.
+    destination path. The normal destination is content-addressed, so a live
+    Chrome process can keep its old executable open while registration moves
+    atomically to the new payload.
     """
     src = Path(src) if src is not None else bundled_relay_exe()
-    dest = Path(dest) if dest is not None else relay_exe_dest(windows_user)
+    explicit_destination = dest is not None
+    dest = Path(dest) if dest is not None else relay_exe_dest(windows_user, src=src)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if not dest.exists() or dest.stat().st_size != src.stat().st_size:
-        shutil.copy2(src, dest)
+    expected = _file_sha256(src)
+    if dest.exists() and _file_sha256(dest) == expected:
+        return dest
+    if dest.exists() and not explicit_destination:
+        raise OSError("the content-addressed Windows native host is corrupted")
+    temporary = dest.with_name(f".{dest.name}.tmp")
+    shutil.copy2(src, temporary)
+    if _file_sha256(temporary) != expected:
+        temporary.unlink(missing_ok=True)
+        raise OSError("the staged Windows native host failed integrity verification")
+    temporary.replace(dest)
     return dest
 
 
@@ -340,10 +367,16 @@ def ensure_registered(
         )
         # On WSL the manifest `path` must point at the Windows relay shim
         # (a .exe Chrome spawns on Windows); the launcher script is irrelevant.
-        host = host_path or windows_relay_path(windows_user=windows_user)
         # Place the packaged relay shim where the manifest points - no manual copy.
         if host_path is None:
-            (relay_installer or ensure_relay_exe)(windows_user=windows_user)
+            installed = (relay_installer or ensure_relay_exe)(windows_user=windows_user)
+            host = (
+                _mnt_to_windows_path(installed)
+                if isinstance(installed, Path)
+                else windows_relay_path(windows_user=windows_user)
+            )
+        else:
+            host = host_path
         written = install_manifests(host, targets)
         reg = registry_writer or reg_exe_writer
         for browser, dest in targets.items():
