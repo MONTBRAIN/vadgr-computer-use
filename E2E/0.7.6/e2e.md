@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.6 implementation:**
 > `feature/0.7.6-browser-reliability` at product commit
-> `501f0ced02b74231cf26f0c0e4efa1f5d650819d`.
+> `a29456a75e8243b879ffd08436fc47b2628570b3`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
