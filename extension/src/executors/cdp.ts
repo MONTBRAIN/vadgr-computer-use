@@ -483,13 +483,17 @@ export class CdpExecutor implements Executor {
       key: value,
       code,
       modifiers: shifted ? SHIFT : 0,
-      text: value,
-      unmodifiedText: value,
       windowsVirtualKeyCode: /^[a-z0-9]$/.test(physical)
         ? physical.toUpperCase().charCodeAt(0)
         : undefined,
     };
-    await send("Input.dispatchKeyEvent", { type: "keyDown", ...base });
+    // A printable key's default insertion is not reliable in a background
+    // Chromium window. Keep the trusted key lifecycle, and deliver the text as
+    // one target-directed CDP unit between keydown and keyup. This avoids both
+    // an OS-focus dependency and any whole-string retry that could duplicate a
+    // partially accepted value.
+    await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
+    await send("Input.insertText", { text: value });
     await send("Input.dispatchKeyEvent", {
       type: "keyUp",
       key: value,
