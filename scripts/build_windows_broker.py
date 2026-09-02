@@ -53,6 +53,13 @@ def inventory(root: Path) -> list[dict[str, object]]:
     ]
 
 
+def write_json(path: Path, value: object) -> None:
+    """Write canonical cross-platform JSON with LF line endings."""
+    with path.open("w", encoding="utf-8", newline="\n") as file:
+        json.dump(value, file, indent=2, sort_keys=True)
+        file.write("\n")
+
+
 def build(source_commit: str, output: Path) -> None:
     if sys.platform != "win32":
         raise SystemExit("the Windows broker must be built on Windows")
@@ -164,10 +171,7 @@ def build(source_commit: str, output: Path) -> None:
             "archive_size": archive.stat().st_size,
             "files": files,
         }
-        (output / MANIFEST_NAME).write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_json(output / MANIFEST_NAME, manifest)
         sbom = {
             "spdxVersion": "SPDX-2.3",
             "dataLicense": "CC0-1.0",
@@ -214,10 +218,7 @@ def build(source_commit: str, output: Path) -> None:
                 },
             ],
         }
-        (output / SBOM_NAME).write_text(
-            json.dumps(sbom, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        write_json(output / SBOM_NAME, sbom)
 
 
 def main() -> int:
