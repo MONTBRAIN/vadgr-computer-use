@@ -117,19 +117,15 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
       .filter((call) => call.method === "Input.dispatchKeyEvent")
       .map((call) => call.params.type);
     expect(events.slice(-4)).toEqual([
-      "keyDown", "keyUp", "keyDown", "keyUp",
+      "rawKeyDown", "keyUp", "rawKeyDown", "keyUp",
     ]);
     const printableDowns = calls.filter(
-      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "keyDown",
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "rawKeyDown",
     );
-    expect(printableDowns.slice(-2).map((call) => ({
-      text: call.params.text,
-      unmodifiedText: call.params.unmodifiedText,
-    }))).toEqual([
-      { text: "a", unmodifiedText: "a" },
-      { text: "b", unmodifiedText: "b" },
-    ]);
-    expect(calls.some((call) => call.method === "Input.insertText")).toBe(false);
+    expect(printableDowns.slice(-2).map((call) => call.params.key)).toEqual(["a", "b"]);
+    expect(
+      calls.filter((call) => call.method === "Input.insertText").map((call) => call.params),
+    ).toEqual([{ text: "a" }, { text: "b" }]);
     const reads = calls.filter((call) => call.method === "Runtime.evaluate");
     expect(reads.some((call) => String(call.params.expression).includes(".trim()"))).toBe(false);
     expect(reads.some((call) => String(call.params.expression).includes("node.shadowRoot"))).toBe(true);
@@ -188,15 +184,14 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     });
 
     const keyDown = calls.find(
-      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "keyDown" && call.params.key === "A",
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "rawKeyDown" && call.params.key === "A",
     );
     expect(keyDown?.params).toMatchObject({
       code: "KeyA",
       modifiers: 8,
-      text: "A",
-      unmodifiedText: "A",
       windowsVirtualKeyCode: 65,
     });
+    expect(calls.find((call) => call.method === "Input.insertText")?.params).toEqual({ text: "A" });
   });
 });
 
