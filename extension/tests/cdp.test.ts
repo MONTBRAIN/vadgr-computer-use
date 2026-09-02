@@ -83,8 +83,18 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     const events = calls
       .filter((call) => call.method === "Input.dispatchKeyEvent")
       .map((call) => call.params.type);
-    expect(events.slice(-6)).toEqual([
-      "keyDown", "char", "keyUp", "keyDown", "char", "keyUp",
+    expect(events.slice(-4)).toEqual([
+      "keyDown", "keyUp", "keyDown", "keyUp",
+    ]);
+    const printableDowns = calls.filter(
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "keyDown",
+    );
+    expect(printableDowns.slice(-2).map((call) => ({
+      text: call.params.text,
+      unmodifiedText: call.params.unmodifiedText,
+    }))).toEqual([
+      { text: "a", unmodifiedText: "a" },
+      { text: "b", unmodifiedText: "b" },
     ]);
     expect(calls.some((call) => call.method === "Input.insertText")).toBe(false);
     const reads = calls.filter((call) => call.method === "Runtime.evaluate");
@@ -135,7 +145,13 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     const keyDown = calls.find(
       (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "keyDown" && call.params.key === "A",
     );
-    expect(keyDown?.params).toMatchObject({ code: "KeyA", modifiers: 8, windowsVirtualKeyCode: 65 });
+    expect(keyDown?.params).toMatchObject({
+      code: "KeyA",
+      modifiers: 8,
+      text: "A",
+      unmodifiedText: "A",
+      windowsVirtualKeyCode: 65,
+    });
   });
 });
 
