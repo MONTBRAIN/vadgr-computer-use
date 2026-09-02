@@ -1,7 +1,8 @@
 # 0.7.6 - browser reliability and human-paced typing: e2e runbook
 
 > **vadgr-computer-use 0.7.6 implementation:**
-> `feature/0.7.6-browser-reliability at <exact pushed head>`.
+> `feature/0.7.6-browser-reliability` at product commit
+> `dcc691e28fdd79338cd57d33dd4564af28a5871b`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
