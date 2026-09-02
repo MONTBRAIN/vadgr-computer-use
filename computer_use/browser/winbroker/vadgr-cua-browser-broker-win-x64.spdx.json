@@ -1,0 +1,42 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "creationInfo": {
+    "created": "2026-09-01T00:00:00Z",
+    "creators": [
+      "Tool: scripts/build_windows_broker.py"
+    ]
+  },
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://github.com/MONTBRAIN/vadgr-computer-use/sbom/0.7.6/17d0f04e8c7e72bc1f8fbbdfa1b72e372b7c3dcff0ccdf14b25dcba27a5b9404",
+  "name": "vadgr-cua-browser-broker-0.7.6-windows-x64",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-vadgr-cua",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "name": "vadgr-computer-use",
+      "versionInfo": "0.7.6"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-CPython",
+      "downloadLocation": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260825",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Python-2.0",
+      "licenseDeclared": "Python-2.0",
+      "name": "CPython",
+      "versionInfo": "3.12.14"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-PyInstaller",
+      "downloadLocation": "https://pypi.org/project/pyinstaller/6.22.2/",
+      "filesAnalyzed": false,
+      "licenseConcluded": "GPL-2.0-only WITH Bootloader-exception",
+      "licenseDeclared": "GPL-2.0-only WITH Bootloader-exception",
+      "name": "PyInstaller",
+      "versionInfo": "6.22.2"
+    }
+  ],
+  "spdxVersion": "SPDX-2.3"
+}
