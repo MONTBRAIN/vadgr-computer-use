@@ -32,8 +32,8 @@ allowlist fix (issue #36).
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -184,6 +184,20 @@ def relay_exe_dest(
     source = Path(src) if src is not None else bundled_relay_exe()
     return (
         windows_user_home_mnt(windows_user)
+        / "AppData"
+        / "Local"
+        / "vadgr-cua"
+        / "native-host"
+        / _file_sha256(source)
+        / "vadgr-cua-host.exe"
+    )
+
+
+def native_windows_relay_dest(*, src: Path | None = None) -> Path:
+    """Content-addressed native-host destination for a Windows installation."""
+    source = Path(src) if src is not None else bundled_relay_exe()
+    return (
+        Path.home()
         / "AppData"
         / "Local"
         / "vadgr-cua"
@@ -387,11 +401,23 @@ def ensure_registered(
         return {"host_path": host, "browsers": written, "platform": plat}
 
     targets = paths if paths is not None else manifest_paths(plat)
-    host = host_path or write_launcher(platform=plat)
-    written = install_manifests(host, targets)
     if plat.startswith("win"):
+        if host_path is None:
+            source = bundled_relay_exe()
+            destination = native_windows_relay_dest(src=source)
+            installed = (relay_installer or ensure_relay_exe)(
+                src=source, dest=destination
+            )
+            host = str(installed if isinstance(installed, Path) else destination)
+        else:
+            host = host_path
+        written = install_manifests(host, targets)
         for browser, dest in targets.items():
             register_windows_registry(dest, [browser], writer=registry_writer)
+        return {"host_path": host, "browsers": written, "platform": plat}
+
+    host = host_path or write_launcher(platform=plat)
+    written = install_manifests(host, targets)
     return {"host_path": host, "browsers": written, "platform": plat}
 
 

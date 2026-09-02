@@ -196,6 +196,30 @@ class TestSelfRegister:
         assert calls, "Windows registration must write a registry key"
         assert all(v == str(chrome) for _, v in calls)
 
+    def test_ensure_registered_windows_installs_content_addressed_exe(self, tmp_path, monkeypatch):
+        source = tmp_path / "package" / "vadgr-cua-host.exe"
+        source.parent.mkdir()
+        source.write_bytes(b"NATIVE-HOST")
+        home = tmp_path / "owner"
+        manifest = tmp_path / "manifest" / "com.vadgr.cua.json"
+        registry: list[tuple[str, str]] = []
+        monkeypatch.setattr(S, "bundled_relay_exe", lambda: source)
+        monkeypatch.setattr(S.Path, "home", lambda: home)
+
+        result = S.ensure_registered(
+            paths={"chrome": manifest},
+            platform="win32",
+            registry_writer=lambda key, value: registry.append((key, value)),
+        )
+
+        expected = S.native_windows_relay_dest(src=source)
+        assert result["host_path"] == str(expected)
+        assert expected.read_bytes() == b"NATIVE-HOST"
+        assert expected.parent.name == S._file_sha256(source)
+        assert json.loads(manifest.read_text())["path"] == str(expected)
+        assert registry and registry[0][1] == str(manifest)
+        assert not (home / ".vadgr-cua" / "host.bat").exists()
+
 
 class TestWSLRegistration:
     """On WSL, cua-in-Linux must register to the *Windows* Chrome it drives:

@@ -14,14 +14,16 @@ type Listener = (...args: any[]) => void;
 
 function fakePort() {
   const disconnectListeners: Listener[] = [];
-  return {
+  const port = {
     onMessage: { addListener: vi.fn() },
     onDisconnect: {
       addListener: (fn: Listener) => disconnectListeners.push(fn),
     },
     postMessage: vi.fn(),
     fireDisconnect: () => disconnectListeners.forEach((fn) => fn()),
+    disconnect: vi.fn(() => disconnectListeners.forEach((fn) => fn())),
   };
+  return port;
 }
 
 function chromeStub() {
@@ -194,5 +196,24 @@ describe("offscreen heartbeat message", () => {
     ports[0].fireDisconnect();
     messageListeners.forEach((fn) => fn({ type: "something-else" }));
     expect(connectNative).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes an existing native port and reconnects when it became stale", async () => {
+    vi.useFakeTimers();
+    try {
+      const { connectNative, ports, messageListeners } = await importBackground();
+      await vi.runAllTicks();
+      ports[0].postMessage.mockImplementationOnce(() => {
+        throw new Error("Attempting to use a disconnected port object");
+      });
+
+      messageListeners.forEach((fn) => fn({ type: "keepalive" }));
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(connectNative).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
