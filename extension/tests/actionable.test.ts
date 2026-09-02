@@ -121,6 +121,26 @@ describe("receivesEvents", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects a positive-z overlay when a hidden target returns no hit", () => {
+    document.body.innerHTML = `<input id="a"><div id="cover" style="position:absolute;z-index:20"></div>`;
+    const el = document.querySelector("#a") as HTMLElement;
+    const cover = document.querySelector("#cover") as HTMLElement;
+    vi.stubGlobal("chrome", { runtime: { id: "test-extension" } });
+    vi.spyOn(document.documentElement, "getBoundingClientRect").mockReturnValue(
+      { height: 0, width: 0 } as DOMRect,
+    );
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+      { width: 100, height: 20, left: 10, right: 110, top: 10, bottom: 30 } as DOMRect,
+    );
+    vi.spyOn(cover, "getBoundingClientRect").mockReturnValue(
+      { width: 120, height: 40, left: 0, right: 120, top: 0, bottom: 40 } as DOMRect,
+    );
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
+    expect(receivesEvents(el)).toBe(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("true when the hit-test can't resolve (null) - occluded/throttled owned window, not a DOM overlay", () => {
     document.body.innerHTML = `<input id="a">`;
     const el = document.querySelector("#a") as HTMLElement;
