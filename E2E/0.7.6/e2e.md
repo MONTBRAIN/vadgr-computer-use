@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.6 implementation:**
 > `feature/0.7.6-browser-reliability` at product commit
-> `58f8e98f8962771102e16f4d3941b86e6b7cc7d5`.
+> `22785699e272acc23b0c955deabaccfbbb8525f2`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
@@ -122,8 +122,11 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 |---|---|---|---|---|---|---|---|---|
 | C01 | Owned target on the harness page | Click and type through one and nested open shadow roots | Each mutation succeeds and the DOM event record confirms the exact target and value | Client JSON and redacted event metadata; clear fields | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
 | C02 | C01 targets covered by document and nested-shadow overlays | Repeat click and type | Each action fails as covered and no page state changes | Error results and unchanged DOM record; remove overlays | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
-| C03 | Instrumented plain field | Run `fill`, fast `type`, and `type(human=true)` | Fill and fast type keep bulk behavior; human type emits ordered key events with varied intervals and exact read-back | Event kinds, intervals, counts, and hashes only; never field text | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
+| C03 | Instrumented plain field | Run `fill`, fast `type`, and `type(human=true)` | Fill and fast type keep bulk behavior; human type emits ordered page events with varied intervals and exact read-back; evidence makes no `isTrusted` claim | Event kinds, trust flags, intervals, counts, and hashes only; never field text | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
 | C04 | Debounce, typeahead, validation, counter, Unicode, timeout, cancellation, and mismatch controls | Drive each human-typing branch while a second client uses another window | Intermediate states occur; the other client stays responsive; invalid and deadline cases mutate nothing; fallback is counted; cancellation skips submit; mismatch never duplicates the whole string | Both streams and redacted event metadata; reset page | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
+| C05 | Owned unfocused window with one selected decoy tab and an exact leased harness tab where `focused=false`, `active=false`, and `is_current=true` | Without `tabs.switch` or `windows.focus`, run `wait_for`, `query`, `read_text`, `get_attribute`, DOM `click`, fast and human `type`, `fill`, `select`, `scroll`, `element_state`, `clear` and `get_value` against the leased tab | Each content operation reaches only the exact leased tab; paced typing has exact read-back; state remains false/false/true; the decoy is unchanged | Both tab states before and after, redacted event metadata and decoy hash; reset the harness and close only the owned window | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
+| C06 | C05 state plus state-bearing pointer, reveal, focus, file-input, dialog and semantic controls | Run trusted `click`, `hover`, `focus`, `blur`, `upload`, `snapshot`, `accessibility_tree`, `eval`, navigation, reload, back and forward; arm the dialog on the leased tab while a decoy target also emits one | Every operation reaches the leased tab, carries an independent state/read-back oracle, ignores the decoy dialog and preserves false/false/true; cookie operations are excluded because they are profile/origin scoped | Before/after target state, state-bearing results, temporary upload hash and decoy hash; remove the temporary file and close only the owned window | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
+| C07 | C05 state, then separate discarded, frozen, browser-internal, Web Store and denied-file targets | Call trusted `press` on the inactive harness and one page operation on each unavailable target; do not activate any target | `press` returns `inactive_tab_trusted_keyboard_unsupported`; unavailable targets return `target_discarded`, `target_frozen` or `target_restricted`; no action reports success, mutates a decoy, switches a tab or focuses a window | Exact error codes and target state before/after; close only owned test windows | not run: awaits local execution | not run: remote host | not run: remote host | not run: remote host |
 
 ## Part D: pixel typing
 
@@ -174,7 +177,9 @@ after cleanup.
 ## Findings
 
 - WSL human browser typing initially returned `typing_mismatch` for plain and
-  nested-shadow inputs. Current Chromium required printable text on the CDP
-  `keyDown` event. Commit `3cd80078dece8b6cb410431ca646f8285fef672d`
-  fixed the event shape and added the regression test. The live rerun matched
-  the generated value by length and SHA-256 on both inputs.
+  nested-shadow inputs. A later strict inactive-tab diagnostic proved that CDP
+  keyboard input could pass on a selected background-window tab yet be
+  discarded when the exact target tab itself was inactive. The repaired path
+  sends each planned unit through that tab's content channel and verifies every
+  intermediate value. A preliminary live rerun passed with `focused=false`,
+  `active=false`, and `is_current=true`; the sealed C05 cell remains required.
