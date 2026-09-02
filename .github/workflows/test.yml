@@ -32,7 +32,7 @@ jobs:
           python scripts/check_windows_broker_bundle.py
           cd computer_use/browser/winhost
           go test ./...
-          GOOS=windows GOARCH=amd64 go build -trimpath \
+          GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath \
             -ldflags='-s -w -buildid=' -o "$RUNNER_TEMP/vadgr-cua-host.exe" .
           cmp "$RUNNER_TEMP/vadgr-cua-host.exe" vadgr-cua-host.exe
 
