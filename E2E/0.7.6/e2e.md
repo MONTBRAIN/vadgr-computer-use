@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.6 implementation:**
 > `feature/0.7.6-browser-reliability` at product commit
-> `ae13f4b7f938ee44fa820a5516bfbc7a7618444b`.
+> `3cd80078dece8b6cb410431ca646f8285fef672d`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
@@ -173,4 +173,8 @@ after cleanup.
 
 ## Findings
 
-None recorded before execution.
+- WSL human browser typing initially returned `typing_mismatch` for plain and
+  nested-shadow inputs. Current Chromium required printable text on the CDP
+  `keyDown` event. Commit `3cd80078dece8b6cb410431ca646f8285fef672d`
+  fixed the event shape and added the regression test. The live rerun matched
+  the generated value by length and SHA-256 on both inputs.
