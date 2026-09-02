@@ -30,6 +30,8 @@ def test_lifecycle_row_matches_only_the_exact_url():
 
     assert "item.querySelector('.tab-url-cell')" in expression
     assert '=== "http://127.0.0.1/page.html?case=exact"' in expression
+    assert "await tab.updateTable_()" in expression
+    assert "await tab.updateComplete" in expression
     assert "Page.bringToFront" not in LIFECYCLE.read_text(encoding="utf-8")
     assert "Target.activateTarget" not in LIFECYCLE.read_text(encoding="utf-8")
 
