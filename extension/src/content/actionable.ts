@@ -79,6 +79,45 @@ export function composedContains(ancestor: Element, node: Element): boolean {
   return false;
 }
 
+function positiveStackingCoverAtPoint(
+  target: HTMLElement,
+  x: number,
+  y: number,
+): boolean {
+  const view = target.ownerDocument.defaultView || window;
+  const targetZ = Number.parseInt(view.getComputedStyle(target).zIndex, 10) || 0;
+  const roots: (Document | ShadowRoot)[] = [target.ownerDocument];
+  for (let index = 0; index < roots.length; index += 1) {
+    for (const candidate of Array.from(roots[index].querySelectorAll("*"))) {
+      const element = candidate as HTMLElement;
+      if (element.shadowRoot?.mode === "open") roots.push(element.shadowRoot);
+      if (
+        element === target ||
+        composedContains(target, element) ||
+        composedContains(element, target)
+      ) continue;
+      const style = view.getComputedStyle(element);
+      if (
+        style.pointerEvents === "none" ||
+        style.display === "none" ||
+        style.visibility === "hidden"
+      ) continue;
+      const candidateZ = Number.parseInt(style.zIndex, 10);
+      if (!Number.isFinite(candidateZ) || candidateZ <= targetZ) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      ) return true;
+    }
+  }
+  return false;
+}
+
 // Receives events = the element is the hit target at its own centre, not behind an
 // overlay. Skipped without live layout (can't hit-test a no-layout DOM).
 export function receivesEvents(el: HTMLElement): boolean {
@@ -96,7 +135,13 @@ export function receivesEvents(el: HTMLElement): boolean {
   // DOM overlay is blocking it. Only a DIFFERENT, unrelated element at the centre
   // (the hollow-mirror trap) is a real block; that always returns that element,
   // never null. So don't gate on a null hit.
-  if (hit === null) return true;
+  if (hit === null) {
+    return !positiveStackingCoverAtPoint(
+      el,
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+  }
   return composedContains(el, hit) || composedContains(hit, el);
 }
 
