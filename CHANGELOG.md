@@ -33,7 +33,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 - Deliver human-paced browser keystrokes through the same trusted CDP key-event
   path as fast typing, including the event text required for editable controls;
-  retain the actionability gate so covered inputs reject those trusted events.
+  retain the actionability gate so covered inputs reject those trusted events,
+  and emulate page focus for owned background targets without foregrounding
+  their operating-system windows.
 - Keep native Windows auto-registration on the packaged, content-addressed
   native-host executable. Starting a Windows MCP client no longer replaces the
   working Chrome registration with a Python batch launcher.

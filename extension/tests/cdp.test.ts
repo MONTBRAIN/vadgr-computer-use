@@ -86,9 +86,10 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     ).rejects.toThrow(/covered/);
     expect(calls.some((call) => call.method === "Input.dispatchKeyEvent")).toBe(false);
     expect(calls.some((call) => String(call.params.expression).includes(".focus()"))).toBe(false);
+    expect(calls.some((call) => call.method === "Emulation.setFocusEmulationEnabled")).toBe(false);
   });
 
-  it("human type dispatches ordered key events and returns timing metadata", async () => {
+  it("human type emulates page focus without foregrounding the window", async () => {
     const { send, calls } = fakeSend("ab");
     const r: any = await exec(send).execute("type", {
       selector: "#b",
@@ -132,6 +133,16 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     const reads = calls.filter((call) => call.method === "Runtime.evaluate");
     expect(reads.some((call) => String(call.params.expression).includes(".trim()"))).toBe(false);
     expect(reads.some((call) => String(call.params.expression).includes("node.shadowRoot"))).toBe(true);
+    const focusEmulation = calls.filter(
+      (call) => call.method === "Emulation.setFocusEmulationEnabled",
+    );
+    expect(focusEmulation.map((call) => call.params)).toEqual([
+      { enabled: true },
+      { enabled: false },
+    ]);
+    expect(calls.indexOf(focusEmulation[0])).toBeLessThan(
+      calls.findIndex((call) => String(call.params.expression).includes(".focus()")),
+    );
   });
 
   it("cancels between units and never submits", async () => {
@@ -159,6 +170,8 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
       (call) => call.method === "Input.dispatchKeyEvent" && call.params.key === "Enter",
     );
     expect(enter).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "Emulation.setFocusEmulationEnabled").at(-1)?.params)
+      .toEqual({ enabled: false });
   });
 
   it("uses the physical key code and Shift modifier for uppercase text", async () => {
