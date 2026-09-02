@@ -464,18 +464,20 @@ export class CdpExecutor implements Executor {
       key: value,
       code,
       modifiers: shifted ? SHIFT : 0,
+      text: value,
+      unmodifiedText: value,
       windowsVirtualKeyCode: /^[a-z0-9]$/.test(physical)
         ? physical.toUpperCase().charCodeAt(0)
         : undefined,
     };
     await send("Input.dispatchKeyEvent", { type: "keyDown", ...base });
     await send("Input.dispatchKeyEvent", {
-      type: "char",
+      type: "keyUp",
       key: value,
       code,
-      text: value,
+      modifiers: shifted ? SHIFT : 0,
+      windowsVirtualKeyCode: base.windowsVirtualKeyCode,
     });
-    await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
   }
 
   private async focus(send: CdpSend, selector: string) {
