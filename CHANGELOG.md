@@ -31,6 +31,13 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Deliver human-paced browser keystrokes through the same trusted CDP key-event
+  path as fast typing, including the event text required for editable controls.
+- Keep native Windows auto-registration on the packaged, content-addressed
+  native-host executable. Starting a Windows MCP client no longer replaces the
+  working Chrome registration with a Python batch launcher.
+- Confirm a native port only after the broker hello arrives, and probe an
+  apparently open port from the MV3 heartbeat so a failed host can reconnect.
 - Distinguish missing native-host setup, a missing extension, a disabled
   extension, an enabled but sleeping worker, and a bounded recovery timeout.
 - Stop returning typed input in the pixel tool result. The result now reports
