@@ -90,6 +90,10 @@
     function overlay(parent) {
       const item = document.createElement("div");
       item.className = "overlay";
+      // The fixture also inserts overlays inside a shadow root, where the
+      // document stylesheet cannot apply. Keep the geometry on the node so
+      // both light-DOM and shadow-DOM coverage exercise the same obstruction.
+      item.style.cssText = "position:absolute;inset:.5rem;z-index:20;background:rgb(30 30 30 / 70%)";
       item.setAttribute("data-fixture-overlay", "true");
       parent.append(item);
     }
