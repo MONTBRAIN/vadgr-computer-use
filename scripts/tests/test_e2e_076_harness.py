@@ -5,6 +5,7 @@ from pathlib import Path
 
 PAGE = Path(__file__).resolve().parents[2] / "E2E" / "0.7.6" / "harness" / "page.html"
 LIFECYCLE = PAGE.with_name("lifecycle_control.py")
+FOCUS_WINDOW = PAGE.with_name("focus_window.ps1")
 
 
 def _lifecycle():
@@ -66,3 +67,13 @@ def test_lifecycle_row_waits_for_discard_table_population():
 
     assert devtools.attempts == 2
     assert result["lifecycle"] == "hidden"
+
+
+def test_wsl_focus_helper_is_exact_and_refuses_minimized_windows():
+    source = FOCUS_WINDOW.read_text(encoding="utf-8")
+
+    assert "ExactVisibleTitle($ExactTitle)" in source
+    assert "$matches.Count -ne 1" in source
+    assert "IsIconic($target)" in source
+    assert "GetForegroundWindow() -ne $target" in source
+    assert "ShowWindow" not in source
