@@ -29,6 +29,38 @@ def test_lifecycle_row_matches_only_the_exact_url():
     )
 
     assert "item.querySelector('.tab-url-cell')" in expression
-    assert "=== \"http://127.0.0.1/page.html?case=exact\"" in expression
+    assert '=== "http://127.0.0.1/page.html?case=exact"' in expression
     assert "Page.bringToFront" not in LIFECYCLE.read_text(encoding="utf-8")
     assert "Target.activateTarget" not in LIFECYCLE.read_text(encoding="utf-8")
+
+
+def test_lifecycle_row_waits_for_discard_table_population():
+    lifecycle = _lifecycle()
+
+    class DelayedTable:
+        attempts = 0
+
+        @staticmethod
+        def targets():
+            return [
+                {
+                    "type": "page",
+                    "url": "chrome://discards/",
+                    "title": "Discards",
+                }
+            ]
+
+        def evaluate(self, target, expression):
+            del target, expression
+            self.attempts += 1
+            if self.attempts == 1:
+                raise lifecycle.LifecycleSetupError(
+                    "Error: exact lifecycle target row is unavailable"
+                )
+            return {"url": "http://127.0.0.1/page.html", "lifecycle": "hidden"}
+
+    devtools = DelayedTable()
+    result = lifecycle.lifecycle_row(devtools, "http://127.0.0.1/page.html", timeout=1)
+
+    assert devtools.attempts == 2
+    assert result["lifecycle"] == "hidden"
