@@ -19,6 +19,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,12 @@ import (
 )
 
 type discovery struct {
+	Port  int    `json:"port"`
+	Token string `json:"token"`
+}
+
+type brokerEndpoint struct {
+	Host  string `json:"host"`
 	Port  int    `json:"port"`
 	Token string `json:"token"`
 }
@@ -68,6 +75,62 @@ func discoveryPath() string {
 	return filepath.Join(base, "vadgr-cua", "browser.port")
 }
 
+func brokerEndpointPath() string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		base = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
+	}
+	return filepath.Join(base, "vadgr-cua", "browser-broker.json")
+}
+
+func brokerProxy(input io.Reader, output io.Writer) int {
+	var endpoint brokerEndpoint
+	raw, err := os.ReadFile(brokerEndpointPath())
+	if err != nil || json.Unmarshal(raw, &endpoint) != nil {
+		return 1
+	}
+	if endpoint.Host != "127.0.0.1" || endpoint.Port < 1 || endpoint.Port > 65535 {
+		return 1
+	}
+	conn, err := net.DialTimeout(
+		"tcp",
+		fmt.Sprintf("127.0.0.1:%d", endpoint.Port),
+		5*time.Second,
+	)
+	if err != nil {
+		return 1
+	}
+	defer conn.Close()
+	bufferedInput := bufio.NewReaderSize(input, 64*1024)
+	line, err := bufferedInput.ReadBytes('\n')
+	if err != nil || len(line) > 1024*1024 {
+		return 1
+	}
+	var hello map[string]any
+	if json.Unmarshal(line, &hello) != nil {
+		return 1
+	}
+	hello["token"] = endpoint.Token
+	authenticated, err := json.Marshal(hello)
+	if err != nil {
+		return 1
+	}
+	authenticated = append(authenticated, '\n')
+	if _, err := conn.Write(authenticated); err != nil {
+		return 1
+	}
+	done := make(chan struct{}, 1)
+	go func() {
+		_, _ = io.Copy(conn, bufferedInput)
+		if tcp, ok := conn.(*net.TCPConn); ok {
+			_ = tcp.CloseWrite()
+		}
+		done <- struct{}{}
+	}()
+	_, _ = io.Copy(output, conn)
+	return 0
+}
+
 func readDiscovery() (discovery, error) {
 	var d discovery
 	raw, err := os.ReadFile(discoveryPath())
@@ -96,6 +159,9 @@ func dial(d discovery) (net.Conn, error) {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "broker-proxy" {
+		os.Exit(brokerProxy(os.Stdin, os.Stdout))
+	}
 	d, err := readDiscovery()
 	if err != nil {
 		emitError("cua is not running (no browser discovery file); start cua first")

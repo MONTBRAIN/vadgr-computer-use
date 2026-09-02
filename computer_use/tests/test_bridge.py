@@ -25,6 +25,7 @@ from computer_use.bridge.protocol import (
 from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.types import ScreenState
+from computer_use.core.typing import TypingPlan, TypingUnit
 
 
 def _make_jpeg_b64(width=100, height=100):
@@ -191,6 +192,40 @@ class TestBridgeClient:
         client = BridgeClient(host="127.0.0.1", port=port)
         assert client.handshake() is None
 
+    def test_retry_reuses_request_id_so_daemon_can_deduplicate(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen(2)
+        port = server.getsockname()[1]
+        seen = []
+
+        def receive(conn):
+            header = conn.recv(HEADER_SIZE)
+            length = struct.unpack("!I", header)[0]
+            request = json.loads(conn.recv(length))
+            seen.append(request["id"])
+            return request
+
+        def serve():
+            first, _ = server.accept()
+            receive(first)
+            first.close()
+            second, _ = server.accept()
+            request = receive(second)
+            payload = json.dumps(
+                {"id": request["id"], "ok": True, "result": {"done": True}}
+            ).encode()
+            second.sendall(struct.pack("!I", len(payload)) + payload)
+            second.close()
+
+        threading.Thread(target=serve, daemon=True).start()
+        client = BridgeClient(host="127.0.0.1", port=port)
+        assert client.call("click", {"x": 1, "y": 2}) == {"done": True}
+        assert len(seen) == 2 and seen[0] == seen[1]
+        client.close()
+        server.close()
+
 
 class TestBridgeScreenCapture:
     def _make_client(self, result):
@@ -200,14 +235,16 @@ class TestBridgeScreenCapture:
 
     def test_capture_full(self):
         b64 = _make_jpeg_b64(1920, 1080)
-        client = self._make_client({
-            "width": 1920,
-            "height": 1080,
-            "offset_x": 0,
-            "offset_y": 0,
-            "scale_factor": 1.25,
-            "image_b64": b64,
-        })
+        client = self._make_client(
+            {
+                "width": 1920,
+                "height": 1080,
+                "offset_x": 0,
+                "offset_y": 0,
+                "scale_factor": 1.25,
+                "image_b64": b64,
+            }
+        )
         cap = BridgeScreenCapture(client)
         state = cap.capture_full()
 
@@ -221,10 +258,13 @@ class TestBridgeScreenCapture:
 
     def test_capture_full_decodes_jpeg(self):
         b64 = _make_jpeg_b64(800, 600)
-        client = self._make_client({
-            "width": 800, "height": 600,
-            "image_b64": b64,
-        })
+        client = self._make_client(
+            {
+                "width": 800,
+                "height": 600,
+                "image_b64": b64,
+            }
+        )
         cap = BridgeScreenCapture(client)
         state = cap.capture_full()
         # Verify it's valid JPEG
@@ -233,10 +273,15 @@ class TestBridgeScreenCapture:
 
     def test_capture_region(self):
         from computer_use.core.types import Region
+
         b64 = _make_jpeg_b64(200, 100)
-        client = self._make_client({
-            "width": 200, "height": 100, "image_b64": b64,
-        })
+        client = self._make_client(
+            {
+                "width": 200,
+                "height": 100,
+                "image_b64": b64,
+            }
+        )
         cap = BridgeScreenCapture(client)
         state = cap.capture_region(Region(10, 20, 200, 100))
         assert state.width == 200
@@ -292,13 +337,28 @@ class TestBridgeActionExecutor:
         exe.type_text("hello")
         client.call.assert_called_once_with("type_text", {"text": "hello"}, timeout=10.0)
 
+    def test_human_plan_uses_unit_events_and_counts_fallback(self):
+        client = self._make_client()
+        client.call.side_effect = ({"fallback": False}, {"fallback": True})
+        exe = BridgeActionExecutor(client)
+        plan = TypingPlan(
+            True,
+            "test",
+            40,
+            (TypingUnit("a", 0), TypingUnit("é", 0)),
+            0,
+        )
+        assert exe.type_text_plan(plan) == 1
+        assert [call.args[0] for call in client.call.call_args_list] == [
+            "type_text_unit",
+            "type_text_unit",
+        ]
+
     def test_key_press(self):
         client = self._make_client()
         exe = BridgeActionExecutor(client)
         exe.key_press(["ctrl", "c"])
-        client.call.assert_called_once_with(
-            "key_press", {"keys": ["ctrl", "c"]}, timeout=10.0
-        )
+        client.call.assert_called_once_with("key_press", {"keys": ["ctrl", "c"]}, timeout=10.0)
 
     def test_scroll(self):
         client = self._make_client()
@@ -413,7 +473,7 @@ class TestWSL2BackendBridgeFallbackWiring:
         backend._bridge = MagicMock()
 
         executor = backend.get_action_executor()
-        assert hasattr(executor, '_fallback')
+        assert hasattr(executor, "_fallback")
         assert isinstance(executor._fallback, WSL2ActionExecutor)
 
     def test_no_bridge_returns_ps_executor(self):

@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { CdpExecutor, type CdpSend } from "../src/executors/cdp";
+import { cancelTyping } from "../src/typing-cancellation";
 
 function fakeSend(readValue: unknown, focusFound = true) {
   const calls: Array<{ method: string; params: any }> = [];
@@ -53,6 +54,88 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     await expect(exec(send).execute("fill", { selector: "#missing", text: "x" })).rejects.toThrow(
       /no element/i,
     );
+  });
+
+  it("human type dispatches ordered key events and returns timing metadata", async () => {
+    const { send, calls } = fakeSend("ab");
+    const r: any = await exec(send).execute("type", {
+      selector: "#b",
+      text: "ab",
+      clear: true,
+      human: true,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [
+          { text: "a", delay_before_ms: 0 },
+          { text: "b", delay_before_ms: 0 },
+        ],
+      },
+    });
+    expect(r).toMatchObject({
+      human: true,
+      timing_profile: "us_adult_transcription_2026",
+      nominal_wpm: 38,
+      units: 2,
+      fallback_units: 0,
+      ok: true,
+    });
+    const events = calls
+      .filter((call) => call.method === "Input.dispatchKeyEvent")
+      .map((call) => call.params.type);
+    expect(events.slice(-6)).toEqual([
+      "keyDown", "char", "keyUp", "keyDown", "char", "keyUp",
+    ]);
+    expect(calls.some((call) => call.method === "Input.insertText")).toBe(false);
+    const reads = calls.filter((call) => call.method === "Runtime.evaluate");
+    expect(reads.some((call) => String(call.params.expression).includes(".trim()"))).toBe(false);
+    expect(reads.some((call) => String(call.params.expression).includes("node.shadowRoot"))).toBe(true);
+  });
+
+  it("cancels between units and never submits", async () => {
+    const { send, calls } = fakeSend("a");
+    const pending = exec(send).execute("type", {
+      selector: "#b",
+      text: "ab",
+      clear: true,
+      submit: true,
+      human: true,
+      _request_id: 77,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [
+          { text: "a", delay_before_ms: 0 },
+          { text: "b", delay_before_ms: 100 },
+        ],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    cancelTyping(77);
+    await expect(pending).rejects.toMatchObject({ code: "typing_cancelled" });
+    const enter = calls.filter(
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.key === "Enter",
+    );
+    expect(enter).toHaveLength(0);
+  });
+
+  it("uses the physical key code and Shift modifier for uppercase text", async () => {
+    const { send, calls } = fakeSend("A");
+    await exec(send).execute("type", {
+      selector: "#b",
+      text: "A",
+      human: true,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [{ text: "A", delay_before_ms: 0 }],
+      },
+    });
+
+    const keyDown = calls.find(
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "keyDown" && call.params.key === "A",
+    );
+    expect(keyDown?.params).toMatchObject({ code: "KeyA", modifiers: 8, windowsVirtualKeyCode: 65 });
   });
 });
 

@@ -23,7 +23,7 @@ import struct
 import sys
 import time
 
-from computer_use.core.actions import ActionExecutor
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
@@ -40,6 +40,7 @@ from computer_use.core.smooth_move import (
     windmouse_path,
 )
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
+from computer_use.core.typing import TypingPlan
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.windows")
@@ -71,22 +72,45 @@ if sys.platform == "win32":
     MOUSEEVENTF_WHEEL = 0x0800
     MOUSEEVENTF_ABSOLUTE = 0x8000
     KEYEVENTF_KEYUP = 0x0002
+    KEYEVENTF_UNICODE = 0x0004
 
     # Virtual key codes
     VK_MAP = {
-        "enter": 0x0D, "return": 0x0D, "tab": 0x09,
-        "escape": 0x1B, "esc": 0x1B, "backspace": 0x08,
-        "delete": 0x2E, "del": 0x2E,
-        "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
-        "home": 0x24, "end": 0x23,
-        "pageup": 0x21, "pagedown": 0x22,
+        "enter": 0x0D,
+        "return": 0x0D,
+        "tab": 0x09,
+        "escape": 0x1B,
+        "esc": 0x1B,
+        "backspace": 0x08,
+        "delete": 0x2E,
+        "del": 0x2E,
+        "up": 0x26,
+        "down": 0x28,
+        "left": 0x25,
+        "right": 0x27,
+        "home": 0x24,
+        "end": 0x23,
+        "pageup": 0x21,
+        "pagedown": 0x22,
         "space": 0x20,
-        "ctrl": 0x11, "control": 0x11,
-        "alt": 0x12, "shift": 0x10,
-        "super": 0x5B, "win": 0x5B,
-        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
-        "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
-        "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+        "ctrl": 0x11,
+        "control": 0x11,
+        "alt": 0x12,
+        "shift": 0x10,
+        "super": 0x5B,
+        "win": 0x5B,
+        "f1": 0x70,
+        "f2": 0x71,
+        "f3": 0x72,
+        "f4": 0x73,
+        "f5": 0x74,
+        "f6": 0x75,
+        "f7": 0x76,
+        "f8": 0x77,
+        "f9": 0x78,
+        "f10": 0x79,
+        "f11": 0x7A,
+        "f12": 0x7B,
     }
 
     class MOUSEINPUT(ctypes.Structure):
@@ -153,8 +177,15 @@ class WindowsScreenCapture(ScreenCapture):
         hbmp = gdi32.CreateCompatibleBitmap(hdc_screen, region.width, region.height)
         gdi32.SelectObject(hdc_mem, hbmp)
         gdi32.BitBlt(
-            hdc_mem, 0, 0, region.width, region.height,
-            hdc_screen, region.x, region.y, 0x00CC0020,
+            hdc_mem,
+            0,
+            0,
+            region.width,
+            region.height,
+            hdc_screen,
+            region.x,
+            region.y,
+            0x00CC0020,
         )
 
         image_bytes = self._bitmap_to_png(hbmp, region.width, region.height)
@@ -193,7 +224,17 @@ class WindowsScreenCapture(ScreenCapture):
         # Get bitmap bits
         bmi = struct.pack(
             "IiiHHIIIIII",
-            40, width, -height, 1, 32, 0, 0, 0, 0, 0, 0,
+            40,
+            width,
+            -height,
+            1,
+            32,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         )
         buf = ctypes.create_string_buffer(width * height * 4)
         hdc = user32.GetDC(0)
@@ -261,19 +302,40 @@ class WindowsActionExecutor(ActionExecutor):
         if sys.platform != "win32":
             raise ActionError("WindowsActionExecutor requires Windows")
         for char in text:
-            vk = ctypes.windll.user32.VkKeyScanW(ord(char))
-            if vk == -1:
-                self._send_unicode_char(char)
-            else:
-                key_code = vk & 0xFF
-                modifiers = (vk >> 8) & 0xFF
-                if modifiers & 1:  # Shift
-                    self._send_key_event(0x10, down=True)
-                self._send_key_event(key_code, down=True)
-                self._send_key_event(key_code, down=False)
-                if modifiers & 1:
-                    self._send_key_event(0x10, down=False)
-                time.sleep(0.02)
+            self._type_char(char)
+            time.sleep(0.02)
+
+    def _type_char(self, char: str) -> bool:
+        special = {"\n": 0x0D, "\r": 0x0D, "\t": 0x09}
+        if char in special:
+            self._send_key_event(special[char], down=True)
+            self._send_key_event(special[char], down=False)
+            return False
+        vk = ctypes.windll.user32.VkKeyScanW(ord(char))
+        if vk == -1:
+            self._send_unicode_char(char)
+            return True
+        key_code = vk & 0xFF
+        modifiers = (vk >> 8) & 0xFF
+        held = [
+            code
+            for bit, code in ((1, 0x10), (2, 0x11), (4, 0x12))
+            if modifiers & bit
+        ]
+        for code in held:
+            self._send_key_event(code, down=True)
+        try:
+            self._send_key_event(key_code, down=True)
+            self._send_key_event(key_code, down=False)
+        finally:
+            for code in reversed(held):
+                self._send_key_event(code, down=False)
+        return False
+
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+        if sys.platform != "win32":
+            raise ActionError("WindowsActionExecutor requires Windows")
+        return consume_typing_plan(plan, self._type_char, cancelled=cancelled)
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:
@@ -312,8 +374,13 @@ class WindowsActionExecutor(ActionExecutor):
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._send_mouse_input(MOUSEEVENTF_LEFTDOWN)
         path = windmouse_path(
-            start_x, start_y, end_x, end_y,
-            gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL,
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
         )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
@@ -333,8 +400,20 @@ class WindowsActionExecutor(ActionExecutor):
         user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
     def _send_unicode_char(self, char: str):
-        hwnd = user32.GetForegroundWindow()
-        user32.SendMessageW(hwnd, 0x0102, ord(char), 0)  # WM_CHAR
+        # SendInput's UTF-16 path reaches the focused application without a
+        # window-message shortcut.
+        encoded = char.encode("utf-16-le")
+        for index in range(0, len(encoded), 2):
+            scan = int.from_bytes(encoded[index : index + 2], "little")
+            for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
+                inp = INPUT()
+                inp.type = INPUT_KEYBOARD
+                inp.union.ki.wVk = 0
+                inp.union.ki.wScan = scan
+                inp.union.ki.dwFlags = flags
+                inp.union.ki.time = 0
+                inp.union.ki.dwExtraInfo = None
+                user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
 
 class WindowsBackend(PlatformBackend):
@@ -381,9 +460,7 @@ class WindowsBackend(PlatformBackend):
                     try:
                         name_buf = ctypes.create_unicode_buffer(512)
                         size = ctypes.wintypes.DWORD(512)
-                        kernel32.QueryFullProcessImageNameW(
-                            handle, 0, name_buf, ctypes.byref(size)
-                        )
+                        kernel32.QueryFullProcessImageNameW(handle, 0, name_buf, ctypes.byref(size))
                         full_path = name_buf.value
                         if full_path:
                             app_name = full_path.rsplit("\\", 1)[-1]
@@ -403,4 +480,3 @@ class WindowsBackend(PlatformBackend):
             )
         except Exception:
             return None
-

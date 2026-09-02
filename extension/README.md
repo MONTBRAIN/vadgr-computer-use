@@ -1,8 +1,11 @@
 # vadgr-computer-use - browser tier (MV3 extension)
 
 The DOM-first browser half of the 0.4.0 browser tier. It connects to the
-running cua over native messaging and runs selector-based ops in the user's own
-logged-in browser. Shares no code with the Python side - only the wire protocol
+shared local CUA broker over native messaging and runs selector-based ops in
+the user's own logged-in browser. Concurrent MCP clients carry exact target
+identifiers, so one client's current tab cannot route another client's action.
+Human-paced `type` uses ordered CDP key events while `fill` stays bulk. Shares
+no code with the Python side, only the wire protocol
 (`src/protocol.ts` mirrors `computer_use/browser/protocol.py`).
 
 ## Build

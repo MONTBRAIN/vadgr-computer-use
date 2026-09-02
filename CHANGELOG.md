@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.6] - 2026-09-01
+
+### Added
+
+- Add one detached per-user browser broker for concurrent local MCP clients.
+  Each client has its own profile selection and exact current target.
+- Run the shared Windows/WSL broker as one verified self-contained Windows
+  process. WSL uses the packaged stdio proxy, so NAT and mirrored networking
+  converge without Windows Python or network-setting changes.
+- Add `vadgr-cua --version` so clean-install and support checks can identify the
+  installed distribution without importing source files.
+- Add window leases as the normal multi-tab browser workspace. Add explicit tab
+  claims for a single tab in a shared user window. Registry listings show mine,
+  other, unowned, and orphaned targets without hiding foreign targets.
+- Add opt-in human-paced browser and pixel typing. Both surfaces use one
+  validated schedule, a versioned 38 WPM default profile, or an explicit WPM
+  and within-session IKI coefficient of variation.
+
+### Changed
+
+- Route browser operations by exact profile, window, and tab identifiers.
+  Concurrent requests no longer share one mutable target or one response lock.
+- Make browser actionability descend through nested open shadow roots and use
+  composed-tree containment while retaining real-overlay rejection.
+- Keep `browser fill`, fast browser `type`, and fast pixel `type_text` as the
+  backward-compatible bulk or existing backend paths.
+
+### Fixed
+
+- Distinguish missing native-host setup, a missing extension, a disabled
+  extension, an enabled but sleeping worker, and a bounded recovery timeout.
+- Stop returning typed input in the pixel tool result. The result now reports
+  counts and timing metadata only.
+- Keep WSL input-bearing PowerShell scripts on the persistent process pipe.
+  They no longer fall back to a temporary script file.
+
 ## [0.7.5] - 2026-08-29
 
 ### Fixed

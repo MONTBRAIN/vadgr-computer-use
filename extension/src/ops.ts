@@ -124,7 +124,15 @@ async function useTargetOp(p: Params) {
 // The pinned target tab, resolved BY ID (never "active"/"currentWindow"). In
 // owned mode a first call opens the dedicated window; a lost attach target
 // raises target_lost (surfaced by the router as a terminal error).
-async function targetTab(): Promise<chrome.tabs.Tab> {
+async function targetTab(params: Params = {}): Promise<chrome.tabs.Tab> {
+  const exact = params._target as { window_id?: number; tab_id?: number } | undefined;
+  if (exact?.tab_id != null) {
+    const tab = await chrome.tabs.get(exact.tab_id);
+    if (!tab?.id || (exact.window_id != null && tab.windowId !== exact.window_id)) {
+      throw new Error("the exact broker target is gone");
+    }
+    return tab;
+  }
   const { tabId } = await sharedResolver().resolve();
   const tab = await chrome.tabs.get(tabId);
   if (!tab?.id) throw new Error("the pinned tab is gone");
@@ -235,7 +243,7 @@ export async function deliverWithSelfHeal(
 
 // Forward a DOM op into the pinned tab's content script and await its reply.
 async function forwardToContent(op: string, params: Record<string, unknown>) {
-  const tab = await targetTab();
+  const tab = await targetTab(params);
   const ch: ContentChannel = {
     send: (o, p) => chrome.tabs.sendMessage(tab.id!, { type: "op", op: o, params: p }),
     reinject: async () => {
@@ -252,8 +260,8 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
 // script's isolated world is CSP-blocked from eval under MV3. Returns {value}.
 // (HIGH-risk escape hatch; page CSP may still forbid eval, which now surfaces
 // as a real error instead of an empty result.)
-async function evalInPage(expression: string) {
-  const tab = await targetTab();
+async function evalInPage(expression: string, params: Params = {}) {
+  const tab = await targetTab(params);
   const [inj] = await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
     world: "MAIN",
@@ -289,8 +297,8 @@ function settleNav(
 // extension-initiated chrome.tabs.update navigations are unreachable through
 // them - they fail "no page in history" even when history.length is large.
 // history.go() uses the page session history and is not gated.
-async function historyGo(delta: number) {
-  const tab = await targetTab();
+async function historyGo(delta: number, params: Params = {}) {
+  const tab = await targetTab(params);
   const before = (await chrome.tabs.get(tab.id!)).url;
   await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
@@ -323,17 +331,17 @@ const tabsExecutor: Executor = {
   async execute(op: string, p: Params) {
     switch (op) {
       case "navigate": {
-        const tab = await targetTab();
+        const tab = await targetTab(p);
         await chrome.tabs.update(tab.id!, { url: String(p.url) });
         await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
       }
       case "back":
-        return historyGo(-1);
+        return historyGo(-1, p);
       case "forward":
-        return historyGo(1);
+        return historyGo(1, p);
       case "reload": {
-        const tab = await targetTab();
+        const tab = await targetTab(p);
         await chrome.tabs.reload(tab.id!);
         await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
@@ -341,7 +349,7 @@ const tabsExecutor: Executor = {
       case "cookies":
         return cookiesOp(p);
       case "eval":
-        return evalInPage(String(p.expression));
+        return evalInPage(String(p.expression), p);
       default:
         throw new Error(`tabs path has no op '${op}'`);
     }
@@ -362,7 +370,7 @@ const domExecutor: Executor = {
 function defaultCdp(): Executor | null {
   if (typeof chrome === "undefined" || !chrome.debugger) return null;
   return new CdpExecutor(
-    chromeDebuggerAttach(async () => (await targetTab()).id!),
+    chromeDebuggerAttach(async (p) => (await targetTab(p)).id!),
     chrome.debugger.onEvent,
   );
 }
@@ -608,7 +616,7 @@ export async function profilesOp(
 // chrome://newtab is visible immediately, not inferred two ops later. Only
 // object results carry it (a bare string from read_text is passed through); a
 // result that already has `target` is left untouched.
-export type TargetProvider = () =>
+export type TargetProvider = (p: Params) =>
   | Promise<{ window_id: number; tab_id: number; url: string } | null>
   | { window_id: number; tab_id: number; url: string }
   | null;
@@ -627,7 +635,7 @@ export function wrapWithTarget(
     ) {
       return result;
     }
-    const ctx = await provider();
+    const ctx = await provider(p);
     if (!ctx) return result;
     return { ...(result as Record<string, unknown>), target: ctx };
   };
@@ -635,9 +643,19 @@ export function wrapWithTarget(
 
 // The live target-context provider: the in-memory `current` (never resolve() - 
 // wrapping must not itself open a window) plus the tab's real url.
-async function currentTargetContext(): Promise<
+async function currentTargetContext(p: Params = {}): Promise<
   { window_id: number; tab_id: number; url: string } | null
 > {
+  const exact = p._target as { window_id?: number; tab_id?: number } | undefined;
+  if (exact?.window_id != null && exact.tab_id != null) {
+    let url = "";
+    try {
+      url = (await chrome.tabs.get(exact.tab_id)).url ?? "";
+    } catch {
+      // A target that vanished mid-op still reports the exact broker ids.
+    }
+    return { window_id: exact.window_id, tab_id: exact.tab_id, url };
+  }
   const cur = sharedResolver().current();
   if (!cur) return null;
   let url = "";
@@ -673,6 +691,14 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
           ? cdp.execute(op, p)
           : withEscalation(op, p, domExecutor, cdp, isInteractive),
       );
+    } else if (op === "type") {
+      reg(op, (p) => {
+        if (p.human === true) {
+          if (!cdp) throw new Error("human typing requires chrome.debugger");
+          return cdp.execute(op, p);
+        }
+        return withEscalation(op, p, domExecutor, cdp, isInteractive);
+      });
     } else if (ESCALATING.has(op)) {
       reg(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
     } else {

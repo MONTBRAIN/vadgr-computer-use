@@ -5,7 +5,14 @@
 // a hidden non-authoritative mirror, e.g. Gmail's compose textarea).
 
 import { describe, it, expect, vi } from "vitest";
-import { isVisible, isDisabled, assertActionable, receivesEvents } from "../src/content/actionable";
+import {
+  isVisible,
+  isDisabled,
+  assertActionable,
+  receivesEvents,
+  composedContains,
+  deepElementFromPoint,
+} from "../src/content/actionable";
 
 describe("isVisible", () => {
   it("true for a plain attached element", () => {
@@ -103,6 +110,23 @@ describe("receivesEvents", () => {
     liveLayout(el);
     vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
     expect(receivesEvents(el)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("walks nested open shadow roots and composed containment", () => {
+    document.body.innerHTML = `<div id="host"></div>`;
+    const host = document.querySelector("#host") as HTMLElement;
+    const first = host.attachShadow({ mode: "open" });
+    const nestedHost = document.createElement("div");
+    first.appendChild(nestedHost);
+    const second = nestedHost.attachShadow({ mode: "open" });
+    const input = document.createElement("input");
+    second.appendChild(input);
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(host);
+    Object.defineProperty(first, "elementFromPoint", { value: () => nestedHost });
+    Object.defineProperty(second, "elementFromPoint", { value: () => input });
+    expect(deepElementFromPoint(document, 20, 20)).toBe(input);
+    expect(composedContains(host, input)).toBe(true);
     vi.restoreAllMocks();
   });
 });

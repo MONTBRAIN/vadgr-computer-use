@@ -15,6 +15,7 @@
 """WSL2 platform backend using PowerShell bridge to control Windows desktop."""
 
 import atexit
+import base64
 import logging
 import os
 import shutil
@@ -27,6 +28,7 @@ from computer_use.core.actions import ActionExecutor
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
+from computer_use.core.typing import TypingPlan
 from computer_use.platform.base import PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.wsl2")
@@ -126,9 +128,7 @@ class PersistentPowerShell:
             deadline = time.monotonic() + timeout
             while True:
                 if time.monotonic() > deadline:
-                    raise RuntimeError(
-                        f"Persistent PowerShell timed out after {timeout}s"
-                    )
+                    raise RuntimeError(f"Persistent PowerShell timed out after {timeout}s")
                 if self._proc.poll() is not None:
                     raise RuntimeError("Persistent PowerShell process died unexpectedly")
                 line = self._proc.stdout.readline()
@@ -167,7 +167,6 @@ class PersistentPowerShell:
 # Module-level singleton (lazy)
 _persistent_ps: PersistentPowerShell | None = None
 _persistent_ps_lock = threading.Lock()
-
 
 
 def wsl_to_win_path(wsl_path: str) -> str:
@@ -260,6 +259,14 @@ def _run_ps(script: str, timeout: float = 15.0) -> str:
         return _run_ps_subprocess(script, timeout=timeout)
 
 
+def _run_ps_sensitive(script: str, timeout: float = 15.0) -> str:
+    """Pipe input-bearing scripts to one process and never copy them to disk."""
+    global _persistent_ps
+    with _persistent_ps_lock:
+        if _persistent_ps is None:
+            _persistent_ps = PersistentPowerShell()
+    return _persistent_ps.run(script, timeout=timeout)
+
 
 # Inline DPI preamble for one-shot subprocess scripts (where the persistent
 # PS init hasn't run). Uses the legacy SetProcessDPIAware() for brevity;
@@ -273,7 +280,9 @@ public class Dpi {{ [DllImport("user32.dll")] public static extern bool SetProce
 [Dpi]::SetProcessDPIAware() | Out-Null
 """
 
-CAPTURE_FULL_SCRIPT = _DPI_PREAMBLE + """
+CAPTURE_FULL_SCRIPT = (
+    _DPI_PREAMBLE
+    + """
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 $scr = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -285,8 +294,11 @@ $graphics.Dispose()
 $bitmap.Dispose()
 Write-Output "$($scr.Width),$($scr.Height),$($scr.X),$($scr.Y)"
 """
+)
 
-CAPTURE_REGION_SCRIPT = _DPI_PREAMBLE + """
+CAPTURE_REGION_SCRIPT = (
+    _DPI_PREAMBLE
+    + """
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 $bitmap = New-Object System.Drawing.Bitmap({width}, {height})
@@ -300,12 +312,16 @@ $graphics.Dispose()
 $bitmap.Dispose()
 Write-Output "{width},{height}"
 """
+)
 
-SCREEN_SIZE_SCRIPT = _DPI_PREAMBLE + """
+SCREEN_SIZE_SCRIPT = (
+    _DPI_PREAMBLE
+    + """
 Add-Type -AssemblyName System.Windows.Forms
 $scr = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 Write-Output "$($scr.Width),$($scr.Height)"
 """
+)
 
 SCALE_FACTOR_SCRIPT = """
 Add-Type -TypeDefinition @'
@@ -328,7 +344,6 @@ Write-Output ([DpiHelper]::GetScale())
 
 
 class WSL2ScreenCapture(ScreenCapture):
-
     def __init__(self):
         self._win_temp = _get_windows_temp_dir()
 
@@ -418,7 +433,6 @@ class WSL2ScreenCapture(ScreenCapture):
             return 1.0
 
 
-
 SMOOTH_MOVE_SCRIPT = """
 Add-Type -AssemblyName System.Windows.Forms
 $start = [System.Windows.Forms.Cursor]::Position
@@ -474,21 +488,79 @@ Add-Type -AssemblyName System.Windows.Forms
 
 # Virtual key codes for keybd_event (used for keys SendKeys can't handle, like Win)
 VK_CODES = {
-    "win": 0x5B, "super": 0x5B, "lwin": 0x5B, "rwin": 0x5C,
-    "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45, "f": 0x46,
-    "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A, "k": 0x4B, "l": 0x4C,
-    "m": 0x4D, "n": 0x4E, "o": 0x4F, "p": 0x50, "q": 0x51, "r": 0x52,
-    "s": 0x53, "t": 0x54, "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58,
-    "y": 0x59, "z": 0x5A,
-    "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34,
-    "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
-    "enter": 0x0D, "return": 0x0D, "tab": 0x09, "escape": 0x1B, "esc": 0x1B,
-    "space": 0x20, "backspace": 0x08, "delete": 0x2E, "del": 0x2E,
-    "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
-    "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
-    "ctrl": 0xA2, "control": 0xA2, "alt": 0xA4, "shift": 0xA0,
-    "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73, "f5": 0x74, "f6": 0x75,
-    "f7": 0x76, "f8": 0x77, "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+    "win": 0x5B,
+    "super": 0x5B,
+    "lwin": 0x5B,
+    "rwin": 0x5C,
+    "a": 0x41,
+    "b": 0x42,
+    "c": 0x43,
+    "d": 0x44,
+    "e": 0x45,
+    "f": 0x46,
+    "g": 0x47,
+    "h": 0x48,
+    "i": 0x49,
+    "j": 0x4A,
+    "k": 0x4B,
+    "l": 0x4C,
+    "m": 0x4D,
+    "n": 0x4E,
+    "o": 0x4F,
+    "p": 0x50,
+    "q": 0x51,
+    "r": 0x52,
+    "s": 0x53,
+    "t": 0x54,
+    "u": 0x55,
+    "v": 0x56,
+    "w": 0x57,
+    "x": 0x58,
+    "y": 0x59,
+    "z": 0x5A,
+    "0": 0x30,
+    "1": 0x31,
+    "2": 0x32,
+    "3": 0x33,
+    "4": 0x34,
+    "5": 0x35,
+    "6": 0x36,
+    "7": 0x37,
+    "8": 0x38,
+    "9": 0x39,
+    "enter": 0x0D,
+    "return": 0x0D,
+    "tab": 0x09,
+    "escape": 0x1B,
+    "esc": 0x1B,
+    "space": 0x20,
+    "backspace": 0x08,
+    "delete": 0x2E,
+    "del": 0x2E,
+    "up": 0x26,
+    "down": 0x28,
+    "left": 0x25,
+    "right": 0x27,
+    "home": 0x24,
+    "end": 0x23,
+    "pageup": 0x21,
+    "pagedown": 0x22,
+    "ctrl": 0xA2,
+    "control": 0xA2,
+    "alt": 0xA4,
+    "shift": 0xA0,
+    "f1": 0x70,
+    "f2": 0x71,
+    "f3": 0x72,
+    "f4": 0x73,
+    "f5": 0x74,
+    "f6": 0x75,
+    "f7": 0x76,
+    "f8": 0x77,
+    "f9": 0x78,
+    "f10": 0x79,
+    "f11": 0x7A,
+    "f12": 0x7B,
 }
 
 KEYBD_EVENT_SCRIPT = """
@@ -551,7 +623,6 @@ SMOOTH_MOVE_DELAY_MS = 10
 
 
 class WSL2ActionExecutor(ActionExecutor):
-
     def move_mouse(self, x: int, y: int) -> None:
         script = SMOOTH_MOVE_SCRIPT.format(
             x=x, y=y, steps=SMOOTH_MOVE_STEPS, delay=SMOOTH_MOVE_DELAY_MS
@@ -581,7 +652,10 @@ class WSL2ActionExecutor(ActionExecutor):
             raise ActionError(f"Unknown mouse button: {button}")
 
         script = MOUSE_EVENT_SCRIPT.format(
-            x=x, y=y, steps=SMOOTH_MOVE_STEPS, delay=SMOOTH_MOVE_DELAY_MS,
+            x=x,
+            y=y,
+            steps=SMOOTH_MOVE_STEPS,
+            delay=SMOOTH_MOVE_DELAY_MS,
             mouse_actions=actions,
         )
         try:
@@ -598,7 +672,10 @@ class WSL2ActionExecutor(ActionExecutor):
             "[MouseInput]::mouse_event([MouseInput]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [IntPtr]::Zero)"
         )
         script = MOUSE_EVENT_SCRIPT.format(
-            x=x, y=y, steps=SMOOTH_MOVE_STEPS, delay=SMOOTH_MOVE_DELAY_MS,
+            x=x,
+            y=y,
+            steps=SMOOTH_MOVE_STEPS,
+            delay=SMOOTH_MOVE_DELAY_MS,
             mouse_actions=actions,
         )
         try:
@@ -607,18 +684,38 @@ class WSL2ActionExecutor(ActionExecutor):
             raise ActionError(f"Double-click failed at ({x}, {y}): {e}") from e
 
     def type_text(self, text: str) -> None:
-        # Escape special SendKeys characters: +, ^, %, ~, (, ), {, }, [, ]
-        escaped = ""
-        for ch in text:
-            if ch in ("+", "^", "%", "~", "(", ")", "{", "}", "[", "]"):
-                escaped += "{" + ch + "}"
-            else:
-                escaped += ch
-        script = SENDKEYS_SCRIPT.format(text=escaped)
+        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        script = rf"""
+Add-Type -AssemblyName System.Windows.Forms
+$raw = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}'))
+$escaped = if ($raw -eq "`n" -or $raw -eq "`r") {{ '{{ENTER}}' }} elseif ($raw -eq "`t") {{ '{{TAB}}' }} else {{ [regex]::Replace($raw, '([+^%~(){{}}\[\]])', '{{$1}}') }}
+[System.Windows.Forms.SendKeys]::SendWait($escaped)
+"""
         try:
-            _run_ps(script)
+            _run_ps_sensitive(script)
         except Exception as e:
             raise ActionError(f"Type text failed: {e}") from e
+
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+        from computer_use.core.actions import consume_typing_plan
+
+        def emit(text: str) -> bool:
+            encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+            script = rf"""
+Add-Type -AssemblyName System.Windows.Forms
+$raw = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{encoded}'))
+$escaped = if ($raw -eq "`n" -or $raw -eq "`r") {{ '{{ENTER}}' }} elseif ($raw -eq "`t") {{ '{{TAB}}' }} else {{ [regex]::Replace($raw, '([+^%~(){{}}\[\]])', '{{$1}}') }}
+[System.Windows.Forms.SendKeys]::SendWait($escaped)
+"""
+            try:
+                _run_ps_sensitive(script)
+            except Exception as error:
+                raise ActionError(f"Human-paced text input failed: {error}") from error
+            return text not in ("\n", "\r", "\t") and not (
+                len(text) == 1 and 0x20 <= ord(text) <= 0x7E
+            )
+
+        return consume_typing_plan(plan, emit, cancelled=cancelled)
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:
@@ -673,7 +770,9 @@ class WSL2ActionExecutor(ActionExecutor):
         actions.append("Start-Sleep -Milliseconds 50")
 
         for vk in reversed(vk_codes_used):
-            actions.append(f"[KeyInput]::keybd_event({vk}, 0, [KeyInput]::KEYEVENTF_KEYUP, [IntPtr]::Zero)")
+            actions.append(
+                f"[KeyInput]::keybd_event({vk}, 0, [KeyInput]::KEYEVENTF_KEYUP, [IntPtr]::Zero)"
+            )
 
         script = KEYBD_EVENT_SCRIPT.format(key_actions="\n".join(actions))
         try:
@@ -686,7 +785,10 @@ class WSL2ActionExecutor(ActionExecutor):
         wheel_amount = amount * 120
         actions = f"[MouseInput]::mouse_event([MouseInput]::MOUSEEVENTF_WHEEL, 0, 0, {wheel_amount}, [IntPtr]::Zero)"
         script = MOUSE_EVENT_SCRIPT.format(
-            x=x, y=y, steps=SMOOTH_MOVE_STEPS, delay=SMOOTH_MOVE_DELAY_MS,
+            x=x,
+            y=y,
+            steps=SMOOTH_MOVE_STEPS,
+            delay=SMOOTH_MOVE_DELAY_MS,
             mouse_actions=actions,
         )
         try:
@@ -743,8 +845,8 @@ Start-Sleep -Milliseconds 50
                 f"Drag failed from ({start_x},{start_y}) to ({end_x},{end_y}): {e}"
             ) from e
 
-class WSL2Backend(PlatformBackend):
 
+class WSL2Backend(PlatformBackend):
     def __init__(self, supervisor=None):
         self._capture = None
         self._executor = None
@@ -754,6 +856,7 @@ class WSL2Backend(PlatformBackend):
         # Imported lazily to keep this module import-cheap on non-WSL2 paths.
         if supervisor is None:
             from computer_use.bridge.supervisor import DaemonSupervisor
+
             supervisor = DaemonSupervisor()
         self._supervisor = supervisor
 
@@ -779,6 +882,7 @@ class WSL2Backend(PlatformBackend):
         if self._capture is None:
             if self._probe_bridge():
                 from computer_use.bridge.capture import BridgeScreenCapture
+
                 self._capture = BridgeScreenCapture(self._bridge)
             else:
                 self._capture = WSL2ScreenCapture()
@@ -788,6 +892,7 @@ class WSL2Backend(PlatformBackend):
         if self._executor is None:
             if self._probe_bridge():
                 from computer_use.bridge.actions import BridgeActionExecutor
+
                 ps_fallback = WSL2ActionExecutor()
                 self._executor = BridgeActionExecutor(self._bridge, fallback=ps_fallback)
             else:
@@ -821,4 +926,3 @@ class WSL2Backend(PlatformBackend):
             except Exception:
                 return None
         return None
-

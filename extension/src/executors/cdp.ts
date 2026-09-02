@@ -13,10 +13,15 @@
 // command sequencing here is pure and unit-tested against a fake sender.
 
 import type { Executor, Params } from "./types";
+import {
+  clearTypingCancellation,
+  typingCancelled,
+  waitTypingDelay,
+} from "../typing-cancellation";
 
 // A bound sender: issues a CDP command against the already-attached target.
 export type CdpSend = (method: string, params?: object) => Promise<any>;
-export type Attach = () => Promise<CdpSend>;
+export type Attach = (params?: Params) => Promise<CdpSend>;
 
 // The slice of chrome.debugger.onEvent we depend on (for JS-dialog handling).
 // Injectable so the dialog arming logic is testable with no browser.
@@ -27,6 +32,20 @@ export interface DebuggerEvents {
 
 // CDP modifier bitmask.
 const CTRL = 2;
+const SHIFT = 8;
+
+const SHIFTED_ASCII: Record<string, string> = {
+  "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+  "^": "6", "&": "7", "*": "8", "(": "9", ")": "0", "_": "-",
+  "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'",
+  "<": ",", ">": ".", "?": "/",
+};
+
+const PUNCTUATION_CODES: Record<string, string> = {
+  "`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft",
+  "]": "BracketRight", "\\": "Backslash", ";": "Semicolon", "'": "Quote",
+  ",": "Comma", ".": "Period", "/": "Slash", " ": "Space",
+};
 
 interface KeyDef {
   key: string;
@@ -51,6 +70,20 @@ function keyDef(key: string): KeyDef {
   if (KEYS[key]) return KEYS[key];
   // A single literal character.
   return { key, code: `Key${key.toUpperCase()}`, text: key };
+}
+
+// Resolve a selector through every nested open shadow root. This expression is
+// embedded in CDP Runtime.evaluate snippets, where document.querySelector alone
+// cannot reach the same controls as the content-script deep selector path.
+function deepQueryExpression(selector: string): string {
+  return (
+    `(() => { const selector = ${JSON.stringify(selector)};` +
+    ` const visit = (root, depth) => { if (!root || depth > 64) return null;` +
+    ` const direct = root.querySelector(selector); if (direct) return direct;` +
+    ` for (const node of root.querySelectorAll('*')) {` +
+    ` const found = node.shadowRoot && visit(node.shadowRoot, depth + 1);` +
+    ` if (found) return found; } return null; }; return visit(document, 0); })()`
+  );
 }
 
 // The 0.4.0 accessibility_tree node shape (role/name/value/nodeId).
@@ -93,7 +126,7 @@ export class CdpExecutor implements Executor {
   ) {}
 
   async execute(op: string, params: Params): Promise<unknown> {
-    const send = await this.attach();
+    const send = await this.attach(params);
     switch (op) {
       case "type":
       case "fill":
@@ -133,8 +166,72 @@ export class CdpExecutor implements Executor {
   private async typeText(send: CdpSend, p: Params) {
     const text = String(p.text ?? "");
     const selector = String(p.selector);
+    const before = await this.readValue(send, selector);
     await this.focus(send, selector);
     if (p.clear !== false) await this.key(send, "a", CTRL); // select all → replaced
+    if (p.human === true) {
+      const plan = p.typing_plan as any;
+      if (!plan || !Array.isArray(plan.units)) {
+        throw new Error("human typing requires a validated typing plan");
+      }
+      let fallbackUnits = 0;
+      let completedUnits = 0;
+      const requestId = Number(p._request_id);
+      const started = Date.now();
+      try {
+        for (const unit of plan.units) {
+          const delay = Number(unit?.delay_before_ms ?? 0);
+          if (!Number.isFinite(delay) || delay < 0) {
+            throw new Error("typing plan contains an invalid delay");
+          }
+          if (delay > 0) await waitTypingDelay(delay, requestId);
+          if (typingCancelled(requestId)) {
+            throw Object.assign(
+              new Error(`typing_cancelled: ${completedUnits} complete units`),
+              { code: "typing_cancelled" },
+            );
+          }
+          const value = String(unit?.text ?? "");
+          if (value === "\n") {
+            await this.key(send, "Enter");
+          } else if (value === "\t") {
+            await this.key(send, "Tab");
+          } else if (value.length === 1 && value.charCodeAt(0) >= 0x20 && value.charCodeAt(0) <= 0x7e) {
+            await this.character(send, value);
+          } else {
+            fallbackUnits += 1;
+            await send("Input.insertText", { text: value });
+          }
+          completedUnits += 1;
+        }
+        if (typingCancelled(requestId)) {
+          throw Object.assign(
+            new Error(`typing_cancelled: ${completedUnits} complete units`),
+            { code: "typing_cancelled" },
+          );
+        }
+        if (p.submit) await this.key(send, "Enter");
+      } finally {
+        clearTypingCancellation(requestId);
+      }
+      const value = await this.readValue(send, selector);
+      const expected = p.clear !== false ? text : String(before ?? "") + text;
+      if (typeof value === "string" && value !== expected) {
+        throw Object.assign(new Error("typing_mismatch: final value does not match expected text"), {
+          code: "typing_mismatch",
+        });
+      }
+      return {
+        human: true,
+        timing_profile: plan.timing_profile ?? null,
+        nominal_wpm: plan.nominal_wpm ?? null,
+        units: plan.units.length,
+        fallback_units: fallbackUnits,
+        elapsed_ms: Date.now() - started,
+        ok: true,
+        via: "cdp",
+      };
+    }
     await send("Input.insertText", { text });
     if (p.submit) await this.key(send, "Enter");
     const value = await this.readValue(send, selector);
@@ -244,7 +341,7 @@ export class CdpExecutor implements Executor {
     await send("DOM.setFileInputFiles", { nodeId, files });
     const count = await this.evalValue(
       send,
-      `document.querySelector(${JSON.stringify(selector)})?.files?.length ?? 0`,
+      `(${deepQueryExpression(selector)})?.files?.length ?? 0`,
     );
     return {
       uploaded: typeof count === "number" ? count : 0,
@@ -259,7 +356,8 @@ export class CdpExecutor implements Executor {
     await this.focus(send, selector);
     const focused = await this.evalValue(
       send,
-      `document.activeElement === document.querySelector(${JSON.stringify(selector)})`,
+      `(() => { const el = ${deepQueryExpression(selector)};` +
+        ` return !!el && el.getRootNode().activeElement === el; })()`,
     );
     return { focused: focused === true, via: "cdp" };
   }
@@ -268,13 +366,14 @@ export class CdpExecutor implements Executor {
     const selector = String(p.selector);
     await send("Runtime.evaluate", {
       expression:
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
+        `(() => { const el = ${deepQueryExpression(selector)};` +
         ` if (el && el.blur) el.blur(); return true; })()`,
       returnByValue: true,
     });
     const focused = await this.evalValue(
       send,
-      `document.activeElement === document.querySelector(${JSON.stringify(selector)})`,
+      `(() => { const el = ${deepQueryExpression(selector)};` +
+        ` return !!el && el.getRootNode().activeElement === el; })()`,
     );
     return { focused: focused === true, via: "cdp" };
   }
@@ -353,9 +452,35 @@ export class CdpExecutor implements Executor {
     await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
   }
 
+  private async character(send: CdpSend, value: string) {
+    const shifted = value.toLowerCase() !== value || value in SHIFTED_ASCII;
+    const physical = SHIFTED_ASCII[value] ?? value.toLowerCase();
+    const code = /^[a-z]$/.test(physical)
+      ? `Key${physical.toUpperCase()}`
+      : /^[0-9]$/.test(physical)
+        ? `Digit${physical}`
+        : PUNCTUATION_CODES[physical];
+    const base = {
+      key: value,
+      code,
+      modifiers: shifted ? SHIFT : 0,
+      windowsVirtualKeyCode: /^[a-z0-9]$/.test(physical)
+        ? physical.toUpperCase().charCodeAt(0)
+        : undefined,
+    };
+    await send("Input.dispatchKeyEvent", { type: "keyDown", ...base });
+    await send("Input.dispatchKeyEvent", {
+      type: "char",
+      key: value,
+      code,
+      text: value,
+    });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  }
+
   private async focus(send: CdpSend, selector: string) {
     const expr =
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
+      `(() => { const el = ${deepQueryExpression(selector)};` +
       ` if (!el) return false; el.scrollIntoView({block:'center'}); el.focus(); return true; })()`;
     const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
     if (!r?.result?.value) throw new Error(`no element matches ${selector}`);
@@ -363,8 +488,8 @@ export class CdpExecutor implements Executor {
 
   private async readValue(send: CdpSend, selector: string): Promise<unknown> {
     const expr =
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
-      ` if (!el) return null; return (el.value ?? el.innerText ?? el.textContent ?? '').trim(); })()`;
+      `(() => { const el = ${deepQueryExpression(selector)};` +
+      ` if (!el) return null; return (el.value ?? el.textContent ?? ''); })()`;
     const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
     return r?.result?.value ?? null;
   }
@@ -386,13 +511,17 @@ export class CdpExecutor implements Executor {
     force = false,
   ): Promise<{ x: number; y: number }> {
     const expr =
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
+      `(() => { const el = ${deepQueryExpression(selector)};` +
       ` if (!el) return null; el.scrollIntoView({block:'center'});` +
       ` const r = el.getBoundingClientRect();` +
       ` const x = r.left + r.width/2, y = r.top + r.height/2;` +
-      ` const root = el.getRootNode();` +
-      ` const hit = (root.elementFromPoint ? root : document).elementFromPoint(x, y);` +
-      ` const covered = !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);` +
+      ` const deepHit = (root, depth) => { if (!root || depth > 64) return null;` +
+      ` const hit = root.elementFromPoint(x, y); if (!hit) return null;` +
+      ` return hit.shadowRoot ? (deepHit(hit.shadowRoot, depth + 1) || hit) : hit; };` +
+      ` const contains = (a, n) => { for (let depth = 0; n && depth <= 64; depth += 1) {` +
+      ` if (n === a) return true; n = n.parentNode || n.getRootNode?.().host || null;` +
+      ` } return false; }; const hit = deepHit(document, 0);` +
+      ` const covered = !!hit && !contains(el, hit) && !contains(hit, el);` +
       ` return { x, y, covered, found: true }; })()`;
     const v: any = await this.evalValue(send, expr);
     if (!v || !v.found) throw new Error(`no element matches ${selector}`);
@@ -415,7 +544,7 @@ export class CdpExecutor implements Executor {
       "aria-current",
     ];
     const expr =
-      `(() => { const el = document.querySelector(${JSON.stringify(selector)});` +
+      `(() => { const el = ${deepQueryExpression(selector)};` +
       ` if (!el) return null; const a = ${JSON.stringify(attrs)};` +
       ` const parts = a.filter((n) => el.hasAttribute(n)).map((n) => n + '=' + el.getAttribute(n));` +
       ` return parts.length ? parts.join('|') : null; })()`;
@@ -438,10 +567,10 @@ export class CdpExecutor implements Executor {
       ` if (s.display === 'none' || s.visibility === 'hidden') return false;` +
       ` return n.getClientRects().length > 0; }`;
     const expr = subtree
-      ? `(() => { /*__vis__*/ const el = document.querySelector(${JSON.stringify(selector)});` +
+      ? `(() => { /*__vis__*/ const el = ${deepQueryExpression(selector)};` +
         ` if (!el) return null; const vis = ${vis};` +
         ` return Array.from(el.querySelectorAll('*')).some(vis); })()`
-      : `(() => { /*__vis__*/ const el = document.querySelector(${JSON.stringify(selector)});` +
+      : `(() => { /*__vis__*/ const el = ${deepQueryExpression(selector)};` +
         ` if (!el) return null; const vis = ${vis}; return vis(el); })()`;
     const v = await this.evalValue(send, expr);
     return v === null ? null : v === true;
@@ -449,9 +578,9 @@ export class CdpExecutor implements Executor {
 }
 
 // The real attach (thin chrome.debugger glue - exercised live, not unit-tested).
-export function chromeDebuggerAttach(activeTabId: () => Promise<number>): Attach {
-  return async () => {
-    const tabId = await activeTabId();
+export function chromeDebuggerAttach(activeTabId: (params?: Params) => Promise<number>): Attach {
+  return async (params?: Params) => {
+    const tabId = await activeTabId(params);
     const target = { tabId };
     try {
       await chrome.debugger.attach(target, "1.3");

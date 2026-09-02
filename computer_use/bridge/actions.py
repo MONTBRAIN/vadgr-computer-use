@@ -3,8 +3,9 @@
 import logging
 
 from computer_use.bridge.client import BridgeClient, BridgeError
-from computer_use.core.actions import ActionExecutor
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError
+from computer_use.core.typing import TypingPlan
 
 logger = logging.getLogger("computer_use.bridge.actions")
 
@@ -46,6 +47,27 @@ class BridgeActionExecutor(ActionExecutor):
             else:
                 raise
 
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+        def emit(text: str) -> bool:
+            try:
+                result = self._client.call(
+                    "type_text_unit",
+                    {"text": text},
+                    timeout=10.0,
+                )
+                return bool(result.get("fallback"))
+            except BridgeError as error:
+                if self._fallback is None:
+                    raise ActionError(f"Bridge type_text_unit failed: {error}") from error
+                logger.warning("Bridge human typing failed, using PowerShell fallback")
+                # The failed unit may have reached Windows. Replaying it through
+                # another transport could duplicate input, so fail exactly.
+                raise ActionError(
+                    "Bridge human typing state is uncertain; input was not replayed"
+                ) from error
+
+        return consume_typing_plan(plan, emit, cancelled=cancelled)
+
     def key_press(self, keys: list[str]) -> None:
         try:
             self._act("key_press", {"keys": keys})
@@ -67,10 +89,13 @@ class BridgeActionExecutor(ActionExecutor):
         end_y: int,
         duration: float = 0.5,
     ) -> None:
-        self._act("drag", {
-            "start_x": start_x,
-            "start_y": start_y,
-            "end_x": end_x,
-            "end_y": end_y,
-            "duration": duration,
-        })
+        self._act(
+            "drag",
+            {
+                "start_x": start_x,
+                "start_y": start_y,
+                "end_x": end_x,
+                "end_y": end_y,
+                "duration": duration,
+            },
+        )

@@ -34,9 +34,11 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import secrets
 import socket
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -54,11 +56,15 @@ from computer_use.browser.protocol import (
 # Keep in lockstep with the pyproject version - test_release_consistency.py
 # enforces it (a stale value here misleads handshake debugging; the negotiation
 # itself compares only the integer `proto`).
-CUA_VERSION = "0.7.5"
+CUA_VERSION = "0.7.6"
 
 
 def discovery_path() -> Path:
     """The well-known file the shim reads to find the listener (port + token)."""
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        root = Path(base) if base else Path.home() / "AppData" / "Local"
+        return root / "vadgr-cua" / "browser.port"
     return Path.home() / ".vadgr-cua" / "browser.port"
 
 
@@ -84,10 +90,7 @@ def wsl_discovery_path(windows_user: str | None = None) -> Path:
     """
     from computer_use.browser.bridge import windows_user_home_mnt
 
-    return (
-        windows_user_home_mnt(windows_user)
-        / "AppData" / "Local" / "vadgr-cua" / "browser.port"
-    )
+    return windows_user_home_mnt(windows_user) / "AppData" / "Local" / "vadgr-cua" / "browser.port"
 
 
 def generate_token() -> str:
@@ -103,6 +106,10 @@ def _write_one(dest: Path, payload: str) -> None:
         dest.chmod(0o600)
     except OSError:  # pragma: no cover - non-posix best-effort
         pass
+    if os.name == "nt":
+        from computer_use.browser.windows_acl import protect_owner_and_system
+
+        protect_owner_and_system(dest)
 
 
 def write_discovery(
@@ -152,68 +159,115 @@ class TcpBrowserSession(BrowserSession):
     # Per-op read backstop. The extension bounds navigation itself, so this only
     # trips when a reply never arrives at all (tab/window vanished mid-op). It
     # must be terminal, never a silent hang of the whole single-lock pipe.
-    _OP_TIMEOUT_S = 45.0
+    _OP_TIMEOUT_S = 60.0
 
-    def __init__(self, conn_file, *, browser: str, ext_version: str,
-                 supported_ops: list[str],
-                 profile_id: str = "default",
-                 profile_context: dict[str, Any] | None = None,
-                 sock: socket.socket | None = None) -> None:
-        super().__init__(browser=browser, ext_version=ext_version,
-                         supported_ops=supported_ops,
-                         profile_id=profile_id,
-                         profile_context=profile_context or {})
+    def __init__(
+        self,
+        conn_file,
+        *,
+        browser: str,
+        ext_version: str,
+        supported_ops: list[str],
+        profile_id: str = "default",
+        profile_context: dict[str, Any] | None = None,
+        sock: socket.socket | None = None,
+    ) -> None:
+        super().__init__(
+            browser=browser,
+            ext_version=ext_version,
+            supported_ops=supported_ops,
+            profile_id=profile_id,
+            profile_context=profile_context or {},
+        )
         self._file = conn_file
         self._sock = sock
-        self._lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._pending_lock = threading.Lock()
+        self._pending: dict[int, queue.Queue[dict[str, Any] | None]] = {}
         self._next_id = 0
         self._alive = True
         # Set by the server after registration: drops this connection from the
         # bridge registry when it tears down, so a closed profile is removed.
         self.on_teardown: Any = None
-        # Bound each op read so a stuck/closed tab cannot hang the pipe forever.
-        if sock is not None:
-            sock.settimeout(self._OP_TIMEOUT_S)
+        self._reader = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader.start()
 
-    def request(self, op: str, params: dict[str, Any]) -> Any:
-        with self._lock:
-            if not self._alive:
-                raise BrowserError(
-                    BrowserErrorCode.NOT_CONNECTED,
-                    "browser session is closed; reconnect the extension",
-                )
+    def request(self, op: str, params: dict[str, Any], *, cancelled=None) -> Any:
+        if not self._alive:
+            raise BrowserError(
+                BrowserErrorCode.NOT_CONNECTED,
+                "browser session is closed; reconnect the extension",
+            )
+        reply_queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=1)
+        with self._write_lock:
             self._next_id += 1
             msg_id = self._next_id
+            with self._pending_lock:
+                self._pending[msg_id] = reply_queue
             try:
                 write_message(self._file, op_message(msg_id, op, params))
-                reply = self._read_reply(msg_id)
-            except TimeoutError:
-                # A socket-timeout leaves the buffered reader unrecoverable, so
-                # the session can't continue. Tear the connection down: that
-                # drops the extension's native port and MV3 reconnects with a
-                # fresh session, instead of leaving a dead one wedged forever.
+            except (OSError, ValueError) as error:
+                with self._pending_lock:
+                    self._pending.pop(msg_id, None)
                 self._teardown()
                 raise BrowserError(
-                    BrowserErrorCode.OP_FAILED,
-                    f"browser op {op!r} timed out after "
-                    f"{self._OP_TIMEOUT_S:.0f}s; the tab was stuck (e.g. a "
-                    "beforeunload prompt or a hung load). The session was reset "
-                    "and the extension reconnects automatically",
-                    remediation="retry in a moment; if it persists, reload the tab",
-                )
-            except (OSError, ValueError) as e:
-                self._teardown()
-                raise BrowserError(
-                    BrowserErrorCode.NOT_CONNECTED,
-                    f"browser session connection lost: {e}",
-                ) from e
+                    BrowserErrorCode.NOT_CONNECTED, f"browser session connection lost: {error}"
+                ) from error
+        deadline = time.monotonic() + self._OP_TIMEOUT_S
+        reply = None
+        received = False
+        cancel_sent = False
+        while time.monotonic() < deadline:
+            if cancelled is not None and cancelled() and not cancel_sent:
+                with self._write_lock:
+                    self._next_id += 1
+                    cancel_id = self._next_id
+                    write_message(
+                        self._file,
+                        op_message(cancel_id, "_cancel", {"request_id": msg_id}),
+                    )
+                # Keep waiting for the original result. The extension returns
+                # the truthful number of complete units and confirms submit was
+                # skipped; the control acknowledgement has its own id.
+                cancel_sent = True
+            try:
+                reply = reply_queue.get(timeout=min(0.02, max(deadline - time.monotonic(), 0)))
+                received = True
+                break
+            except queue.Empty:
+                continue
+        if not received:
+            with self._pending_lock:
+                self._pending.pop(msg_id, None)
+            raise BrowserError(
+                BrowserErrorCode.OP_FAILED,
+                f"browser op {op!r} timed out after {self._OP_TIMEOUT_S:.0f}s",
+                remediation="check the page for a blocking dialog, then retry only after reading its state",
+            )
         if reply is None:
-            self._teardown()
             raise BrowserError(
                 BrowserErrorCode.NOT_CONNECTED,
                 "browser session closed before replying",
             )
         return parse_result(reply)
+
+    def _read_loop(self) -> None:
+        try:
+            while self._alive:
+                reply = read_message(self._file)
+                if reply is None:
+                    break
+                if reply.get("type") != "result":
+                    continue
+                msg_id = reply.get("id")
+                with self._pending_lock:
+                    target = self._pending.pop(msg_id, None)
+                if target is not None:
+                    target.put(reply)
+        except (OSError, ValueError, EOFError):
+            pass
+        finally:
+            self._teardown()
 
     def _teardown(self) -> None:
         """Drop the connection so the extension reconnects with a fresh session.
@@ -225,6 +279,14 @@ class TcpBrowserSession(BrowserSession):
         a new session that *replaces* this dead one on the bridge. Best-effort.
         """
         self._alive = False
+        with self._pending_lock:
+            pending = list(self._pending.values())
+            self._pending.clear()
+        for target in pending:
+            try:
+                target.put_nowait(None)
+            except queue.Full:
+                pass
         for closer in (self._file, self._sock):
             try:
                 if closer is not None:
@@ -236,29 +298,6 @@ class TcpBrowserSession(BrowserSession):
                 self.on_teardown()
             except Exception:  # pragma: no cover - best-effort deregistration
                 pass
-
-    def _read_reply(self, msg_id: int) -> dict[str, Any] | None:
-        """Read frames until the *result for msg_id* arrives.
-
-        The op stream is NOT a clean 1:1 request/reply channel: the extension
-        re-posts a ``hello`` whenever the MV3 service worker reconnects, and an
-        op that already timed out on our side can deliver its result late. Match
-        strictly on ``type == "result"`` AND ``id == msg_id`` and DISCARD
-        anything else, so a single stray/late frame can never permanently
-        desync every subsequent reply (the off-by-one this guards against).
-        """
-        while True:
-            reply = read_message(self._file)
-            if reply is None:
-                return None
-            if reply.get("type") != "result":
-                # A control frame (e.g. a reconnect `hello`) - not an op reply.
-                continue
-            rid = reply.get("id")
-            if rid is not None and rid != msg_id:
-                # A late/duplicate result for an earlier op - drop it.
-                continue
-            return reply
 
 
 class BrowserServer:
@@ -297,8 +336,10 @@ class BrowserServer:
         self._sock.settimeout(0.25)
         self.port = self._sock.getsockname()[1]
         write_discovery(
-            self.port, self.token,
-            path=self._discovery_path, windows_copy=self._windows_copy,
+            self.port,
+            self.token,
+            path=self._discovery_path,
+            windows_copy=self._windows_copy,
         )
         self._thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._thread.start()
@@ -312,9 +353,7 @@ class BrowserServer:
                 continue
             except OSError:
                 return
-            threading.Thread(
-                target=self._handle_conn, args=(conn,), daemon=True
-            ).start()
+            threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
 
     def _handle_conn(self, conn: socket.socket) -> None:
         conn.settimeout(None)
@@ -336,9 +375,7 @@ class BrowserServer:
         if first.get("type") == "auth":
             if first.get("token") != self.token:
                 # Reject: drop the connection, register nothing.
-                raise BrowserError(
-                    BrowserErrorCode.NOT_CONNECTED, "bad auth token"
-                )
+                raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "bad auth token")
             first = None  # consumed; the next frame is the extension hello (after ours)
 
         # cua sends its hello first, then reads the extension's.
@@ -406,7 +443,9 @@ def ensure_server(bridge: NativeMessagingBridge | None = None) -> BrowserServer:
         except Exception:
             win_copy = None
         _SERVER = BrowserServer(
-            bridge=bridge, discovery_path=discovery, windows_copy=win_copy,
+            bridge=bridge,
+            discovery_path=discovery,
+            windows_copy=win_copy,
         )
         _SERVER.start()
     return _SERVER

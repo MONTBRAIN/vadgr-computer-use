@@ -37,6 +37,43 @@ vadgr-cua doctor
 
 On WSL2, the bridge daemon auto-launches the first time a tool is called. On other platforms it's a no-op; direct backends handle everything.
 
+### Browser workspaces and paced typing
+
+The browser tier uses one local per-user broker. Multiple Claude, Codex, vadgr,
+or direct MCP clients can use the same extension at once. Each client normally
+gets an owned browser window with any number of tabs. Registry listings still
+show other clients' targets, but an action against one returns
+`target_owned_by_another_client`. Use `windows(op="claim"|"release")` for a
+whole window. Use `tabs(op="claim"|"release")` only for one tab in a shared
+user window.
+
+When native Windows and WSL share Windows Chrome, the broker is a verified
+self-contained Windows process bound only to Windows loopback. WSL reaches it
+through the packaged Windows stdio proxy, so NAT and mirrored WSL networking
+use the same path. This requires neither Windows Python nor a firewall, DNS,
+route, adapter, proxy, VPN, or WSL networking change.
+
+Fast input remains the default. Use human-paced input only when a field needs
+real intermediate key events:
+
+```text
+browser(op="type", selector="#search", text="...", human=true)
+type_text(text="...", human=true)
+```
+
+Both tools use the versioned `us_adult_transcription_2026` timing profile by
+default. An advanced caller can instead provide both `wpm` and `iki_cv`.
+`browser(op="fill")` stays a bulk value operation. Paced input models event
+cadence for input-driven interfaces. It does not claim stealth or biometric
+human identity.
+
+The profile's residual timing data derives from the CC BY 4.0 KeyRecs dataset
+by Tiago Dias, João Vitorino, Eva Maia, Orlando Sousa, and Isabel Praça
+([dataset](https://doi.org/10.5281/zenodo.7886743),
+[data article](https://doi.org/10.1016/j.dib.2023.109509)). The checked-in
+artifact records the exact source hashes, filtering, weighting, and derivation
+script.
+
 ---
 
 ## Wire it into your agent
@@ -197,7 +234,7 @@ The Linux backend is selected per session by a capability resolver (run
 | Linux / Wayland (GNOME 49-50) | XDG Screenshot portal | Mutter RemoteDesktop via `jeepney` | one consent prompt on first capture (persisted) |
 | Linux / Wayland (KDE, wlroots) | `grim` (wlroots) / portal | pure-Python uinput | `vadgr-cua install-deps` for `/dev/uinput` access |
 | Windows native | Win32 GDI | SendInput | nothing extra |
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
+| WSL2 to Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
 | macOS | `mss` | Quartz `CGEvent` (via `pyobjc`) | nothing extra; deps pulled by pip. Grant Accessibility + Screen Recording on first run |
 
 `pip install vadgr-computer-use` pulls `jeepney`, `python-xlib` and `dbus-fast` automatically on Linux (pure-Python, no compilation). The pixel-input fallback uses a pure-Python `/dev/uinput` writer, so **no C compiler is needed**; the optional `evdev`-backed path is available via `pip install vadgr-computer-use[linux-uinput]`. The clipboard backend (`wl-clipboard`), the accessibility stack (`at-spi2-core` plus the ATK bridge) and `/dev/uinput` access are OS-level and installed by `vadgr-cua install-deps`. The Tier 1 structured tools and Wayland foreground-window detection speak AT-SPI over `dbus-fast` (a plain wheel, no PyGObject), so they work on a stock desktop with no extra install.
