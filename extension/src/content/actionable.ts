@@ -14,6 +14,11 @@ import { OpFailed } from "./errors";
 // the box / hit-test checks apply; otherwise they're skipped so the op logic stays
 // unit-testable on a no-layout DOM.
 function layoutIsLive(doc: Document): boolean {
+  // A content script always runs inside a real Chromium document. Hidden or
+  // throttled targets can transiently report a zero root box between requests;
+  // treating that as a no-layout test DOM would bypass the covered-element
+  // gate. Keep the geometry checks mandatory in the extension context.
+  if (typeof chrome !== "undefined" && Boolean(chrome.runtime?.id)) return true;
   try {
     return doc.documentElement.getBoundingClientRect().height > 0;
   } catch {

@@ -31,6 +31,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Keep covered-element rejection mandatory in real extension documents when a
+  hidden or throttled target transiently reports a zero root layout box.
 - Deliver each human-paced browser unit through the exact leased tab's content
   channel, with ordered keydown, before-input, input and keyup events plus
   per-unit read-back. Inactive tabs and unfocused windows no longer discard

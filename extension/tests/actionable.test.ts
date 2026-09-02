@@ -104,6 +104,23 @@ describe("receivesEvents", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps hit-testing a throttled extension document with a zero root box", () => {
+    document.body.innerHTML = `<input id="a"><div id="cover"></div>`;
+    const el = document.querySelector("#a") as HTMLElement;
+    const cover = document.querySelector("#cover") as HTMLElement;
+    vi.stubGlobal("chrome", { runtime: { id: "test-extension" } });
+    vi.spyOn(document.documentElement, "getBoundingClientRect").mockReturnValue(
+      { height: 0, width: 0 } as DOMRect,
+    );
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+      { width: 100, height: 20, left: 10, top: 10 } as DOMRect,
+    );
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(cover);
+    expect(receivesEvents(el)).toBe(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("true when the hit-test can't resolve (null) - occluded/throttled owned window, not a DOM overlay", () => {
     document.body.innerHTML = `<input id="a">`;
     const el = document.querySelector("#a") as HTMLElement;
