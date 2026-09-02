@@ -26,6 +26,11 @@ import type {
   WindowSummary,
   WindowsEnumApi,
 } from "./target/enumeration";
+import {
+  clearTypingCancellation,
+  typingCancelled,
+  waitTypingDelay,
+} from "./typing-cancellation";
 
 // --- the session target (the headline of 0.5.0) ---
 //
@@ -139,6 +144,60 @@ async function targetTab(params: Params = {}): Promise<chrome.tabs.Tab> {
   return tab;
 }
 
+function wireError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+function restrictedPage(url: string): boolean {
+  return /^(chrome|edge|devtools|chrome-extension|file):/i.test(url) ||
+    /^https:\/\/chromewebstore\.google\.com\//i.test(url);
+}
+
+export async function runnableTargetTab(
+  params: Params = {},
+): Promise<chrome.tabs.Tab> {
+  const tab = await targetTab(params);
+  if (tab.discarded) {
+    throw wireError("target_discarded", "the exact browser target is discarded");
+  }
+  if ((tab as chrome.tabs.Tab & { frozen?: boolean }).frozen) {
+    throw wireError("target_frozen", "the exact browser target is frozen");
+  }
+  if (restrictedPage(tab.url ?? "")) {
+    throw wireError(
+      "target_restricted",
+      `the extension cannot access the exact browser target URL`,
+    );
+  }
+  return tab;
+}
+
+export async function exactTargetReceivesTrustedKeyboard(
+  params: Params,
+): Promise<boolean> {
+  const tab = await runnableTargetTab(params);
+  const win = await chrome.windows.get(tab.windowId);
+  return tab.active === true && win.focused === true;
+}
+
+async function inactiveSafeKeyboardMutation(
+  op: string,
+  p: Params,
+  cdp: Executor | null,
+) {
+  if (await exactTargetReceivesTrustedKeyboard(p)) {
+    return withEscalation(op, p, domExecutor, cdp, isInteractive);
+  }
+  const result = await domExecutor.execute(op, p) as any;
+  if (result?.ok === false) {
+    throw wireError(
+      "inactive_tab_trusted_keyboard_unsupported",
+      `the exact inactive target rejected the ${op} content operation; trusted keyboard fallback was not dispatched`,
+    );
+  }
+  return result;
+}
+
 // How long to wait for a navigation to settle before returning whatever state
 // the tab reached. A heavy SPA - or a tab that never reports "complete" - must
 // NOT block the op, and thus the whole single-lock native pipe, forever.
@@ -243,7 +302,7 @@ export async function deliverWithSelfHeal(
 
 // Forward a DOM op into the pinned tab's content script and await its reply.
 async function forwardToContent(op: string, params: Record<string, unknown>) {
-  const tab = await targetTab(params);
+  const tab = await runnableTargetTab(params);
   const ch: ContentChannel = {
     send: (o, p) => chrome.tabs.sendMessage(tab.id!, { type: "op", op: o, params: p }),
     reinject: async () => {
@@ -253,7 +312,28 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
       });
     },
   };
-  return deliverWithSelfHeal(op, params, ch);
+  try {
+    const delivery = deliverWithSelfHeal(op, params, ch);
+    if (op !== "wait_for") return await delivery;
+    const requested = Number(params.timeout ?? 5000);
+    const bound = Math.max(
+      2000,
+      (Number.isFinite(requested) ? requested : 5000) + 1500,
+    );
+    return await Promise.race([
+      delivery,
+      new Promise((resolve) => setTimeout(() => resolve({ matched: false }), bound)),
+    ]);
+  } catch (e) {
+    const message = String((e as Error)?.message ?? e);
+    if (/cannot access|extensions gallery|missing host permission/i.test(message)) {
+      throw wireError(
+        "target_restricted",
+        "the extension cannot access the exact browser target",
+      );
+    }
+    throw e;
+  }
 }
 
 // `eval` runs JS in the page's MAIN world via chrome.scripting - the content
@@ -261,7 +341,7 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
 // (HIGH-risk escape hatch; page CSP may still forbid eval, which now surfaces
 // as a real error instead of an empty result.)
 async function evalInPage(expression: string, params: Params = {}) {
-  const tab = await targetTab(params);
+  const tab = await runnableTargetTab(params);
   const [inj] = await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
     world: "MAIN",
@@ -364,13 +444,101 @@ const domExecutor: Executor = {
   },
 };
 
+export async function humanTypeViaExactContentTarget(
+  p: Params,
+  dom: Executor = domExecutor,
+) {
+  const plan = p.typing_plan as any;
+  if (!plan || !Array.isArray(plan.units)) {
+    throw new Error("human typing requires a validated typing plan");
+  }
+  await dom.execute("assert_actionable", p);
+  const beforeResult = await dom.execute("get_value", p) as any;
+  if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
+    throw new Error(`${String(p.selector)} is not a text input or textarea`);
+  }
+
+  const requestId = Number(p._request_id);
+  let completedUnits = 0;
+  let fallbackUnits = 0;
+  let expectedValue = p.clear !== false ? "" : beforeResult.value;
+  const started = Date.now();
+  try {
+    if (plan.units.length === 0 && p.clear !== false) {
+      const cleared = await dom.execute("clear", p) as any;
+      if (!cleared || cleared.ok !== true || cleared.value !== "") {
+        throw Object.assign(new Error("typing_mismatch: empty clear did not complete"), {
+          code: "typing_mismatch",
+        });
+      }
+    }
+    for (const unit of plan.units) {
+      const delay = Number(unit?.delay_before_ms ?? 0);
+      if (!Number.isFinite(delay) || delay < 0) {
+        throw new Error("typing plan contains an invalid delay");
+      }
+      if (delay > 0) await waitTypingDelay(delay, requestId);
+      if (typingCancelled(requestId)) {
+        throw Object.assign(
+          new Error(`typing_cancelled: ${completedUnits} complete units`),
+          { code: "typing_cancelled" },
+        );
+      }
+      const unitText = String(unit?.text ?? "");
+      const unitResult = await dom.execute("human_type_unit", {
+        ...p,
+        text: unitText,
+        replace: p.clear !== false && completedUnits === 0,
+      }) as any;
+      expectedValue = p.clear !== false && completedUnits === 0
+        ? unitText
+        : expectedValue + unitText;
+      if (!unitResult || unitResult.ok !== true || unitResult.value !== expectedValue) {
+        throw new Error("typing_rejected: the page rejected a planned input unit");
+      }
+      if (unit?.fallback === true) fallbackUnits += 1;
+      completedUnits += 1;
+    }
+    if (typingCancelled(requestId)) {
+      throw Object.assign(
+        new Error(`typing_cancelled: ${completedUnits} complete units`),
+        { code: "typing_cancelled" },
+      );
+    }
+  } finally {
+    clearTypingCancellation(requestId);
+  }
+
+  const finalResult = await dom.execute("get_value", p) as any;
+  const expected = p.clear !== false
+    ? String(p.text ?? "")
+    : beforeResult.value + String(p.text ?? "");
+  if (!finalResult || finalResult.value !== expected) {
+    throw Object.assign(
+      new Error("typing_mismatch: final value does not match expected text"),
+      { code: "typing_mismatch" },
+    );
+  }
+  if (p.submit) await dom.execute("human_submit", p);
+  return {
+    human: true,
+    timing_profile: plan.timing_profile ?? null,
+    nominal_wpm: plan.nominal_wpm ?? null,
+    units: plan.units.length,
+    fallback_units: fallbackUnits,
+    elapsed_ms: Date.now() - started,
+    ok: true,
+    via: "content",
+  };
+}
+
 // The CDP universal path (chrome.debugger). Null when the API is absent (no
 // `debugger` permission / non-extension test context) → escalation is skipped.
 // The onEvent channel is passed so the CDP path can handle JS dialogs.
 function defaultCdp(): Executor | null {
   if (typeof chrome === "undefined" || !chrome.debugger) return null;
   return new CdpExecutor(
-    chromeDebuggerAttach(async (p) => (await targetTab(p)).id!),
+    chromeDebuggerAttach(async (p) => (await runnableTargetTab(p)).id!),
     chrome.debugger.onEvent,
   );
 }
@@ -692,13 +860,14 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
           : withEscalation(op, p, domExecutor, cdp, isInteractive),
       );
     } else if (op === "type") {
-      reg(op, (p) => {
+      reg(op, async (p) => {
         if (p.human === true) {
-          if (!cdp) throw new Error("human typing requires chrome.debugger");
-          return cdp.execute(op, p);
+          return humanTypeViaExactContentTarget(p);
         }
-        return withEscalation(op, p, domExecutor, cdp, isInteractive);
+        return inactiveSafeKeyboardMutation(op, p, cdp);
       });
+    } else if (op === "fill" || op === "clear") {
+      reg(op, (p) => inactiveSafeKeyboardMutation(op, p, cdp));
     } else if (ESCALATING.has(op)) {
       reg(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
     } else {
@@ -706,7 +875,23 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
     }
   }
 
-  if (cdp) for (const op of CDP_ONLY) reg(op, (p) => cdp.execute(op, p));
+  if (cdp) {
+    for (const op of CDP_ONLY) {
+      if (op === "press") {
+        reg(op, async (p) => {
+          if (!(await exactTargetReceivesTrustedKeyboard(p))) {
+            throw wireError(
+              "inactive_tab_trusted_keyboard_unsupported",
+              "trusted keyboard input is unavailable while the exact target tab or window is inactive",
+            );
+          }
+          return cdp.execute(op, p);
+        });
+      } else {
+        reg(op, (p) => cdp.execute(op, p));
+      }
+    }
+  }
 
   // `eval` prefers the CDP path: page-world eval() is governed by the page's
   // CSP (a `script-src` without 'unsafe-eval' blocks it, and executeScript

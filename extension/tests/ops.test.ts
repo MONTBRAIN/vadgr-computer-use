@@ -40,6 +40,21 @@ describe("opClick", () => {
   it("throws op_failed when nothing matches", async () => {
     await expect(opClick({ selector: "#missing" })).rejects.toThrowError(/no element/i);
   });
+
+  it("uses a bounded timer instead of animation frames in a hidden document", async () => {
+    document.body.innerHTML = `<button id="go" aria-expanded="false">go</button>`;
+    const own = Object.getOwnPropertyDescriptor(document, "hidden");
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    try {
+      await expect(opClick({ selector: "#go" })).resolves.toMatchObject({
+        clicked: true,
+        ok: false,
+      });
+    } finally {
+      if (own) Object.defineProperty(document, "hidden", own);
+      else delete (document as any).hidden;
+    }
+  });
 });
 
 describe("opQuery", () => {

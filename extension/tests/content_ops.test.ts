@@ -8,7 +8,14 @@
 // before acting and pick the authoritative element.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { opElementState, opClear, opGetValue } from "../src/content/ops";
+import {
+  opAssertActionable,
+  opClear,
+  opElementState,
+  opGetValue,
+  opHumanTypeUnit,
+  opHumanSubmit,
+} from "../src/content/ops";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -42,6 +49,73 @@ describe("opElementState", () => {
 
   it("throws when nothing matches", () => {
     expect(() => opElementState({ selector: "#gone" })).toThrowError(/no element/i);
+  });
+});
+
+describe("opAssertActionable", () => {
+  it("accepts an actionable target without mutating it", () => {
+    document.body.innerHTML = `<input id="n" value="unchanged" />`;
+    expect(opAssertActionable({ selector: "#n" })).toEqual({ actionable: true });
+    expect((document.querySelector("#n") as HTMLInputElement).value).toBe("unchanged");
+  });
+
+  it("rejects a non-actionable target before CDP can mutate it", () => {
+    document.body.innerHTML = `<input id="n" style="display:none" />`;
+    expect(() => opAssertActionable({ selector: "#n" })).toThrow(/not visible/);
+  });
+});
+
+describe("opHumanTypeUnit", () => {
+  it("DOM-focuses the field and emits ordered units without activating a tab", () => {
+    document.body.innerHTML = `<input id="n" value="old" />`;
+    const input = document.querySelector("#n") as HTMLInputElement;
+    const events: string[] = [];
+    for (const name of ["keydown", "beforeinput", "input", "keyup"]) {
+      input.addEventListener(name, () => events.push(name));
+    }
+    expect(opHumanTypeUnit({ selector: "#n", text: "A", replace: true }))
+      .toMatchObject({ inserted: true, value: "A", ok: true });
+    expect(opHumanTypeUnit({ selector: "#n", text: "b" }))
+      .toMatchObject({ inserted: true, value: "Ab", ok: true });
+    expect(events).toEqual([
+      "keydown", "beforeinput", "input", "keyup",
+      "keydown", "beforeinput", "input", "keyup",
+    ]);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("does not mutate when beforeinput is cancelled", () => {
+    document.body.innerHTML = `<input id="n" value="old" />`;
+    const input = document.querySelector("#n") as HTMLInputElement;
+    input.addEventListener("beforeinput", (event) => event.preventDefault());
+    expect(opHumanTypeUnit({ selector: "#n", text: "x", replace: true }))
+      .toMatchObject({ inserted: false, value: "old", ok: false });
+  });
+
+  it("rejects contenteditable until rich-editor unit insertion is proven", () => {
+    document.body.innerHTML = `<div id="e" contenteditable="true">rich</div>`;
+    expect(() => opHumanTypeUnit({ selector: "#e", text: "x" }))
+      .toThrow(/not a text input or textarea/);
+  });
+});
+
+describe("opHumanSubmit", () => {
+  it("dispatches Enter and requests the owning form submission", () => {
+    document.body.innerHTML = `<form><input id="n" /></form>`;
+    const form = document.querySelector("form")!;
+    const events: string[] = [];
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      events.push("submit");
+    });
+    const input = document.querySelector("#n")!;
+    input.addEventListener("keydown", () => events.push("keydown"));
+    input.addEventListener("keyup", () => events.push("keyup"));
+    expect(opHumanSubmit({ selector: "#n" })).toEqual({
+      accepted: true,
+      submitted: true,
+    });
+    expect(events).toEqual(["keydown", "keyup", "submit"]);
   });
 });
 

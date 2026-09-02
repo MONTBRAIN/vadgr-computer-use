@@ -31,11 +31,16 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
-- Deliver human-paced browser keystrokes through the same trusted CDP key-event
-  path as fast typing, with one target-directed text insertion between each
-  printable keydown and keyup; retain the actionability gate so covered inputs
-  reject those trusted events, and emulate page focus for owned background
-  targets without foregrounding their operating-system windows.
+- Deliver each human-paced browser unit through the exact leased tab's content
+  channel, with ordered keydown, before-input, input and keyup events plus
+  per-unit read-back. Inactive tabs and unfocused windows no longer discard
+  paced input, and the path never activates or foregrounds its target.
+- Keep hidden background tabs from waiting forever for an animation frame while
+  verifying a state-bearing DOM click.
+- Reject trusted keyboard commands by name when their exact tab or window is
+  inactive, instead of reporting a discarded CDP key event as success or
+  activating the target. Discarded, frozen and restricted targets now fail by
+  name too.
 - Keep native Windows auto-registration on the packaged, content-addressed
   native-host executable. Starting a Windows MCP client no longer replaces the
   working Chrome registration with a Python batch launcher.

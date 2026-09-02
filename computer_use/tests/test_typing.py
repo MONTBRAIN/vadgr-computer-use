@@ -37,6 +37,12 @@ def test_named_profile_is_deterministic_with_injected_random_source():
     assert len({round(unit.delay_before_ms, 3) for unit in one.units[1:]}) > 1
 
 
+def test_human_plan_marks_non_ascii_units_as_insertion_fallback():
+    plan = build_typing_plan("Aé🙂\n", TypingOptions(human=True), rng=random.Random(7))
+    assert [unit.fallback for unit in plan.units] == [False, True, True, False]
+    assert plan.fallback_units == 2
+
+
 def test_custom_zero_cv_is_constant_control():
     plan = build_typing_plan(
         "abcdef", TypingOptions(human=True, wpm=60, iki_cv=0), rng=random.Random(1)
