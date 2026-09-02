@@ -183,9 +183,15 @@ def discards_target(devtools: DevTools) -> dict[str, Any]:
 
 def row_expression(url: str, body: str) -> str:
     return f"""
-(() => {{
-  const root = document.querySelector('discards-main')?.shadowRoot
-    ?.querySelector('discards-tab')?.shadowRoot;
+ (async () => {{
+  const tab = document.querySelector('discards-main')?.shadowRoot
+    ?.querySelector('discards-tab');
+  if (!tab || typeof tab.updateTable_ !== 'function') {{
+    throw new Error('discards table refresh is unavailable');
+  }}
+  await tab.updateTable_();
+  await tab.updateComplete;
+  const root = tab.shadowRoot;
   if (!root) throw new Error('discards table is unavailable');
   const row = [...root.querySelectorAll('tbody tr')].find(
     item => item.querySelector('.tab-url-cell')?.textContent?.trim() === {json.dumps(url)}
