@@ -74,7 +74,10 @@ class DevTools:
             raise LifecycleSetupError("Runtime.evaluate returned no result")
         if result.get("exceptionDetails"):
             details = result["exceptionDetails"]
-            raise LifecycleSetupError(details.get("text", "evaluation failed"))
+            exception = details.get("exception") or {}
+            raise LifecycleSetupError(
+                exception.get("description") or details.get("text") or "evaluation failed"
+            )
         remote = result.get("result")
         if not isinstance(remote, dict):
             raise LifecycleSetupError("Runtime.evaluate returned no value")
@@ -123,8 +126,7 @@ def prepare_internal_pages(devtools: DevTools) -> dict[str, Any]:
         (
             target
             for target in devtools.targets()
-            if target.get("type") == "page"
-            and target.get("url") == "chrome://chrome-urls/"
+            if target.get("type") == "page" and target.get("url") == "chrome://chrome-urls/"
         ),
         None,
     )
@@ -160,9 +162,7 @@ def prepare_internal_pages(devtools: DevTools) -> dict[str, Any]:
     )
     if discards is None:
         devtools.create("chrome://discards/")
-        discards = wait_for_target(
-            devtools, "chrome://discards/", title="Discards", timeout=10
-        )
+        discards = wait_for_target(devtools, "chrome://discards/", title="Discards", timeout=10)
     return {"debug_pages": outcome, "discards_target_id": discards.get("id")}
 
 
@@ -196,19 +196,38 @@ def row_expression(url: str, body: str) -> str:
 """
 
 
-def lifecycle_row(devtools: DevTools, url: str) -> dict[str, Any]:
-    value = devtools.evaluate(
-        discards_target(devtools),
-        row_expression(
-            url,
-            """
+def evaluate_lifecycle_row(
+    devtools: DevTools,
+    url: str,
+    body: str,
+    timeout: float,
+) -> Any:
+    """Evaluate against the exact row after its bounded asynchronous arrival."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return devtools.evaluate(discards_target(devtools), row_expression(url, body))
+        except LifecycleSetupError as error:
+            if (
+                "exact lifecycle target row is unavailable" not in str(error)
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.1)
+
+
+def lifecycle_row(devtools: DevTools, url: str, timeout: float = 0) -> dict[str, Any]:
+    value = evaluate_lifecycle_row(
+        devtools,
+        url,
+        """
 return {
   lifecycle: row.children[6]?.textContent?.trim() ?? '',
   active: row.children[4]?.textContent?.trim() === 'visible',
   url: row.querySelector('.tab-url-cell')?.textContent?.trim() ?? '',
 };
 """,
-        ),
+        timeout,
     )
     if not isinstance(value, dict):
         raise LifecycleSetupError("lifecycle row returned no structured state")
@@ -221,13 +240,11 @@ def wait_for_lifecycle(
     deadline = time.monotonic() + timeout
     last: dict[str, Any] | None = None
     while time.monotonic() < deadline:
-        last = lifecycle_row(devtools, url)
+        last = lifecycle_row(devtools, url, max(0, deadline - time.monotonic()))
         if expected in str(last.get("lifecycle", "")).lower():
             return last
         time.sleep(0.2)
-    raise LifecycleSetupError(
-        f"target never reached {expected!r}; last state was {last!r}"
-    )
+    raise LifecycleSetupError(f"target never reached {expected!r}; last state was {last!r}")
 
 
 def freeze(devtools: DevTools, url: str, timeout: float) -> dict[str, Any]:
@@ -246,11 +263,10 @@ def freeze(devtools: DevTools, url: str, timeout: float) -> dict[str, Any]:
 
 
 def discard(devtools: DevTools, url: str, timeout: float) -> dict[str, Any]:
-    result = devtools.evaluate(
-        discards_target(devtools),
-        row_expression(
-            url,
-            """
+    result = evaluate_lifecycle_row(
+        devtools,
+        url,
+        """
 const action = [...row.querySelectorAll('.actions-cell [is="action-link"]')]
   .find(item => item.textContent.trim() === '[Urgent Discard]');
 if (!action || action.hasAttribute('disabled')) {
@@ -259,7 +275,7 @@ if (!action || action.hasAttribute('disabled')) {
 action.click();
 return {requested: true};
 """,
-        ),
+        timeout,
     )
     if not isinstance(result, dict) or result.get("requested") is not True:
         raise LifecycleSetupError("urgent discard was not requested")
@@ -285,7 +301,7 @@ def main() -> int:
     elif args.command == "discard":
         result = discard(devtools, args.url, args.timeout)
     else:
-        result = lifecycle_row(devtools, args.url)
+        result = lifecycle_row(devtools, args.url, args.timeout)
     print(json.dumps(result, sort_keys=True))
     return 0
 
