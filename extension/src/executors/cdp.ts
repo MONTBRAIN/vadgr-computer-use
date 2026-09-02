@@ -171,81 +171,95 @@ export class CdpExecutor implements Executor {
     // target before focus or any key event so an overlay cannot turn trusted
     // input into a mutation of a covered control.
     await this.centre(send, selector, p.force === true);
-    const before = await this.readValue(send, selector);
-    await this.focus(send, selector);
-    if (p.clear !== false) await this.key(send, "a", CTRL); // select all → replaced
-    if (p.human === true) {
-      const plan = p.typing_plan as any;
-      if (!plan || !Array.isArray(plan.units)) {
-        throw new Error("human typing requires a validated typing plan");
-      }
-      let fallbackUnits = 0;
-      let completedUnits = 0;
-      const requestId = Number(p._request_id);
-      const started = Date.now();
-      try {
-        for (const unit of plan.units) {
-          const delay = Number(unit?.delay_before_ms ?? 0);
-          if (!Number.isFinite(delay) || delay < 0) {
-            throw new Error("typing plan contains an invalid delay");
+    const human = p.human === true;
+    if (human) {
+      // CDP key events are target-directed, but Chromium on Windows discards
+      // them when the page itself is not considered active. Emulate page focus
+      // for this target only; never foreground the OS window.
+      await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    }
+    try {
+      const before = await this.readValue(send, selector);
+      await this.focus(send, selector);
+      if (p.clear !== false) await this.key(send, "a", CTRL); // select all → replaced
+      if (human) {
+        const plan = p.typing_plan as any;
+        if (!plan || !Array.isArray(plan.units)) {
+          throw new Error("human typing requires a validated typing plan");
+        }
+        let fallbackUnits = 0;
+        let completedUnits = 0;
+        const requestId = Number(p._request_id);
+        const started = Date.now();
+        try {
+          for (const unit of plan.units) {
+            const delay = Number(unit?.delay_before_ms ?? 0);
+            if (!Number.isFinite(delay) || delay < 0) {
+              throw new Error("typing plan contains an invalid delay");
+            }
+            if (delay > 0) await waitTypingDelay(delay, requestId);
+            if (typingCancelled(requestId)) {
+              throw Object.assign(
+                new Error(`typing_cancelled: ${completedUnits} complete units`),
+                { code: "typing_cancelled" },
+              );
+            }
+            const value = String(unit?.text ?? "");
+            if (value === "\n") {
+              await this.key(send, "Enter");
+            } else if (value === "\t") {
+              await this.key(send, "Tab");
+            } else if (value.length === 1 && value.charCodeAt(0) >= 0x20 && value.charCodeAt(0) <= 0x7e) {
+              await this.character(send, value);
+            } else {
+              fallbackUnits += 1;
+              await send("Input.insertText", { text: value });
+            }
+            completedUnits += 1;
           }
-          if (delay > 0) await waitTypingDelay(delay, requestId);
           if (typingCancelled(requestId)) {
             throw Object.assign(
               new Error(`typing_cancelled: ${completedUnits} complete units`),
               { code: "typing_cancelled" },
             );
           }
-          const value = String(unit?.text ?? "");
-          if (value === "\n") {
-            await this.key(send, "Enter");
-          } else if (value === "\t") {
-            await this.key(send, "Tab");
-          } else if (value.length === 1 && value.charCodeAt(0) >= 0x20 && value.charCodeAt(0) <= 0x7e) {
-            await this.character(send, value);
-          } else {
-            fallbackUnits += 1;
-            await send("Input.insertText", { text: value });
-          }
-          completedUnits += 1;
+          if (p.submit) await this.key(send, "Enter");
+        } finally {
+          clearTypingCancellation(requestId);
         }
-        if (typingCancelled(requestId)) {
+        const value = await this.readValue(send, selector);
+        const expected = p.clear !== false ? text : String(before ?? "") + text;
+        if (typeof value === "string" && value !== expected) {
           throw Object.assign(
-            new Error(`typing_cancelled: ${completedUnits} complete units`),
-            { code: "typing_cancelled" },
+            new Error("typing_mismatch: final value does not match expected text"),
+            { code: "typing_mismatch" },
           );
         }
-        if (p.submit) await this.key(send, "Enter");
-      } finally {
-        clearTypingCancellation(requestId);
+        return {
+          human: true,
+          timing_profile: plan.timing_profile ?? null,
+          nominal_wpm: plan.nominal_wpm ?? null,
+          units: plan.units.length,
+          fallback_units: fallbackUnits,
+          elapsed_ms: Date.now() - started,
+          ok: true,
+          via: "cdp",
+        };
       }
+      await send("Input.insertText", { text });
+      if (p.submit) await this.key(send, "Enter");
       const value = await this.readValue(send, selector);
-      const expected = p.clear !== false ? text : String(before ?? "") + text;
-      if (typeof value === "string" && value !== expected) {
-        throw Object.assign(new Error("typing_mismatch: final value does not match expected text"), {
-          code: "typing_mismatch",
-        });
-      }
       return {
-        human: true,
-        timing_profile: plan.timing_profile ?? null,
-        nominal_wpm: plan.nominal_wpm ?? null,
-        units: plan.units.length,
-        fallback_units: fallbackUnits,
-        elapsed_ms: Date.now() - started,
-        ok: true,
+        typed: text.length,
+        value,
+        ok: typeof value === "string" ? value.includes(text) : true,
         via: "cdp",
       };
+    } finally {
+      if (human) {
+        await send("Emulation.setFocusEmulationEnabled", { enabled: false });
+      }
     }
-    await send("Input.insertText", { text });
-    if (p.submit) await this.key(send, "Enter");
-    const value = await this.readValue(send, selector);
-    return {
-      typed: text.length,
-      value,
-      ok: typeof value === "string" ? value.includes(text) : true,
-      via: "cdp",
-    };
   }
 
   private async press(send: CdpSend, p: Params) {
