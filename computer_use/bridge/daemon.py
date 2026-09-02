@@ -56,6 +56,7 @@ import socket
 import struct
 import threading
 import time
+from collections import OrderedDict
 
 
 def _compute_self_hash() -> str:
@@ -582,6 +583,40 @@ class InputSender:
         _send_key_event(0x11, down=False)  # Ctrl up
         time.sleep(0.05)  # let target app process the paste
 
+    def type_text_unit(self, text):
+        """Emit one complete plan unit and report composition fallback."""
+        if text in ("\n", "\r"):
+            _send_key_event(0x0D, down=True)
+            _send_key_event(0x0D, down=False)
+            return False
+        if text == "\t":
+            _send_key_event(0x09, down=True)
+            _send_key_event(0x09, down=False)
+            return False
+        if len(text) != 1:
+            self._type_unicode(text)
+            return True
+        vk = user32.VkKeyScanW(ord(text))
+        if vk == -1:
+            self._type_unicode(text)
+            return True
+        key_code = vk & 0xFF
+        modifiers = (vk >> 8) & 0xFF
+        held = [
+            code
+            for bit, code in ((1, 0x10), (2, 0x11), (4, 0x12))
+            if modifiers & bit
+        ]
+        for code in held:
+            _send_key_event(code, down=True)
+        try:
+            _send_key_event(key_code, down=True)
+            _send_key_event(key_code, down=False)
+        finally:
+            for code in reversed(held):
+                _send_key_event(code, down=False)
+        return False
+
     def _type_unicode(self, text):
         """Type short text using KEYEVENTF_UNICODE one char at a time."""
         for char in text:
@@ -589,21 +624,23 @@ class InputSender:
                 _send_key_event(0x0D, down=True)
                 _send_key_event(0x0D, down=False)
             else:
-                code = ord(char)
-                inputs = (INPUT * 2)()
-                inputs[0].type = INPUT_KEYBOARD
-                inputs[0].union.ki.wVk = 0
-                inputs[0].union.ki.wScan = code
-                inputs[0].union.ki.dwFlags = KEYEVENTF_UNICODE
-                inputs[0].union.ki.time = 0
-                inputs[0].union.ki.dwExtraInfo = None
-                inputs[1].type = INPUT_KEYBOARD
-                inputs[1].union.ki.wVk = 0
-                inputs[1].union.ki.wScan = code
-                inputs[1].union.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
-                inputs[1].union.ki.time = 0
-                inputs[1].union.ki.dwExtraInfo = None
-                user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
+                encoded = char.encode("utf-16-le")
+                for index in range(0, len(encoded), 2):
+                    code = int.from_bytes(encoded[index : index + 2], "little")
+                    inputs = (INPUT * 2)()
+                    inputs[0].type = INPUT_KEYBOARD
+                    inputs[0].union.ki.wVk = 0
+                    inputs[0].union.ki.wScan = code
+                    inputs[0].union.ki.dwFlags = KEYEVENTF_UNICODE
+                    inputs[0].union.ki.time = 0
+                    inputs[0].union.ki.dwExtraInfo = None
+                    inputs[1].type = INPUT_KEYBOARD
+                    inputs[1].union.ki.wVk = 0
+                    inputs[1].union.ki.wScan = code
+                    inputs[1].union.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                    inputs[1].union.ki.time = 0
+                    inputs[1].union.ki.dwExtraInfo = None
+                    user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT))
             time.sleep(0.01)
 
     @staticmethod
@@ -719,6 +756,8 @@ class BridgeDaemon:
         self._capturer = ScreenCapturer()
         self._input = InputSender()
         self._dispatch_lock = threading.Lock()
+        self._response_cache = OrderedDict()
+        self._response_cache_limit = 256
         self._handlers = {
             "ping": self._handle_ping,
             "screenshot_full": self._handle_screenshot_full,
@@ -729,6 +768,7 @@ class BridgeDaemon:
             "click": self._handle_click,
             "double_click": self._handle_double_click,
             "type_text": self._handle_type_text,
+            "type_text_unit": self._handle_type_text_unit,
             "key_press": self._handle_key_press,
             "scroll": self._handle_scroll,
             "drag": self._handle_drag,
@@ -781,17 +821,34 @@ class BridgeDaemon:
         method = request.get("method", "")
         params = request.get("params", {})
 
-        handler = self._handlers.get(method)
-        if handler is None:
-            return {"id": req_id, "ok": False, "error": f"Unknown method: {method}"}
-
         with self._dispatch_lock:
+            cached = self._response_cache.get(req_id)
+            if cached is not None:
+                self._response_cache.move_to_end(req_id)
+                return cached
+            handler = self._handlers.get(method)
+            if handler is None:
+                response = {
+                    "id": req_id,
+                    "ok": False,
+                    "error": f"Unknown method: {method}",
+                }
+                self._remember_response(req_id, response)
+                return response
             try:
                 result = handler(params)
-                return {"id": req_id, "ok": True, "result": result}
+                response = {"id": req_id, "ok": True, "result": result}
             except Exception as e:
                 logger.error("Error in %s: %s", method, e)
-                return {"id": req_id, "ok": False, "error": str(e)}
+                response = {"id": req_id, "ok": False, "error": str(e)}
+            self._remember_response(req_id, response)
+            return response
+
+    def _remember_response(self, request_id, response):
+        self._response_cache[request_id] = response
+        self._response_cache.move_to_end(request_id)
+        while len(self._response_cache) > self._response_cache_limit:
+            self._response_cache.popitem(last=False)
 
     def _send_response(self, sock, response):
         payload = json.dumps(response, separators=(",", ":")).encode("utf-8")
@@ -845,6 +902,9 @@ class BridgeDaemon:
     def _handle_type_text(self, params):
         self._input.type_text(params["text"])
         return {}
+
+    def _handle_type_text_unit(self, params):
+        return {"fallback": self._input.type_text_unit(params["text"])}
 
     def _handle_key_press(self, params):
         self._input.key_press(params["keys"])

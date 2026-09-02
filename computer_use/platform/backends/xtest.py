@@ -25,19 +25,36 @@ from __future__ import annotations
 
 import time
 
-from computer_use.core.actions import ActionExecutor
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError
+from computer_use.core.typing import TypingPlan
 
 _BUTTONS = {"left": 1, "middle": 2, "right": 3}
 
 # X11 keysyms for named keys (X11/keysymdef.h).
 _NAMED_KEYSYMS = {
-    "shift": 0xFFE1, "ctrl": 0xFFE3, "control": 0xFFE3, "alt": 0xFFE9,
-    "super": 0xFFEB, "meta": 0xFFE7,
-    "enter": 0xFF0D, "return": 0xFF0D, "tab": 0xFF09, "escape": 0xFF1B, "esc": 0xFF1B,
-    "backspace": 0xFF08, "delete": 0xFFFF, "del": 0xFFFF,
-    "up": 0xFF52, "down": 0xFF54, "left": 0xFF51, "right": 0xFF53,
-    "home": 0xFF50, "end": 0xFF57, "pageup": 0xFF55, "pagedown": 0xFF56,
+    "shift": 0xFFE1,
+    "ctrl": 0xFFE3,
+    "control": 0xFFE3,
+    "alt": 0xFFE9,
+    "super": 0xFFEB,
+    "meta": 0xFFE7,
+    "enter": 0xFF0D,
+    "return": 0xFF0D,
+    "tab": 0xFF09,
+    "escape": 0xFF1B,
+    "esc": 0xFF1B,
+    "backspace": 0xFF08,
+    "delete": 0xFFFF,
+    "del": 0xFFFF,
+    "up": 0xFF52,
+    "down": 0xFF54,
+    "left": 0xFF51,
+    "right": 0xFF53,
+    "home": 0xFF50,
+    "end": 0xFF57,
+    "pageup": 0xFF55,
+    "pagedown": 0xFF56,
     "space": 0x0020,
     **{f"f{i}": 0xFFBE + (i - 1) for i in range(1, 13)},  # F1..F12
 }
@@ -108,21 +125,34 @@ class XTestExecutor(ActionExecutor):
         self.click(x, y)
 
     def type_text(self, text: str) -> None:
-        shift = self._code(_NAMED_KEYSYMS["shift"])
         for ch in text:
-            if ch == "\n":
-                self._tap(self._code(_NAMED_KEYSYMS["enter"]))
-                continue
-            if ch == "\t":
-                self._tap(self._code(_NAMED_KEYSYMS["tab"]))
-                continue
-            need_shift = ch.isupper() or ch in _SHIFTED
-            code = self._code(self._x.char_to_keysym(ch))
-            if need_shift:
-                self._x.key(shift, True)
+            self._type_char(ch)
+
+    def _type_char(self, ch: str) -> bool:
+        if ch == "\n":
+            self._tap(self._code(_NAMED_KEYSYMS["enter"]))
+            return False
+        if ch == "\t":
+            self._tap(self._code(_NAMED_KEYSYMS["tab"]))
+            return False
+        if len(ch) != 1:
+            raise ActionError("XTEST composition fallback is unavailable for this input unit")
+        code = self._code(self._x.char_to_keysym(ch))
+        if not code:
+            raise ActionError("XTEST composition fallback is unavailable for this character")
+        shift = self._code(_NAMED_KEYSYMS["shift"])
+        need_shift = ch.isupper() or ch in _SHIFTED
+        if need_shift:
+            self._x.key(shift, True)
+        try:
             self._tap(code)
+        finally:
             if need_shift:
                 self._x.key(shift, False)
+        return False
+
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+        return consume_typing_plan(plan, self._type_char, cancelled=cancelled)
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:

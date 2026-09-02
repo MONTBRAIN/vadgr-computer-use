@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vadgr-computer-use"
-version = "0.7.5"
+version = "0.7.6"
 description = "Local-first MCP server for desktop automation: screenshots, mouse, keyboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -63,9 +63,11 @@ include = ["computer_use*"]
 exclude = ["computer_use.tests*"]
 
 [tool.setuptools.package-data]
+"computer_use.core" = ["typing_profiles/*.json"]
 # The Windows relay shim Chrome spawns on Windows when cua runs in WSL: shipped
 # as a prebuilt binary (no Python on Windows). Built from winhost/main.go.
 "computer_use.browser.winhost" = ["vadgr-cua-host.exe"]
+"computer_use.browser.winbroker" = ["*.zip", "*.json", "*.ps1"]
 # The udev rule `vadgr-cua install-deps` installs so /dev/uinput is writable by
 # the 'input' group (the pure-python uinput fallback needs this).
 "computer_use.setup" = ["udev/*.rules"]

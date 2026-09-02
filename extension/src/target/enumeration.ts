@@ -18,6 +18,7 @@ export interface ChromeTabInfo {
   url?: string;
   title?: string;
   active?: boolean;
+  openerTabId?: number;
 }
 
 export interface ChromeWindowInfo {
@@ -46,6 +47,7 @@ export interface TabNode {
   active: boolean;
   owned: boolean;
   is_current: boolean;
+  opener_tab_id?: number;
 }
 
 export interface WindowNode {
@@ -78,6 +80,7 @@ export async function enumerateTabs(
         active: !!t.active,
         owned: t.id != null && join.isOwned(t.id),
         is_current: t.id != null && join.current === t.id,
+        ...(t.openerTabId != null ? { opener_tab_id: t.openerTabId } : {}),
       }));
       return {
         window_id: w.id,

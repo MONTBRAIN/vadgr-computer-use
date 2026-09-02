@@ -14,10 +14,21 @@ dispatch to the MCP stdio server.
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # --- Dispatch ---
 
 
 class TestDispatch:
+    def test_version_reports_installed_distribution(self, capsys):
+        from computer_use import mcp_server
+
+        with patch.object(mcp_server, "version", return_value="0.7.6"):
+            with pytest.raises(SystemExit) as error:
+                mcp_server.main(["--version"])
+        assert error.value.code == 0
+        assert capsys.readouterr().out.strip() == "vadgr-cua 0.7.6"
+
     def test_no_subcommand_runs_mcp_server(self):
         from computer_use import mcp_server
 
@@ -28,45 +39,35 @@ class TestDispatch:
     def test_doctor_dispatches_to_doctor_handler(self):
         from computer_use import mcp_server
 
-        with patch.object(
-            mcp_server, "_cmd_doctor", return_value=0
-        ) as mock_cmd:
+        with patch.object(mcp_server, "_cmd_doctor", return_value=0) as mock_cmd:
             assert mcp_server.main(["doctor"]) == 0
             mock_cmd.assert_called_once()
 
     def test_install_daemon_dispatches(self):
         from computer_use import mcp_server
 
-        with patch.object(
-            mcp_server, "_cmd_install_daemon", return_value=0
-        ) as mock_cmd:
+        with patch.object(mcp_server, "_cmd_install_daemon", return_value=0) as mock_cmd:
             assert mcp_server.main(["install-daemon"]) == 0
             mock_cmd.assert_called_once()
 
     def test_stop_daemon_dispatches(self):
         from computer_use import mcp_server
 
-        with patch.object(
-            mcp_server, "_cmd_stop_daemon", return_value=0
-        ) as mock_cmd:
+        with patch.object(mcp_server, "_cmd_stop_daemon", return_value=0) as mock_cmd:
             assert mcp_server.main(["stop-daemon"]) == 0
             mock_cmd.assert_called_once()
 
     def test_restart_daemon_dispatches(self):
         from computer_use import mcp_server
 
-        with patch.object(
-            mcp_server, "_cmd_restart_daemon", return_value=0
-        ) as mock_cmd:
+        with patch.object(mcp_server, "_cmd_restart_daemon", return_value=0) as mock_cmd:
             assert mcp_server.main(["restart-daemon"]) == 0
             mock_cmd.assert_called_once()
 
     def test_browser_setup_dispatches(self):
         from computer_use import mcp_server
 
-        with patch.object(
-            mcp_server, "_cmd_browser_setup", return_value=0
-        ) as mock_cmd:
+        with patch.object(mcp_server, "_cmd_browser_setup", return_value=0) as mock_cmd:
             assert mcp_server.main(["browser-setup"]) == 0
             mock_cmd.assert_called_once()
 
@@ -77,8 +78,7 @@ class TestBrowserSetup:
 
         with patch(
             "computer_use.setup.extension_setup.ensure_registered",
-            return_value={"browsers": ["chrome"], "host_path": "/h",
-                          "platform": "linux"},
+            return_value={"browsers": ["chrome"], "host_path": "/h", "platform": "linux"},
         ) as mock_reg:
             rc = mcp_server._cmd_browser_setup(object())
         assert rc == 0
@@ -92,22 +92,23 @@ class TestBrowserTierStartup:
         from computer_use import mcp_server
 
         args = MagicMock(transport="stdio", max_width=0)
-        with patch.object(mcp_server, "_start_browser_tier") as mock_start, \
-             patch.object(mcp_server.mcp, "run"):
+        with (
+            patch.object(mcp_server, "_start_browser_tier") as mock_start,
+            patch.object(mcp_server.mcp, "run"),
+        ):
             mcp_server._run_mcp_server(args)
         mock_start.assert_called_once()
 
-    def test_start_browser_tier_registers_and_starts_listener(self):
+    def test_start_browser_tier_registers_and_connects_broker(self):
         from computer_use import mcp_server
 
-        with patch(
-            "computer_use.setup.extension_setup.ensure_registered"
-        ) as mock_reg, patch(
-            "computer_use.browser.server.ensure_server"
-        ) as mock_srv:
+        with (
+            patch("computer_use.setup.extension_setup.ensure_registered") as mock_reg,
+            patch("computer_use.browser.tool._default_bridge") as mock_bridge,
+        ):
             mcp_server._start_browser_tier()
         mock_reg.assert_called_once()
-        mock_srv.assert_called_once()
+        mock_bridge.return_value.status.assert_called_once()
 
     def test_start_browser_tier_swallows_errors(self):
         from computer_use import mcp_server
@@ -133,9 +134,7 @@ class TestDoctor:
             "port": 19542,
             "daemon_hash": "abc",
         }
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_doctor(MagicMock())
         out = capsys.readouterr().out
         assert rc == 0
@@ -153,9 +152,7 @@ class TestInstallDaemon:
 
         supervisor = MagicMock()
         supervisor.ensure_running.return_value = MagicMock()  # live client
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_install_daemon(MagicMock())
         assert rc == 0
         assert "running" in capsys.readouterr().out.lower()
@@ -165,9 +162,7 @@ class TestInstallDaemon:
 
         supervisor = MagicMock()
         supervisor.ensure_running.return_value = None
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_install_daemon(MagicMock())
         assert rc != 0
 
@@ -180,9 +175,7 @@ class TestStopDaemon:
         from computer_use import mcp_server
 
         supervisor = MagicMock()
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_stop_daemon(MagicMock())
         assert rc == 0
         supervisor.stop.assert_called_once()
@@ -197,9 +190,7 @@ class TestRestartDaemon:
 
         supervisor = MagicMock()
         supervisor.restart.return_value = MagicMock()  # live client
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_restart_daemon(MagicMock())
         assert rc == 0
         supervisor.restart.assert_called_once()
@@ -209,9 +200,7 @@ class TestRestartDaemon:
 
         supervisor = MagicMock()
         supervisor.restart.return_value = None
-        with patch.object(
-            mcp_server, "_get_supervisor", return_value=supervisor
-        ):
+        with patch.object(mcp_server, "_get_supervisor", return_value=supervisor):
             rc = mcp_server._cmd_restart_daemon(MagicMock())
         assert rc != 0
 
@@ -222,13 +211,12 @@ class TestRestartDaemon:
 class TestSetup:
     def test_dispatches_to_setup_handler(self):
         from computer_use import mcp_server
+
         with patch.object(mcp_server, "_cmd_setup", return_value=0) as mock_cmd:
             assert mcp_server.main(["setup"]) == 0
             mock_cmd.assert_called_once()
 
-    def test_on_darwin_fires_permission_prompts_and_prints_status(
-        self, capsys
-    ):
+    def test_on_darwin_fires_permission_prompts_and_prints_status(self, capsys):
         from computer_use import mcp_server
 
         request = MagicMock()
@@ -237,15 +225,17 @@ class TestSetup:
             "macos_screen_recording_granted": True,
             "python_executable": "/opt/homebrew/bin/python3.12",
         }
-        with patch("sys.platform", "darwin"), \
-             patch(
-                 "computer_use.platform.macos.request_permissions",
-                 request,
-             ), \
-             patch(
-                 "computer_use.platform.macos.macos_permission_status",
-                 return_value=status,
-             ):
+        with (
+            patch("sys.platform", "darwin"),
+            patch(
+                "computer_use.platform.macos.request_permissions",
+                request,
+            ),
+            patch(
+                "computer_use.platform.macos.macos_permission_status",
+                return_value=status,
+            ),
+        ):
             rc = mcp_server._cmd_setup(MagicMock())
 
         request.assert_called_once()
@@ -257,6 +247,7 @@ class TestSetup:
 
     def test_off_darwin_returns_zero_and_marks_not_applicable(self, capsys):
         from computer_use import mcp_server
+
         with patch("sys.platform", "linux"):
             rc = mcp_server._cmd_setup(MagicMock())
         assert rc == 0
@@ -266,9 +257,12 @@ class TestSetup:
 
     def test_off_darwin_does_not_call_request_permissions(self):
         from computer_use import mcp_server
+
         request = MagicMock()
-        with patch("sys.platform", "linux"), \
-             patch("computer_use.platform.macos.request_permissions", request):
+        with (
+            patch("sys.platform", "linux"),
+            patch("computer_use.platform.macos.request_permissions", request),
+        ):
             mcp_server._cmd_setup(MagicMock())
         request.assert_not_called()
 

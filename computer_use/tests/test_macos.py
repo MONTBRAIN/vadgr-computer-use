@@ -113,9 +113,12 @@ def mss_pair():
 def macos_mod(quartz, hiservices, mss_pair):
     mss_mod, _inst, _shot = mss_pair
     import computer_use.platform.macos as m
-    with patch.object(m, "_Quartz", quartz), \
-         patch.object(m, "_HIServices", hiservices), \
-         patch.object(m, "_mss", mss_mod):
+
+    with (
+        patch.object(m, "_Quartz", quartz),
+        patch.object(m, "_HIServices", hiservices),
+        patch.object(m, "_mss", mss_mod),
+    ):
         yield m
 
 
@@ -125,9 +128,7 @@ def macos_mod(quartz, hiservices, mss_pair):
 
 
 class TestMacOSScreenCapture:
-    def test_capture_full_returns_png_bytes_with_logical_dimensions(
-        self, macos_mod, mss_pair
-    ):
+    def test_capture_full_returns_png_bytes_with_logical_dimensions(self, macos_mod, mss_pair):
         _mod, _inst, shot = mss_pair
         cap = macos_mod.MacOSScreenCapture()
         state = cap.capture_full()
@@ -139,6 +140,7 @@ class TestMacOSScreenCapture:
         import io as _io
 
         from PIL import Image
+
         img = Image.open(_io.BytesIO(state.image_bytes))
         assert img.size == (shot.width, shot.height)
 
@@ -151,29 +153,29 @@ class TestMacOSScreenCapture:
     def test_capture_region_passes_region_dict_to_mss(self, macos_mod, mss_pair):
         _mod, inst, _shot = mss_pair
         from computer_use.core.types import Region
+
         macos_mod.MacOSScreenCapture().capture_region(Region(11, 22, 33, 44))
         inst.grab.assert_called_once()
         passed = inst.grab.call_args[0][0]
         assert passed == {"left": 11, "top": 22, "width": 33, "height": 44}
 
-    def test_capture_region_returns_state_with_requested_size(
-        self, macos_mod, mss_pair
-    ):
+    def test_capture_region_returns_state_with_requested_size(self, macos_mod, mss_pair):
         _mod, inst, _shot = mss_pair
         # Region returns its own shot so the test pins requested dims.
         small = SimpleNamespace(
-            size=(33, 44), width=33, height=44,
+            size=(33, 44),
+            width=33,
+            height=44,
             bgra=b"\x00\x00\x00\xff" * (33 * 44),
         )
         inst.grab.return_value = small
         from computer_use.core.types import Region
+
         state = macos_mod.MacOSScreenCapture().capture_region(Region(0, 0, 33, 44))
         assert state.width == 33
         assert state.height == 44
 
-    def test_get_screen_size_returns_logical_points_from_quartz(
-        self, macos_mod, quartz
-    ):
+    def test_get_screen_size_returns_logical_points_from_quartz(self, macos_mod, quartz):
         size = macos_mod.MacOSScreenCapture().get_screen_size()
         assert size == (1470, 956)
         quartz.CGDisplayBounds.assert_called_with(quartz.CGMainDisplayID())
@@ -183,9 +185,7 @@ class TestMacOSScreenCapture:
         # 2940 wide pixels / 1470 logical points = 2.0
         assert cap.get_scale_factor() == pytest.approx(2.0)
 
-    def test_get_scale_factor_returns_one_when_quartz_missing(
-        self, macos_mod
-    ):
+    def test_get_scale_factor_returns_one_when_quartz_missing(self, macos_mod):
         with patch.object(macos_mod, "_Quartz", None):
             cap = macos_mod.MacOSScreenCapture()
             assert cap.get_scale_factor() == 1.0
@@ -218,16 +218,15 @@ def _events_posted(quartz):
 
 
 class TestMacOSActionExecutorMouse:
-    def test_raw_move_posts_mouse_moved_event_at_target(
-        self, macos_mod, quartz
-    ):
+    def test_raw_move_posts_mouse_moved_event_at_target(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex._raw_move(123, 456)
 
         # Find a CGEventCreateMouseEvent with kCGEventMouseMoved at (123,456).
         mouse_calls = quartz.CGEventCreateMouseEvent.call_args_list
         moves = [
-            c for c in mouse_calls
+            c
+            for c in mouse_calls
             if c.args[1] == quartz.kCGEventMouseMoved and c.args[2] == (123, 456)
         ]
         assert len(moves) >= 1
@@ -254,9 +253,7 @@ class TestMacOSActionExecutorMouse:
         with patch.object(macos_mod, "smooth_move"):
             ex.click(100, 200)
 
-        types_in_order = [
-            c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list
-        ]
+        types_in_order = [c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list]
         # Must contain down then up, in that order.
         i_down = types_in_order.index(quartz.kCGEventLeftMouseDown)
         i_up = types_in_order.index(quartz.kCGEventLeftMouseUp)
@@ -266,9 +263,7 @@ class TestMacOSActionExecutorMouse:
         ex = macos_mod.MacOSActionExecutor()
         with patch.object(macos_mod, "smooth_move"):
             ex.click(10, 20, button="right")
-        types_called = [
-            c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list
-        ]
+        types_called = [c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list]
         assert quartz.kCGEventRightMouseDown in types_called
         assert quartz.kCGEventRightMouseUp in types_called
 
@@ -276,15 +271,11 @@ class TestMacOSActionExecutorMouse:
         ex = macos_mod.MacOSActionExecutor()
         with patch.object(macos_mod, "smooth_move"):
             ex.click(10, 20, button="middle")
-        types_called = [
-            c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list
-        ]
+        types_called = [c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list]
         assert quartz.kCGEventOtherMouseDown in types_called
         assert quartz.kCGEventOtherMouseUp in types_called
 
-    def test_double_click_sets_clickstate_two_on_second_pair(
-        self, macos_mod, quartz
-    ):
+    def test_double_click_sets_clickstate_two_on_second_pair(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         with patch.object(macos_mod, "smooth_move"):
             ex.double_click(40, 60)
@@ -300,33 +291,26 @@ class TestMacOSActionExecutorMouse:
         assert click_state_values.count(1) >= 2
         assert click_state_values.count(2) >= 2
 
-    def test_drag_posts_down_then_dragged_steps_then_up(
-        self, macos_mod, quartz
-    ):
+    def test_drag_posts_down_then_dragged_steps_then_up(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         with patch.object(macos_mod, "smooth_move"):
             ex.drag(100, 100, 400, 400, duration=0.05)
 
-        types_called = [
-            c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list
-        ]
+        types_called = [c.args[1] for c in quartz.CGEventCreateMouseEvent.call_args_list]
         assert quartz.kCGEventLeftMouseDown in types_called
         assert quartz.kCGEventLeftMouseUp in types_called
         # At least one drag step in between, and it must come between down and up.
         i_down = types_called.index(quartz.kCGEventLeftMouseDown)
-        i_up = len(types_called) - 1 - list(reversed(types_called)).index(
-            quartz.kCGEventLeftMouseUp
+        i_up = (
+            len(types_called) - 1 - list(reversed(types_called)).index(quartz.kCGEventLeftMouseUp)
         )
         dragged_indices = [
-            i for i, t in enumerate(types_called)
-            if t == quartz.kCGEventLeftMouseDragged
+            i for i, t in enumerate(types_called) if t == quartz.kCGEventLeftMouseDragged
         ]
         assert dragged_indices, "drag must emit at least one Dragged event"
         assert all(i_down < i < i_up for i in dragged_indices)
 
-    def test_scroll_creates_line_scroll_event_with_amount(
-        self, macos_mod, quartz
-    ):
+    def test_scroll_creates_line_scroll_event_with_amount(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.scroll(0, 0, 3)
         quartz.CGEventCreateScrollWheelEvent.assert_called_once()
@@ -336,9 +320,7 @@ class TestMacOSActionExecutorMouse:
         assert args[2] == 1
         assert args[3] == 3
 
-    def test_scroll_negative_amount_passes_negative_value(
-        self, macos_mod, quartz
-    ):
+    def test_scroll_negative_amount_passes_negative_value(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.scroll(0, 0, -5)
         args = quartz.CGEventCreateScrollWheelEvent.call_args.args
@@ -346,9 +328,7 @@ class TestMacOSActionExecutorMouse:
 
 
 class TestMacOSActionExecutorKeyboard:
-    def test_type_text_posts_one_unicode_pair_per_character(
-        self, macos_mod, quartz
-    ):
+    def test_type_text_posts_one_unicode_pair_per_character(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.type_text("hi")
         # Two characters -> at least 4 keyboard events created (down+up each).
@@ -364,58 +344,60 @@ class TestMacOSActionExecutorKeyboard:
     def test_type_text_handles_unicode(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.type_text("é")
-        chars_typed = [
-            c.args[2]
-            for c in quartz.CGEventKeyboardSetUnicodeString.call_args_list
-        ]
+        chars_typed = [c.args[2] for c in quartz.CGEventKeyboardSetUnicodeString.call_args_list]
         assert "é" in chars_typed
+
+    def test_human_ascii_uses_physical_keycode_and_shift(self, macos_mod, quartz):
+        from computer_use.core.typing import TypingPlan, TypingUnit
+
+        plan = TypingPlan(True, "test", 40, (TypingUnit("A", 0),), 0)
+        fallback = macos_mod.MacOSActionExecutor().type_text_plan(plan)
+
+        assert fallback == 0
+        assert quartz.CGEventCreateKeyboardEvent.call_args_list[0].args[1] == 0
+        assert any(
+            event_call.args[1] & quartz.kCGEventFlagMaskShift
+            for event_call in quartz.CGEventSetFlags.call_args_list
+        )
+
+    def test_human_unicode_reports_composition_fallback(self, macos_mod):
+        from computer_use.core.typing import TypingPlan, TypingUnit
+
+        plan = TypingPlan(True, "test", 40, (TypingUnit("é", 0),), 0)
+        assert macos_mod.MacOSActionExecutor().type_text_plan(plan) == 1
 
     def test_key_press_enter_posts_keycode_36(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.key_press(["enter"])
         # First arg of CGEventCreateKeyboardEvent is source, second is keycode.
-        keycodes_pressed = [
-            c.args[1] for c in quartz.CGEventCreateKeyboardEvent.call_args_list
-        ]
+        keycodes_pressed = [c.args[1] for c in quartz.CGEventCreateKeyboardEvent.call_args_list]
         assert 36 in keycodes_pressed
 
-    def test_key_press_ctrl_c_sets_control_flag_and_keycode_c(
-        self, macos_mod, quartz
-    ):
+    def test_key_press_ctrl_c_sets_control_flag_and_keycode_c(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.key_press(["ctrl", "c"])
 
         # Keycode for "c" on standard layout = 8.
-        keycodes = [
-            c.args[1] for c in quartz.CGEventCreateKeyboardEvent.call_args_list
-        ]
+        keycodes = [c.args[1] for c in quartz.CGEventCreateKeyboardEvent.call_args_list]
         assert 8 in keycodes
         # Flags applied at least once must include Control bit.
-        flags_used = [
-            c.args[1] for c in quartz.CGEventSetFlags.call_args_list
-        ]
+        flags_used = [c.args[1] for c in quartz.CGEventSetFlags.call_args_list]
         assert any(f & quartz.kCGEventFlagMaskControl for f in flags_used)
 
-    def test_key_press_ctrl_shift_t_includes_both_modifier_bits(
-        self, macos_mod, quartz
-    ):
+    def test_key_press_ctrl_shift_t_includes_both_modifier_bits(self, macos_mod, quartz):
         """Regression: previous AppleScript path silently dropped second
         non-modifier in chords. CGEvent flags must combine Ctrl|Shift on t."""
         ex = macos_mod.MacOSActionExecutor()
         ex.key_press(["ctrl", "shift", "t"])
 
-        flags_used = [
-            c.args[1] for c in quartz.CGEventSetFlags.call_args_list
-        ]
+        flags_used = [c.args[1] for c in quartz.CGEventSetFlags.call_args_list]
         combined = quartz.kCGEventFlagMaskControl | quartz.kCGEventFlagMaskShift
         assert any((f & combined) == combined for f in flags_used)
 
     def test_key_press_cmd_shift_a_uses_command_flag(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.key_press(["cmd", "shift", "a"])
-        flags_used = [
-            c.args[1] for c in quartz.CGEventSetFlags.call_args_list
-        ]
+        flags_used = [c.args[1] for c in quartz.CGEventSetFlags.call_args_list]
         assert any(f & quartz.kCGEventFlagMaskCommand for f in flags_used)
         assert any(f & quartz.kCGEventFlagMaskShift for f in flags_used)
 
@@ -437,17 +419,14 @@ class TestMacOSBackendAvailability:
         assert report.available is True
 
     def test_unavailable_when_quartz_missing(self, macos_mod):
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod, "_Quartz", None):
+        with patch("sys.platform", "darwin"), patch.object(macos_mod, "_Quartz", None):
             report = macos_mod.MacOSBackend().availability_report()
         assert report.available is False
-        assert any("pyobjc" in m.lower() or "quartz" in m.lower()
-                   for m in report.missing)
+        assert any("pyobjc" in m.lower() or "quartz" in m.lower() for m in report.missing)
         assert "pip install" in report.remediation
 
     def test_unavailable_when_mss_missing(self, macos_mod):
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod, "_mss", None):
+        with patch("sys.platform", "darwin"), patch.object(macos_mod, "_mss", None):
             report = macos_mod.MacOSBackend().availability_report()
         assert report.available is False
         assert "mss" in report.missing
@@ -459,35 +438,32 @@ class TestMacOSBackendAvailability:
 
 
 class TestMacOSBackendPermissionPrompts:
-    def test_init_calls_ax_prompt_with_prompt_option_true(
-        self, macos_mod, hiservices, quartz
-    ):
+    def test_init_calls_ax_prompt_with_prompt_option_true(self, macos_mod, hiservices, quartz):
         hiservices.AXIsProcessTrusted.return_value = False
         quartz.CGPreflightScreenCaptureAccess.return_value = True
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.time, "sleep"), \
-             patch.object(macos_mod.time, "monotonic",
-                          side_effect=[0.0, 100.0]):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.time, "sleep"),
+            patch.object(macos_mod.time, "monotonic", side_effect=[0.0, 100.0]),
+        ):
             macos_mod.MacOSBackend()
         hiservices.AXIsProcessTrustedWithOptions.assert_called_once()
         opts = hiservices.AXIsProcessTrustedWithOptions.call_args.args[0]
         assert any("Prompt" in str(k) for k in opts.keys())
         assert any(v is True for v in opts.values())
 
-    def test_init_calls_request_screen_capture_access(
-        self, macos_mod, quartz, hiservices
-    ):
+    def test_init_calls_request_screen_capture_access(self, macos_mod, quartz, hiservices):
         hiservices.AXIsProcessTrusted.return_value = True
         quartz.CGPreflightScreenCaptureAccess.return_value = False
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod.time, "sleep"):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run"),
+            patch.object(macos_mod.time, "sleep"),
+        ):
             macos_mod.MacOSBackend()
         quartz.CGRequestScreenCaptureAccess.assert_called_once()
 
-    def test_init_does_not_prompt_off_darwin(
-        self, macos_mod, quartz, hiservices
-    ):
+    def test_init_does_not_prompt_off_darwin(self, macos_mod, quartz, hiservices):
         with patch("sys.platform", "linux"):
             macos_mod.MacOSBackend()
         quartz.CGRequestScreenCaptureAccess.assert_not_called()
@@ -507,9 +483,7 @@ class TestMacOSBackendCaching:
 
 
 class TestMacOSPermissionStatus:
-    def test_returns_grant_flags_on_darwin(
-        self, macos_mod, quartz, hiservices
-    ):
+    def test_returns_grant_flags_on_darwin(self, macos_mod, quartz, hiservices):
         hiservices.AXIsProcessTrusted.return_value = True
         quartz.CGPreflightScreenCaptureAccess.return_value = False
         with patch("sys.platform", "darwin"):
@@ -523,8 +497,7 @@ class TestMacOSPermissionStatus:
             assert macos_mod.macos_permission_status() == {}
 
     def test_returns_empty_when_quartz_missing(self, macos_mod):
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod, "_Quartz", None):
+        with patch("sys.platform", "darwin"), patch.object(macos_mod, "_Quartz", None):
             assert macos_mod.macos_permission_status() == {}
 
 
@@ -543,8 +516,10 @@ class TestRequestPermissionsOrchestration:
 
     def _open_calls(self, mock_run):
         return [
-            c for c in mock_run.call_args_list
-            if c.args and isinstance(c.args[0], list)
+            c
+            for c in mock_run.call_args_list
+            if c.args
+            and isinstance(c.args[0], list)
             and len(c.args[0]) >= 2
             and c.args[0][0] == "open"
         ]
@@ -552,37 +527,38 @@ class TestRequestPermissionsOrchestration:
     def test_noop_when_both_granted(self, macos_mod, quartz, hiservices):
         hiservices.AXIsProcessTrusted.return_value = True
         quartz.CGPreflightScreenCaptureAccess.return_value = True
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run") as mock_run, \
-             patch.object(macos_mod.time, "sleep"):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run") as mock_run,
+            patch.object(macos_mod.time, "sleep"),
+        ):
             macos_mod.request_permissions()
         hiservices.AXIsProcessTrustedWithOptions.assert_not_called()
         quartz.CGRequestScreenCaptureAccess.assert_not_called()
         assert not self._open_calls(mock_run)
 
-    def test_only_ax_missing_fires_ax_prompt_only(
-        self, macos_mod, quartz, hiservices
-    ):
+    def test_only_ax_missing_fires_ax_prompt_only(self, macos_mod, quartz, hiservices):
         hiservices.AXIsProcessTrusted.return_value = False
         quartz.CGPreflightScreenCaptureAccess.return_value = True
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run") as mock_run, \
-             patch.object(macos_mod.time, "sleep"), \
-             patch.object(macos_mod.time, "monotonic",
-                          side_effect=[0.0, 100.0]):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run") as mock_run,
+            patch.object(macos_mod.time, "sleep"),
+            patch.object(macos_mod.time, "monotonic", side_effect=[0.0, 100.0]),
+        ):
             macos_mod.request_permissions()
         hiservices.AXIsProcessTrustedWithOptions.assert_called_once()
         quartz.CGRequestScreenCaptureAccess.assert_not_called()
         assert not self._open_calls(mock_run)
 
-    def test_only_sr_missing_fires_sr_path_no_ax_prompt(
-        self, macos_mod, quartz, hiservices
-    ):
+    def test_only_sr_missing_fires_sr_path_no_ax_prompt(self, macos_mod, quartz, hiservices):
         hiservices.AXIsProcessTrusted.return_value = True
         quartz.CGPreflightScreenCaptureAccess.return_value = False
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run") as mock_run, \
-             patch.object(macos_mod.time, "sleep"):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run") as mock_run,
+            patch.object(macos_mod.time, "sleep"),
+        ):
             macos_mod.request_permissions()
         hiservices.AXIsProcessTrustedWithOptions.assert_not_called()
         quartz.CGRequestScreenCaptureAccess.assert_called_once()
@@ -613,21 +589,19 @@ class TestRequestPermissionsOrchestration:
         hiservices.AXIsProcessTrustedWithOptions.side_effect = ax_prompt
         quartz.CGRequestScreenCaptureAccess.side_effect = sr_prompt
 
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run", side_effect=opener), \
-             patch.object(macos_mod.time, "sleep"), \
-             patch.object(macos_mod.time, "monotonic",
-                          side_effect=[0.0, 100.0]):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run", side_effect=opener),
+            patch.object(macos_mod.time, "sleep"),
+            patch.object(macos_mod.time, "monotonic", side_effect=[0.0, 100.0]),
+        ):
             macos_mod.request_permissions()
 
         assert "ax_prompt" in events
         assert "sr_prompt" in events
         # AX prompt strictly before any SR-side action.
         ax_idx = events.index("ax_prompt")
-        assert all(
-            events.index(e) > ax_idx for e in events
-            if e in ("sr_prompt", "settings_open")
-        )
+        assert all(events.index(e) > ax_idx for e in events if e in ("sr_prompt", "settings_open"))
 
     def test_both_missing_short_circuits_when_ax_grant_detected(
         self, macos_mod, quartz, hiservices
@@ -637,17 +611,17 @@ class TestRequestPermissionsOrchestration:
         hiservices.AXIsProcessTrusted.side_effect = [
             False,  # initial check before firing AX
             False,  # poll iteration 1
-            True,   # poll iteration 2 -> user granted, break
+            True,  # poll iteration 2 -> user granted, break
         ]
         quartz.CGPreflightScreenCaptureAccess.return_value = False
 
         sleeps: list[float] = []
-        with patch("sys.platform", "darwin"), \
-             patch.object(macos_mod.subprocess, "run") as _mock_run, \
-             patch.object(macos_mod.time, "sleep",
-                          side_effect=sleeps.append), \
-             patch.object(macos_mod.time, "monotonic",
-                          side_effect=[0.0, 1.0, 2.0, 3.0]):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(macos_mod.subprocess, "run") as _mock_run,
+            patch.object(macos_mod.time, "sleep", side_effect=sleeps.append),
+            patch.object(macos_mod.time, "monotonic", side_effect=[0.0, 1.0, 2.0, 3.0]),
+        ):
             macos_mod.request_permissions()
 
         # SR prompt called after AX granted.
@@ -659,16 +633,17 @@ class TestRequestPermissionsOrchestration:
 class TestScreenRecordingPreflight:
     def _settings_open_calls(self, mock_run):
         return [
-            c for c in mock_run.call_args_list
-            if c.args and isinstance(c.args[0], list)
+            c
+            for c in mock_run.call_args_list
+            if c.args
+            and isinstance(c.args[0], list)
             and len(c.args[0]) >= 2
             and c.args[0][0] == "open"
         ]
 
-    def test_capture_full_raises_when_screen_recording_revoked(
-        self, macos_mod, quartz
-    ):
+    def test_capture_full_raises_when_screen_recording_revoked(self, macos_mod, quartz):
         from computer_use.core.errors import ScreenCaptureError
+
         quartz.CGPreflightScreenCaptureAccess.return_value = False
         with patch.object(macos_mod.subprocess, "run") as mock_run:
             with pytest.raises(ScreenCaptureError, match="Screen Recording"):
@@ -678,20 +653,15 @@ class TestScreenRecordingPreflight:
         url = opens[0].args[0][1]
         assert "Privacy_ScreenCapture" in url
 
-    def test_capture_region_raises_when_screen_recording_revoked(
-        self, macos_mod, quartz
-    ):
+    def test_capture_region_raises_when_screen_recording_revoked(self, macos_mod, quartz):
         from computer_use.core.errors import ScreenCaptureError
         from computer_use.core.types import Region
+
         quartz.CGPreflightScreenCaptureAccess.return_value = False
         with patch.object(macos_mod.subprocess, "run"), pytest.raises(ScreenCaptureError):
-            macos_mod.MacOSScreenCapture().capture_region(
-                Region(0, 0, 10, 10)
-            )
+            macos_mod.MacOSScreenCapture().capture_region(Region(0, 0, 10, 10))
 
-    def test_capture_full_succeeds_when_screen_recording_granted(
-        self, macos_mod, quartz
-    ):
+    def test_capture_full_succeeds_when_screen_recording_granted(self, macos_mod, quartz):
         quartz.CGPreflightScreenCaptureAccess.return_value = True
         with patch.object(macos_mod.subprocess, "run") as mock_run:
             macos_mod.MacOSScreenCapture().capture_full()
@@ -699,22 +669,24 @@ class TestScreenRecordingPreflight:
         opens = self._settings_open_calls(mock_run)
         assert not opens
 
-    def test_settings_open_failure_does_not_swallow_permission_error(
-        self, macos_mod, quartz
-    ):
+    def test_settings_open_failure_does_not_swallow_permission_error(self, macos_mod, quartz):
         from computer_use.core.errors import ScreenCaptureError
+
         quartz.CGPreflightScreenCaptureAccess.return_value = False
-        with patch.object(
-            macos_mod.subprocess, "run", side_effect=OSError("nope")
-        ), pytest.raises(ScreenCaptureError):
+        with (
+            patch.object(macos_mod.subprocess, "run", side_effect=OSError("nope")),
+            pytest.raises(ScreenCaptureError),
+        ):
             macos_mod.MacOSScreenCapture().capture_full()
 
 
 class TestAccessibilityPreflight:
     def _settings_open_calls(self, mock_run):
         return [
-            c for c in mock_run.call_args_list
-            if c.args and isinstance(c.args[0], list)
+            c
+            for c in mock_run.call_args_list
+            if c.args
+            and isinstance(c.args[0], list)
             and len(c.args[0]) >= 2
             and c.args[0][0] == "open"
         ]
@@ -723,84 +695,88 @@ class TestAccessibilityPreflight:
         with patch.object(macos_mod, "smooth_move"):
             return macos_mod.MacOSActionExecutor()
 
-    def test_click_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_click_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run") as mock_run, \
-             patch.object(macos_mod, "smooth_move"):
+        with (
+            patch.object(macos_mod.subprocess, "run") as mock_run,
+            patch.object(macos_mod, "smooth_move"),
+        ):
             with pytest.raises(ActionError, match="Accessibility"):
                 ex.click(10, 20)
         opens = self._settings_open_calls(mock_run)
         assert opens, "expected Settings deep-link to be opened"
         assert "Privacy_Accessibility" in opens[0].args[0][1]
 
-    def test_double_click_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_double_click_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+        with (
+            patch.object(macos_mod.subprocess, "run"),
+            patch.object(macos_mod, "smooth_move"),
+            pytest.raises(ActionError),
+        ):
             ex.double_click(10, 20)
 
-    def test_move_mouse_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_move_mouse_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+        with (
+            patch.object(macos_mod.subprocess, "run"),
+            patch.object(macos_mod, "smooth_move"),
+            pytest.raises(ActionError),
+        ):
             ex.move_mouse(10, 20)
 
-    def test_type_text_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_type_text_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
             ex.type_text("hi")
 
-    def test_key_press_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_key_press_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
             ex.key_press(["enter"])
 
-    def test_scroll_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_scroll_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
         with patch.object(macos_mod.subprocess, "run"), pytest.raises(ActionError):
             ex.scroll(10, 20, 3)
 
-    def test_drag_raises_when_accessibility_revoked(
-        self, macos_mod, hiservices
-    ):
+    def test_drag_raises_when_accessibility_revoked(self, macos_mod, hiservices):
         from computer_use.core.errors import ActionError
+
         hiservices.AXIsProcessTrusted.return_value = False
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run"), \
-             patch.object(macos_mod, "smooth_move"), pytest.raises(ActionError):
+        with (
+            patch.object(macos_mod.subprocess, "run"),
+            patch.object(macos_mod, "smooth_move"),
+            pytest.raises(ActionError),
+        ):
             ex.drag(0, 0, 10, 10, duration=0.01)
 
-    def test_click_succeeds_when_accessibility_granted(
-        self, macos_mod, hiservices
-    ):
+    def test_click_succeeds_when_accessibility_granted(self, macos_mod, hiservices):
         hiservices.AXIsProcessTrusted.return_value = True
         ex = self._executor(macos_mod)
-        with patch.object(macos_mod.subprocess, "run") as mock_run, \
-             patch.object(macos_mod, "smooth_move"):
+        with (
+            patch.object(macos_mod.subprocess, "run") as mock_run,
+            patch.object(macos_mod, "smooth_move"),
+        ):
             ex.click(10, 20)
         opens = self._settings_open_calls(mock_run)
         assert not opens
@@ -815,15 +791,18 @@ class TestDoctorMergesMacOSStatus:
         supervisor = MagicMock()
         supervisor.status.return_value = {"daemon_running": False, "port": 19542}
 
-        with patch("sys.platform", "darwin"), \
-             patch.object(mcp_server, "_get_supervisor",
-                          return_value=supervisor), \
-             patch("computer_use.platform.macos.macos_permission_status",
-                   return_value={
-                       "macos_accessibility_granted": False,
-                       "macos_screen_recording_granted": True,
-                       "python_executable": "/opt/homebrew/bin/python3.12",
-                   }):
+        with (
+            patch("sys.platform", "darwin"),
+            patch.object(mcp_server, "_get_supervisor", return_value=supervisor),
+            patch(
+                "computer_use.platform.macos.macos_permission_status",
+                return_value={
+                    "macos_accessibility_granted": False,
+                    "macos_screen_recording_granted": True,
+                    "python_executable": "/opt/homebrew/bin/python3.12",
+                },
+            ),
+        ):
             mcp_server._cmd_doctor(MagicMock())
 
         parsed = json.loads(capsys.readouterr().out)
@@ -839,9 +818,10 @@ class TestDoctorMergesMacOSStatus:
 
         supervisor = MagicMock()
         supervisor.status.return_value = {"daemon_running": True}
-        with patch("sys.platform", "linux"), \
-             patch.object(mcp_server, "_get_supervisor",
-                          return_value=supervisor):
+        with (
+            patch("sys.platform", "linux"),
+            patch.object(mcp_server, "_get_supervisor", return_value=supervisor),
+        ):
             mcp_server._cmd_doctor(MagicMock())
 
         parsed = json.loads(capsys.readouterr().out)

@@ -29,7 +29,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 from computer_use.browser.bridge import (
     PIXEL_FALLBACK,
     BrowserBridge,
-    NativeMessagingBridge,
 )
 from computer_use.browser.protocol import BrowserError
 from computer_use.browser.upload import translate_upload_paths
@@ -59,6 +58,7 @@ def _upload_platform() -> str:
     except Exception:  # pragma: no cover - detection best-effort
         return sys.platform
 
+
 # One default bridge instance, shared by the MCP wrappers. Tests inject a
 # FakeBridge explicitly.
 _DEFAULT_BRIDGE: BrowserBridge | None = None
@@ -67,7 +67,9 @@ _DEFAULT_BRIDGE: BrowserBridge | None = None
 def _default_bridge() -> BrowserBridge:
     global _DEFAULT_BRIDGE
     if _DEFAULT_BRIDGE is None:
-        _DEFAULT_BRIDGE = NativeMessagingBridge()
+        from computer_use.browser.broker_client import BrokerClient
+
+        _DEFAULT_BRIDGE = BrokerClient()
     return _DEFAULT_BRIDGE
 
 
@@ -75,6 +77,7 @@ _ops = OperationGroup("browser")
 
 
 # --- navigation ---
+
 
 @_ops.operation("navigate")
 def _navigate(bridge: BrowserBridge, url: str, wait: str = "load") -> Any:
@@ -98,6 +101,7 @@ def _reload(bridge: BrowserBridge) -> Any:
 
 # --- read ---
 
+
 @_ops.operation("wait_for")
 def _wait_for(
     bridge: BrowserBridge,
@@ -119,9 +123,7 @@ def _query(
 ) -> Any:
     # `limit`/`cursor` cap + paginate large match sets so a big page degrades to
     # pages, never a token-budget blowout. Returns {nodes, next_cursor?}.
-    return bridge.send(
-        "query", selector=selector, by=by, all=all, limit=limit, cursor=cursor
-    )
+    return bridge.send("query", selector=selector, by=by, all=all, limit=limit, cursor=cursor)
 
 
 @_ops.operation("read_text")
@@ -136,14 +138,19 @@ def _get_attribute(bridge: BrowserBridge, selector: str, name: str) -> Any:
 
 # --- act ---
 
+
 @_ops.operation("click")
-def _click(bridge: BrowserBridge, selector: str, by: str = "css",
-           force: bool = False, trusted: bool = False) -> Any:
+def _click(
+    bridge: BrowserBridge,
+    selector: str,
+    by: str = "css",
+    force: bool = False,
+    trusted: bool = False,
+) -> Any:
     # trusted=True skips the DOM fast path and clicks via the CDP Input domain
     # (a real mouseMoved/Pressed/Released stream). Needed for widgets that react
     # only to genuine pointer events AND expose no state to auto-escalate on.
-    return bridge.send("click", selector=selector, by=by, force=force,
-                       trusted=trusted)
+    return bridge.send("click", selector=selector, by=by, force=force, trusted=trusted)
 
 
 @_ops.operation("type")
@@ -154,9 +161,55 @@ def _type(
     clear: bool = True,
     submit: bool = False,
     force: bool = False,
+    human: bool = False,
+    timing_profile: str | None = None,
+    wpm: int | None = None,
+    iki_cv: float | None = None,
+    timeout: int = 45_000,
+    _cancelled=None,
 ) -> Any:
-    return bridge.send("type", selector=selector, text=text, clear=clear,
-                       submit=submit, force=force)
+    from computer_use.core.typing import (
+        TypingOptions,
+        build_typing_plan,
+        require_typing_deadline,
+    )
+
+    plan = build_typing_plan(
+        text,
+        TypingOptions(
+            human=human,
+            timing_profile=timing_profile,
+            wpm=wpm,
+            iki_cv=iki_cv,
+        ),
+    )
+    if human:
+        require_typing_deadline(plan, timeout)
+    params: dict[str, Any] = {
+        "selector": selector,
+        "text": text,
+        "clear": clear,
+        "submit": submit,
+        "force": force,
+        "human": human,
+    }
+    if human:
+        params["typing_plan"] = {
+            "timing_profile": plan.timing_profile,
+            "nominal_wpm": plan.nominal_wpm,
+            "predicted_ms": plan.predicted_ms,
+            "units": [
+                {
+                    "text": unit.text,
+                    "delay_before_ms": unit.delay_before_ms,
+                    "fallback": unit.fallback,
+                }
+                for unit in plan.units
+            ],
+        }
+    if _cancelled is not None:
+        params["_cancelled"] = _cancelled
+    return bridge.send("type", **params)
 
 
 @_ops.operation("fill")
@@ -168,13 +221,13 @@ def _fill(
     submit: bool = False,
     force: bool = False,
 ) -> Any:
-    return bridge.send("fill", selector=selector, text=text, clear=clear,
-                       submit=submit, force=force)
+    return bridge.send(
+        "fill", selector=selector, text=text, clear=clear, submit=submit, force=force
+    )
 
 
 @_ops.operation("select")
-def _select(bridge: BrowserBridge, selector: str, value: str,
-            force: bool = False) -> Any:
+def _select(bridge: BrowserBridge, selector: str, value: str, force: bool = False) -> Any:
     return bridge.send("select", selector=selector, value=value, force=force)
 
 
@@ -188,6 +241,7 @@ def _scroll(
 
 
 # --- CDP universal path (chrome.debugger) ---
+
 
 @_ops.operation("press")
 def _press(bridge: BrowserBridge, key: str, selector: str | None = None) -> Any:
@@ -206,6 +260,7 @@ def _accessibility_tree(bridge: BrowserBridge) -> Any:
 
 # --- 0.5.0: session targeting ---
 
+
 @_ops.operation("use_target")
 def _use_target(
     bridge: BrowserBridge,
@@ -220,11 +275,11 @@ def _use_target(
     # `profile_id` (0.6.1) also selects WHICH connected browser profile to act in
     # (cua-side); omitted when unset so single-profile setups are unchanged.
     extra = {"profile_id": profile_id} if profile_id is not None else {}
-    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode,
-                       **extra)
+    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode, **extra)
 
 
 # --- 0.5.0: the remaining interaction ops (CDP path) ---
+
 
 @_ops.operation("hover")
 def _hover(
@@ -294,9 +349,7 @@ def _snapshot(
 ) -> Any:
     # The paginated, shadow-/frame-piercing AX snapshot (supersedes
     # accessibility_tree). Returns {nodes:[{role,name,state,value,ref}], next_cursor?}.
-    return bridge.send(
-        "snapshot", selector=selector, roles=roles, cursor=cursor, limit=limit
-    )
+    return bridge.send("snapshot", selector=selector, roles=roles, cursor=cursor, limit=limit)
 
 
 @_ops.operation("cookies")
@@ -358,6 +411,7 @@ def browser_eval(expression: str, bridge: BrowserBridge | None = None) -> Any:
 # per-op `target` context the extension adds to each result is passed through
 # verbatim (an additive field an older cua tolerates).
 
+
 def tabs(
     op: str,
     bridge: BrowserBridge | None = None,
@@ -385,8 +439,8 @@ def tabs(
         params.update(url=url, window_id=window_id, background=background)
     elif op == "switch":
         params.update(tab_id=tab_id, window_id=window_id)
-    elif op == "close":
-        params.update(tab_id=tab_id, force=force)
+    elif op in ("close", "claim", "release"):
+        params.update(tab_id=tab_id, window_id=window_id, force=force)
     params = {k: v for k, v in params.items() if v is not None}
     try:
         return b.send("tabs", **params)
@@ -447,7 +501,7 @@ def windows(
         params.update(url=url, focused=focused)
     elif op == "focus":
         params.update(window_id=window_id)
-    elif op == "close":
+    elif op in ("close", "claim", "release"):
         params.update(window_id=window_id, force=force)
     params = {k: v for k, v in params.items() if v is not None}
     try:

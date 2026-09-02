@@ -27,9 +27,11 @@ import { ReconnectController } from "./reconnect";
 import { Lifecycle } from "./target/lifecycle";
 import { ensureProfileId, buildProfileContext } from "./target/profile";
 import type { WindowsEnumApi } from "./target/enumeration";
+import { okResult } from "./protocol";
+import { cancelTyping } from "./typing-cancellation";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.5";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.6";
 
 let port: chrome.runtime.Port | null = null;
 const router = buildRouter();
@@ -64,9 +66,11 @@ export function connect(): void {
     return;
   }
   port = p;
-  p.onMessage.addListener(onMessage);
+  p.onMessage.addListener((msg) => {
+    void onMessage(p, msg);
+  });
   p.onDisconnect.addListener(() => {
-    port = null;
+    if (port === p) port = null;
     // Schedule a backed-off reconnect so the session self-heals.
     reconnect.onDisconnect();
   });
@@ -108,11 +112,10 @@ async function sendHello(p: chrome.runtime.Port): Promise<void> {
   p.postMessage(serverHello(EXT_VERSION, detectBrowser(), profileId, profile));
 }
 
-async function onMessage(msg: any): Promise<void> {
-  if (!port) return;
+export async function onMessage(source: chrome.runtime.Port, msg: any): Promise<void> {
   if (msg?.type === "hello") {
     if (msg.proto !== PROTOCOL_VERSION) {
-      port.postMessage({
+      source.postMessage({
         type: "result",
         id: msg.id ?? 0,
         ok: false,
@@ -125,8 +128,17 @@ async function onMessage(msg: any): Promise<void> {
     return;
   }
   if (msg?.type === "op") {
-    const result = await router.handle(msg as OpMessage);
-    port.postMessage(result);
+    if (msg.op === "_cancel") {
+      cancelTyping(Number(msg.params?.request_id));
+      source.postMessage(okResult(msg.id, { cancelled: true }));
+      return;
+    }
+    const request = msg as OpMessage;
+    const result = await router.handle({
+      ...request,
+      params: { ...(request.params ?? {}), _request_id: request.id },
+    });
+    source.postMessage(result);
   }
 }
 

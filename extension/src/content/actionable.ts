@@ -40,12 +40,50 @@ export function isDisabled(el: Element): boolean {
   return el.getAttribute("aria-disabled") === "true";
 }
 
+const MAX_COMPOSED_DEPTH = 64;
+
+/** Hit-test through nested open shadow roots at one viewport point. */
+export function deepElementFromPoint(
+  doc: Document,
+  x: number,
+  y: number,
+): Element | null {
+  let hit = doc.elementFromPoint(x, y);
+  for (let depth = 0; hit && depth < MAX_COMPOSED_DEPTH; depth += 1) {
+    const root = hit.shadowRoot;
+    if (!root || root.mode !== "open" || !root.elementFromPoint) return hit;
+    const nested = root.elementFromPoint(x, y);
+    if (!nested || nested === hit) return hit;
+    hit = nested;
+  }
+  return hit;
+}
+
+/** Test containment across regular parents and open-shadow hosts. */
+export function composedContains(ancestor: Element, node: Element): boolean {
+  let current: Node | null = node;
+  for (let depth = 0; current && depth < MAX_COMPOSED_DEPTH; depth += 1) {
+    if (current === ancestor) return true;
+    if (current.parentNode) {
+      current = current.parentNode;
+      continue;
+    }
+    const root = current.getRootNode?.();
+    current = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
+}
+
 // Receives events = the element is the hit target at its own centre, not behind an
 // overlay. Skipped without live layout (can't hit-test a no-layout DOM).
 export function receivesEvents(el: HTMLElement): boolean {
   if (!layoutIsLive(el.ownerDocument)) return true;
   const r = el.getBoundingClientRect();
-  const hit = el.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  const hit = deepElementFromPoint(
+    el.ownerDocument,
+    r.left + r.width / 2,
+    r.top + r.height / 2,
+  );
   // A null hit means the hit-test couldn't resolve, NOT that a DOM element covers
   // the target. A fully-occluded / throttled window (e.g. the agent-owned window,
   // opened unfocused, while the user works elsewhere) is not composited, so
@@ -54,7 +92,7 @@ export function receivesEvents(el: HTMLElement): boolean {
   // (the hollow-mirror trap) is a real block; that always returns that element,
   // never null. So don't gate on a null hit.
   if (hit === null) return true;
-  return hit === el || el.contains(hit) || hit.contains(el);
+  return composedContains(el, hit) || composedContains(hit, el);
 }
 
 // Gate a mutating op. Throws OpFailed (so the agent RETARGETS - it must not

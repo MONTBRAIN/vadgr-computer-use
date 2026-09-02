@@ -137,6 +137,23 @@ describe("connect() idempotency", () => {
     mod.connect();
     expect(connectNative).toHaveBeenCalledTimes(2);
   });
+
+  it("returns an in-flight reply only through the port that received the request", async () => {
+    const { ports, mod } = await importBackground();
+    const original = ports[0];
+    original.fireDisconnect();
+    mod.connect();
+    const replacement = ports[1];
+
+    await mod.onMessage(original as any, { type: "hello", proto: -1, id: 7 });
+
+    expect(original.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "result", id: 7, ok: false }),
+    );
+    expect(replacement.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "result", id: 7 }),
+    );
+  });
 });
 
 describe("keep-alive alarm", () => {

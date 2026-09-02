@@ -81,14 +81,21 @@ class BrowserErrorCode(str, Enum):
     look transient, or the agent loop-retries and burns turns.
     """
 
-    NOT_SET_UP = "not_set_up"          # no native-host manifest registered
-    NOT_CONNECTED = "not_connected"    # manifest on disk, no live session
+    NOT_SET_UP = "not_set_up"  # no native-host manifest registered
+    NOT_CONNECTED = "not_connected"  # manifest on disk, no live session
     OP_UNSUPPORTED = "op_unsupported"  # connected extension too old for this op
     PROTO_MISMATCH = "proto_mismatch"  # envelope versions incompatible
-    WAKING = "waking"                  # session existed; SW asleep (retryable)
-    OP_FAILED = "op_failed"            # op ran in-page but failed
-    TARGET_LOST = "target_lost"        # pinned tab/window closed (terminal)
+    WAKING = "waking"  # session existed; SW asleep (retryable)
+    OP_FAILED = "op_failed"  # op ran in-page but failed
+    TARGET_LOST = "target_lost"  # pinned tab/window closed (terminal)
     PROFILE_AMBIGUOUS = "profile_ambiguous"  # >1 profile connected, none chosen (terminal)
+    TARGET_OWNED = "target_owned_by_another_client"
+    RECOVERY_TIMEOUT = "recovery_timed_out"
+    EXTENSION_DISABLED = "extension_disabled"
+    EXTENSION_MISSING = "extension_missing"
+    TYPING_MISMATCH = "typing_mismatch"
+    TYPING_DEADLINE = "typing_deadline_exceeded"
+    TYPING_CANCELLED = "typing_cancelled"
 
 
 # Codes that are transient and worth an automatic retry. Everything else is
@@ -183,6 +190,9 @@ def op_message(msg_id: int, op: str, params: dict[str, Any]) -> dict[str, Any]:
 _WIRE_CODES: dict[str, BrowserErrorCode] = {
     "target_lost": BrowserErrorCode.TARGET_LOST,
     "op_unsupported": BrowserErrorCode.OP_UNSUPPORTED,
+    "target_owned_by_another_client": BrowserErrorCode.TARGET_OWNED,
+    "typing_mismatch": BrowserErrorCode.TYPING_MISMATCH,
+    "typing_cancelled": BrowserErrorCode.TYPING_CANCELLED,
 }
 
 # Per-code remediation for terminal errors surfaced from the extension.
