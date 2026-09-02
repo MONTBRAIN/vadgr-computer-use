@@ -23,6 +23,9 @@ function fakeSend(
   const send: CdpSend = async (method, params: any = {}) => {
     calls.push({ method, params });
     if (method === "Runtime.evaluate") {
+      if (String(params.expression).includes("return el")) {
+        return { result: { objectId: "focus-target" } };
+      }
       return { result: { value: evalFor(String(params.expression)) } };
     }
     if (method === "DOM.getDocument") return { root: { nodeId: 1 } };
@@ -117,13 +120,14 @@ describe("CdpExecutor.upload", () => {
 describe("CdpExecutor.focus / blur", () => {
   it("focus reports focused:true when activeElement matches", async () => {
     const evalFor = (e: string) => {
-      if (e.includes(".focus()")) return true;
       if (e.includes("activeElement")) return true;
       return null;
     };
-    const { send } = fakeSend(evalFor);
+    const { send, calls } = fakeSend(evalFor);
     const r: any = await exec(send).execute("focus", { selector: "#in" });
     expect(r.focused).toBe(true);
+    expect(calls.find((c) => c.method === "DOM.focus")?.params)
+      .toEqual({ objectId: "focus-target" });
   });
 
   it("blur reports focused:false", async () => {
@@ -140,7 +144,6 @@ describe("CdpExecutor.focus / blur", () => {
 describe("CdpExecutor.clear", () => {
   it("select-alls, deletes, and self-verifies value=''", async () => {
     const evalFor = (e: string) => {
-      if (e.includes(".focus()")) return true;
       return ""; // read-back value after clear
     };
     const { send, calls } = fakeSend(evalFor);
@@ -206,8 +209,8 @@ function fakeEvents() {
         if (i >= 0) listeners.splice(i, 1);
       },
     } as DebuggerEvents,
-    emit: (method: string, params: any) =>
-      listeners.slice().forEach((l) => l({}, method, params)),
+    emit: (method: string, params: any, source: any = {}) =>
+      listeners.slice().forEach((l) => l(source, method, params)),
     get count() {
       return listeners.length;
     },
@@ -246,6 +249,32 @@ describe("CdpExecutor.dialog (one-shot arm)", () => {
     await Promise.resolve();
     const handled = calls.find((c) => c.method === "Page.handleJavaScriptDialog");
     expect(handled!.params.accept).toBe(false);
+  });
+
+  it("ignores a dialog event from a different debugger target", async () => {
+    const { send, calls } = fakeSend();
+    const ev = fakeEvents();
+    await exec(send, ev.events).execute("dialog", {
+      action: "accept",
+      _target: { tab_id: 41 },
+    });
+    ev.emit(
+      "Page.javascriptDialogOpening",
+      { type: "alert", message: "decoy" },
+      { tabId: 99 },
+    );
+    expect(calls.some((c) => c.method === "Page.handleJavaScriptDialog"))
+      .toBe(false);
+    expect(ev.count).toBe(1);
+    ev.emit(
+      "Page.javascriptDialogOpening",
+      { type: "alert", message: "owned" },
+      { tabId: 41 },
+    );
+    await Promise.resolve();
+    expect(calls.some((c) => c.method === "Page.handleJavaScriptDialog"))
+      .toBe(true);
+    expect(ev.count).toBe(0);
   });
 });
 

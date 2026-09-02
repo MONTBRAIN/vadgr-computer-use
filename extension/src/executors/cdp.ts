@@ -426,8 +426,10 @@ export class CdpExecutor implements Executor {
       throw new Error("dialog handling requires the chrome.debugger event channel");
     }
     const events = this.events;
-    const listener = (_src: any, method: string, params: any) => {
+    const expectedTabId = Number((p._target as any)?.tab_id);
+    const listener = (src: any, method: string, params: any) => {
       if (method !== "Page.javascriptDialogOpening") return;
+      if (Number.isInteger(expectedTabId) && src?.tabId !== expectedTabId) return;
       events.removeListener(listener); // one-shot
       const args: Record<string, unknown> = { accept };
       if (promptText !== undefined) args.promptText = promptText;
@@ -487,11 +489,6 @@ export class CdpExecutor implements Executor {
         ? physical.toUpperCase().charCodeAt(0)
         : undefined,
     };
-    // A printable key's default insertion is not reliable in a background
-    // Chromium window. Keep the trusted key lifecycle, and deliver the text as
-    // one target-directed CDP unit between keydown and keyup. This avoids both
-    // an OS-focus dependency and any whole-string retry that could duplicate a
-    // partially accepted value.
     await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
     await send("Input.insertText", { text: value });
     await send("Input.dispatchKeyEvent", {
@@ -506,9 +503,14 @@ export class CdpExecutor implements Executor {
   private async focus(send: CdpSend, selector: string) {
     const expr =
       `(() => { const el = ${deepQueryExpression(selector)};` +
-      ` if (!el) return false; el.scrollIntoView({block:'center'}); el.focus(); return true; })()`;
-    const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true });
-    if (!r?.result?.value) throw new Error(`no element matches ${selector}`);
+      ` if (!el) return null; el.scrollIntoView({block:'center'}); return el; })()`;
+    const r = await send("Runtime.evaluate", { expression: expr });
+    const objectId = r?.result?.objectId;
+    if (!objectId) throw new Error(`no element matches ${selector}`);
+    // DOM.focus targets the resolved node inside this debugger target. A plain
+    // HTMLElement.focus() can be ignored when the owned window is not the OS
+    // foreground window, which would make browser actions depend on user focus.
+    await send("DOM.focus", { objectId });
   }
 
   private async readValue(send: CdpSend, selector: string): Promise<unknown> {

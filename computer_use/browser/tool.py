@@ -245,8 +245,9 @@ def _scroll(
 
 @_ops.operation("press")
 def _press(bridge: BrowserBridge, key: str, selector: str | None = None) -> Any:
-    # A *trusted* key event (via chrome.debugger Input) - for chords / keys that
-    # DOM-dispatched events can't trip (Enter on a custom widget, isTrusted-gated).
+    # A *trusted* key event (via chrome.debugger Input) for widgets gated on
+    # isTrusted. Chromium drops it on inactive targets, so the extension reports
+    # a named limitation and never activates the tab or window implicitly.
     return bridge.send("press", key=key, selector=selector)
 
 

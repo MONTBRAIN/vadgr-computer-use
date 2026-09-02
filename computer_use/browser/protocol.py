@@ -96,6 +96,12 @@ class BrowserErrorCode(str, Enum):
     TYPING_MISMATCH = "typing_mismatch"
     TYPING_DEADLINE = "typing_deadline_exceeded"
     TYPING_CANCELLED = "typing_cancelled"
+    INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED = (
+        "inactive_tab_trusted_keyboard_unsupported"
+    )
+    TARGET_DISCARDED = "target_discarded"
+    TARGET_FROZEN = "target_frozen"
+    TARGET_RESTRICTED = "target_restricted"
 
 
 # Codes that are transient and worth an automatic retry. Everything else is
@@ -193,6 +199,12 @@ _WIRE_CODES: dict[str, BrowserErrorCode] = {
     "target_owned_by_another_client": BrowserErrorCode.TARGET_OWNED,
     "typing_mismatch": BrowserErrorCode.TYPING_MISMATCH,
     "typing_cancelled": BrowserErrorCode.TYPING_CANCELLED,
+    "inactive_tab_trusted_keyboard_unsupported": (
+        BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED
+    ),
+    "target_discarded": BrowserErrorCode.TARGET_DISCARDED,
+    "target_frozen": BrowserErrorCode.TARGET_FROZEN,
+    "target_restricted": BrowserErrorCode.TARGET_RESTRICTED,
 }
 
 # Per-code remediation for terminal errors surfaced from the extension.
@@ -201,6 +213,20 @@ _WIRE_REMEDIATION: dict[BrowserErrorCode, str] = {
         "run `tabs(op='list')` to see the open windows/tabs, then "
         "`use_target(window_id, tab_id)` to re-pin the real tab; or "
         "`use_target(mode='owned')` to open a fresh owned window"
+    ),
+    BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED: (
+        "use a selector-based browser operation such as type/fill when it is "
+        "equivalent; a trusted key command requires the target tab and window "
+        "to be active, and Vadgr will not activate them implicitly"
+    ),
+    BrowserErrorCode.TARGET_DISCARDED: (
+        "reload or explicitly activate the discarded tab before using page operations"
+    ),
+    BrowserErrorCode.TARGET_FROZEN: (
+        "explicitly activate the frozen tab before using page operations"
+    ),
+    BrowserErrorCode.TARGET_RESTRICTED: (
+        "choose a normal web page where the extension has access"
     ),
 }
 

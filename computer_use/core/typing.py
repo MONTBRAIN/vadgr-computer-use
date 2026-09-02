@@ -207,7 +207,13 @@ def build_typing_plan(
     else:
         intervals = []
     units = tuple(
-        TypingUnit(char, 0.0 if index == 0 else intervals[index - 1])
+        TypingUnit(
+            char,
+            0.0 if index == 0 else intervals[index - 1],
+            fallback=not (
+                char in "\n\t" or (len(char) == 1 and 0x20 <= ord(char) <= 0x7E)
+            ),
+        )
         for index, char in enumerate(text)
     )
     return TypingPlan(True, profile, wpm, units, round(sum(intervals)))

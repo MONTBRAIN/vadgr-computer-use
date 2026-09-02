@@ -7,11 +7,14 @@
 
 import { Router } from "../router";
 import {
+  opAssertActionable,
   opClear,
   opClick,
   opElementState,
   opGetAttribute,
   opGetValue,
+  opHumanTypeUnit,
+  opHumanSubmit,
   opQuery,
   opReadText,
   opScroll,
@@ -22,6 +25,7 @@ import {
 
 export function buildContentRouter(): Router {
   const r = new Router();
+  r.register("assert_actionable", (p) => opAssertActionable(p as any));
   r.register("click", (p) => opClick(p as any));
   r.register("query", (p) => opQuery(p as any));
   r.register("read_text", (p) => opReadText(p as any));
@@ -34,6 +38,8 @@ export function buildContentRouter(): Router {
   r.register("element_state", (p) => opElementState(p as any));
   r.register("clear", (p) => opClear(p as any));
   r.register("get_value", (p) => opGetValue(p as any));
+  r.register("human_type_unit", (p) => opHumanTypeUnit(p as any));
+  r.register("human_submit", (p) => opHumanSubmit(p as any));
   // `eval` is handled in the service worker (main-world injection): the
   // content-script isolated world is CSP-blocked from eval under MV3.
   return r;

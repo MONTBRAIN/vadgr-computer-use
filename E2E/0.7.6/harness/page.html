@@ -9,6 +9,8 @@
     main { display: grid; gap: 1rem; }
     section { border: 1px solid #999; border-radius: .6rem; padding: 1rem; position: relative; }
     input, button { font: inherit; padding: .5rem; margin: .25rem; }
+    #hover-reveal { display: none; }
+    #hover-target:hover #hover-reveal { display: inline; }
     #report { white-space: pre-wrap; overflow-wrap: anywhere; }
     .overlay { position: absolute; inset: .5rem; z-index: 20; background: rgb(30 30 30 / 70%); }
   </style>
@@ -22,6 +24,10 @@
       <output id="validation">empty</output>
       <output id="typeahead">hidden</output>
       <button id="plain-button" type="button">Fixture button</button>
+      <div id="hover-target" tabindex="0">Hover fixture <span id="hover-reveal">revealed</span></div>
+      <label>Upload fixture <input id="upload" type="file"></label>
+      <label>Select fixture <select id="choice"><option value="one">One</option><option value="two">Two</option></select></label>
+      <button id="dialog-button" type="button">Dialog fixture</button>
     </section>
     <section id="unicode-section">
       <label>Unicode field <input id="unicode" autocomplete="off"></label>
@@ -76,6 +82,7 @@
       counters.mismatch += 1;
     });
     document.querySelector("#plain-button").addEventListener("click", () => { counters.clicks += 1; });
+    document.querySelector("#dialog-button").addEventListener("click", () => { window.confirm("fixture dialog"); });
     document.querySelector("#plain-form").addEventListener("submit", (event) => { event.preventDefault(); counters.submits += 1; });
     document.querySelector("#arm-mismatch").addEventListener("click", () => { mismatchArmed = true; });
 

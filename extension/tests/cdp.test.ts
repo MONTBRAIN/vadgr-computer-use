@@ -18,7 +18,10 @@ function fakeSend(readValue: unknown, focusFound = true) {
       if (e.includes("const covered")) {
         return { result: { value: { x: 10, y: 20, covered: false, found: true } } };
       }
-      if (e.includes(".focus()")) return { result: { value: focusFound } };
+      if (e.includes("return el")) {
+        return { result: focusFound ? { objectId: "focus-target" } : { value: null } };
+      }
+      if (e.includes("new KeyboardEvent('keydown'")) return { result: { value: true } };
       return { result: { value: readValue } };
     }
     if (method === "Accessibility.getFullAXTree") {
@@ -85,7 +88,7 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
       }),
     ).rejects.toThrow(/covered/);
     expect(calls.some((call) => call.method === "Input.dispatchKeyEvent")).toBe(false);
-    expect(calls.some((call) => String(call.params.expression).includes(".focus()"))).toBe(false);
+    expect(calls.some((call) => call.method === "DOM.focus")).toBe(false);
     expect(calls.some((call) => call.method === "Emulation.setFocusEmulationEnabled")).toBe(false);
   });
 
@@ -136,9 +139,9 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
       { enabled: true },
       { enabled: false },
     ]);
-    expect(calls.indexOf(focusEmulation[0])).toBeLessThan(
-      calls.findIndex((call) => String(call.params.expression).includes(".focus()")),
-    );
+    const domFocus = calls.find((call) => call.method === "DOM.focus");
+    expect(domFocus?.params).toEqual({ objectId: "focus-target" });
+    expect(calls.indexOf(focusEmulation[0])).toBeLessThan(calls.indexOf(domFocus!));
   });
 
   it("cancels between units and never submits", async () => {
@@ -184,14 +187,16 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     });
 
     const keyDown = calls.find(
-      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "rawKeyDown" && call.params.key === "A",
+      (call) => call.method === "Input.dispatchKeyEvent" &&
+        call.params.type === "rawKeyDown" && call.params.key === "A",
     );
     expect(keyDown?.params).toMatchObject({
       code: "KeyA",
       modifiers: 8,
       windowsVirtualKeyCode: 65,
     });
-    expect(calls.find((call) => call.method === "Input.insertText")?.params).toEqual({ text: "A" });
+    expect(calls.find((call) => call.method === "Input.insertText")?.params)
+      .toEqual({ text: "A" });
   });
 });
 

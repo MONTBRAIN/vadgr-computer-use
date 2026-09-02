@@ -141,11 +141,157 @@ function stateSignature(el: Element): string | null {
 }
 
 const nextFrame = () =>
-  new Promise<void>((res) =>
-    typeof requestAnimationFrame === "function"
-      ? requestAnimationFrame(() => res())
-      : setTimeout(res, 0),
-  );
+  document.hidden
+    // Hidden pages do not receive requestAnimationFrame. A short timer still
+    // gives framework state a chance to commit without interpreting the first
+    // synchronous read as failure and dispatching a second click.
+    ? new Promise<void>((res) => setTimeout(res, 75))
+    : new Promise<void>((res) =>
+        typeof requestAnimationFrame === "function"
+          ? requestAnimationFrame(() => res())
+          : setTimeout(res, 0),
+      );
+
+export function opAssertActionable(p: {
+  selector: string;
+  by?: string;
+  force?: boolean;
+}) {
+  const el = require(p.selector, p.by) as HTMLElement;
+  assertActionable(el, p.selector, { force: p.force });
+  return { actionable: true };
+}
+
+function humanKey(text: string): { key: string; code: string; shiftKey: boolean } {
+  const key = text === "\n" ? "Enter" : text === "\t" ? "Tab" : text;
+  const shifted: Record<string, string> = {
+    "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0", "_": "-",
+    "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'",
+    "<": ",", ">": ".", "?": "/",
+  };
+  const punctuation: Record<string, string> = {
+    "`": "Backquote", "-": "Minus", "=": "Equal", "[": "BracketLeft",
+    "]": "BracketRight", "\\": "Backslash", ";": "Semicolon", "'": "Quote",
+    ",": "Comma", ".": "Period", "/": "Slash", " ": "Space",
+  };
+  const physical = shifted[key] ?? key.toLowerCase();
+  const code = /^[a-z]$/.test(physical)
+    ? `Key${physical.toUpperCase()}`
+    : /^[0-9]$/.test(physical)
+      ? `Digit${physical}`
+      : key === "Enter"
+        ? "Enter"
+        : key === "Tab"
+          ? "Tab"
+          : punctuation[physical] ?? "Unidentified";
+  return { key, code, shiftKey: key.toLowerCase() !== key || key in shifted };
+}
+
+// One scheduled browser-typing unit. This runs in the content script attached
+// to the exact broker target, so Chromium does not redirect or discard it when
+// another tab is selected. The service worker owns timing and cancellation;
+// this operation owns one indivisible event/value transition and read-back.
+export function opHumanTypeUnit(p: {
+  selector: string;
+  text: string;
+  replace?: boolean;
+  force?: boolean;
+}) {
+  const el = require(p.selector) as HTMLElement;
+  assertActionable(el, p.selector, { force: p.force });
+  const editable =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement;
+  if (!editable) {
+    throw new OpFailed(`${p.selector} is not a text input or textarea`);
+  }
+
+  el.focus({ preventScroll: true });
+  if (el.getRootNode() instanceof Document && document.activeElement !== el) {
+    throw new OpFailed(`${p.selector} could not receive DOM focus`);
+  }
+
+  const { key, code, shiftKey } = humanKey(p.text);
+  const keyInit = { key, code, shiftKey, bubbles: true, cancelable: true };
+  const inputType = key === "Enter" ? "insertLineBreak" : "insertText";
+  const downAccepted = el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
+  let inserted = false;
+  if (downAccepted) {
+    let beforeAccepted = true;
+    try {
+      beforeAccepted = el.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType,
+          data: p.text,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    } catch {
+      // Older engines without constructible InputEvent still receive input.
+    }
+    if (beforeAccepted) {
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        const proto =
+          el instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        const next = p.replace ? p.text : el.value + p.text;
+        if (setter) setter.call(el, next);
+        else el.value = next;
+        try {
+          el.setSelectionRange(next.length, next.length);
+        } catch {
+          // Some input types do not expose a text selection.
+        }
+      }
+      try {
+        el.dispatchEvent(
+          new InputEvent("input", { inputType, data: p.text, bubbles: true }),
+        );
+      } catch {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      inserted = true;
+    }
+  }
+  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
+  const value = liveValue(el);
+  return { inserted, value, ok: inserted && value !== null };
+}
+
+export function opHumanSubmit(p: {
+  selector: string;
+  force?: boolean;
+}) {
+  const el = require(p.selector) as HTMLElement;
+  assertActionable(el, p.selector, { force: p.force });
+  const editable =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement;
+  if (!editable) {
+    throw new OpFailed(`${p.selector} is not a text input or textarea`);
+  }
+
+  const form = el.form;
+  let observedSubmit = false;
+  const observed = () => { observedSubmit = true; };
+  form?.addEventListener("submit", observed, { capture: true, once: true });
+  const init = {
+    key: "Enter",
+    code: "Enter",
+    keyCode: 13,
+    bubbles: true,
+    cancelable: true,
+  };
+  const accepted = el.dispatchEvent(new KeyboardEvent("keydown", init));
+  el.dispatchEvent(new KeyboardEvent("keyup", init));
+  if (accepted && form && !observedSubmit) form.requestSubmit();
+  form?.removeEventListener("submit", observed, { capture: true } as EventListenerOptions);
+  return { accepted, submitted: observedSubmit };
+}
 
 export async function opClick(p: {
   selector: string;

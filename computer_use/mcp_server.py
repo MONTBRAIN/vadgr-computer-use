@@ -680,7 +680,8 @@ async def browser(
     - focus(selector) / blur(selector) -> {focused}
     - hover(selector, reveals=None) -> {hovered, revealed?}
     - scroll(selector=None | scroll_by={x,y}) -> {ok}
-    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger)
+    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger;
+      returns a named limitation instead of activating an inactive target)
     - upload(selector, files=[path,...]) -> {uploaded, files, ok}  (paths are on
       cua's OS; cua rewrites them to the browser's OS automatically)
     - dialog(action="accept"|"dismiss", text=None, arm=True) -> {armed}  (ARM
