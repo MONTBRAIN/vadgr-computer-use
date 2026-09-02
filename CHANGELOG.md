@@ -44,6 +44,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Keep native Windows auto-registration on the packaged, content-addressed
   native-host executable. Starting a Windows MCP client no longer replaces the
   working Chrome registration with a Python batch launcher.
+- Honor `profile_id` carried by `browser(use_target)` before the shared broker
+  performs its multi-profile ambiguity check.
 - Confirm a native port only after the broker hello arrives, and probe an
   apparently open port from the MV3 heartbeat so a failed host can reconnect.
 - Distinguish missing native-host setup, a missing extension, a disabled

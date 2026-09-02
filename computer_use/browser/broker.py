@@ -221,6 +221,29 @@ class BrowserBroker:
             remediation="call profiles(op='use', profile_id=...)",
         )
 
+    def _use_profile(self, state: ClientState, requested: str) -> dict[str, Any]:
+        profiles = self._profiles(state).get("profiles", [])
+        matches = [
+            item
+            for item in profiles
+            if str(item.get("profile_id", "")).startswith(requested)
+        ]
+        if len(matches) != 1:
+            raise BrowserError(
+                BrowserErrorCode.PROFILE_AMBIGUOUS,
+                f"profile {requested!r} is not unique",
+            )
+        selected = matches[0]
+        profile_id = str(selected["profile_id"])
+        if state.profile_id != profile_id:
+            state.window_id = state.tab_id = state.revision = None
+        state.profile_id = profile_id
+        return {
+            "profile_id": profile_id,
+            "browser": selected.get("browser"),
+            "is_current": True,
+        }
+
     def _send_profile(self, profile_id: str, operation: str, /, **params: Any) -> Any:
         # TcpBrowserSession correlates concurrent replies by request id. A
         # profile-wide lock would make one paced type operation freeze every
@@ -341,24 +364,9 @@ class BrowserBroker:
             if params.get("op", "list") == "list":
                 return self._profiles(state)
             if params.get("op") == "use":
-                requested = str(params.get("profile_id", ""))
-                profiles = self._profiles(state).get("profiles", [])
-                matches = [
-                    item
-                    for item in profiles
-                    if str(item.get("profile_id", "")).startswith(requested)
-                ]
-                if len(matches) != 1:
-                    raise BrowserError(
-                        BrowserErrorCode.PROFILE_AMBIGUOUS, f"profile {requested!r} is not unique"
-                    )
-                state.profile_id = str(matches[0]["profile_id"])
-                state.window_id = state.tab_id = state.revision = None
-                return {
-                    "profile_id": state.profile_id,
-                    "browser": matches[0].get("browser"),
-                    "is_current": True,
-                }
+                return self._use_profile(state, str(params.get("profile_id", "")))
+        if op == "use_target" and params.get("profile_id") is not None:
+            self._use_profile(state, str(params.pop("profile_id")))
         profile_id = self._profile(state)
         sub = str(params.get("op", ""))
         if (op, sub) in self._LIST_ONLY:

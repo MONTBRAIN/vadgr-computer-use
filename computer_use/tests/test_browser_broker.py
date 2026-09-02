@@ -92,6 +92,37 @@ def test_two_clients_get_distinct_owned_windows_and_exact_routing():
     assert broker.request(two, "read_text", {})["value"] == f"target-{target_two['tab_id']}"
 
 
+def test_use_target_inline_profile_selects_before_ambiguity_check():
+    class TwoProfileBridge(ExtensionBridge):
+        def send(self, op, /, **params):
+            if op == "profiles":
+                self.calls.append((op, dict(params)))
+                return {
+                    "profiles": [
+                        {"profile_id": "profile-one", "browser": "chrome"},
+                        {"profile_id": "profile-two", "browser": "chrome"},
+                    ]
+                }
+            return super().send(op, **params)
+
+    extension = TwoProfileBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+
+    target = broker.request(
+        client,
+        "use_target",
+        {"mode": "owned", "profile_id": "profile-two"},
+    )
+
+    assert client.profile_id == "profile-two"
+    assert target["created"] is True
+    assert any(
+        operation == "windows" and params.get("profile_id") == "profile-two"
+        for operation, params in extension.calls
+    )
+
+
 def test_listings_show_mine_other_and_unowned_without_hiding_targets():
     extension = ExtensionBridge()
     broker = BrowserBroker(extension)
