@@ -174,6 +174,20 @@ class TestSelfRegisterWiring:
         b._probe_setup()
         assert calls == []
 
+    def test_windows_probe_reads_real_registry(self, monkeypatch):
+        import computer_use.setup.extension_setup as S
+
+        monkeypatch.setattr(B, "_browser_platform", lambda *a, **k: "win32")
+        monkeypatch.setattr(S, "ensure_registered", lambda: None)
+        monkeypatch.setattr(S, "probe_windows_registry", lambda: ["edge"])
+        monkeypatch.setattr(
+            B,
+            "probe_manifests",
+            lambda paths: (_ for _ in ()).throw(AssertionError("wrong probe")),
+        )
+
+        assert B.NativeMessagingBridge()._probe_setup() == ["edge"]
+
 
 class TestNativeMessagingBridgeSend:
     def test_send_without_session_raises_waking(self, monkeypatch):

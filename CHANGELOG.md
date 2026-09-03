@@ -31,6 +31,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Detect missing Windows native-host setup from the real HKCU registration
+  instead of a separate broker manifest copy.
 - Keep an explicitly selected browser profile and its owned target pinned while
   its MV3 worker reconnects, instead of silently retargeting a remaining browser
   profile and rejecting the original operation as foreign ownership.

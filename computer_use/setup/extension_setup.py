@@ -336,6 +336,30 @@ def register_windows_registry(
     return done
 
 
+def probe_windows_registry(*, reader=None) -> list[str]:
+    """Return browsers whose HKCU registration points to a present manifest."""
+
+    def read(subkey: str) -> str | None:  # pragma: no cover - Windows only
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey) as key:
+                value, value_type = winreg.QueryValueEx(key, "")
+        except OSError:
+            return None
+        if value_type not in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+            return None
+        return str(value)
+
+    read_value = reader or read
+    registered: list[str] = []
+    for browser, subkey in _WIN_REGISTRY_KEYS.items():
+        value = read_value(subkey)
+        if value and Path(value).is_file():
+            registered.append(browser)
+    return registered
+
+
 def _mnt_to_windows_path(p) -> str:
     """``/mnt/c/Users/..`` -> ``C:\\Users\\..`` (WSL view -> Windows form)."""
     from computer_use.platform.wsl2 import wsl_to_win_path
