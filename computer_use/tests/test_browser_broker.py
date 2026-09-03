@@ -291,6 +291,31 @@ def test_releasing_a_noncurrent_window_preserves_current_target():
     assert client.tab_id == second["tab_id"]
 
 
+@pytest.mark.parametrize("scope", ["tab", "window"])
+def test_releasing_current_target_preserves_stale_fence(scope):
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    opened = broker.request(client, "windows", {"op": "open"})
+    old_revision = client.revision
+
+    if scope == "window":
+        broker.request(client, "windows", {"op": "release", "window_id": opened["window_id"]})
+    else:
+        broker.request(client, "windows", {"op": "release", "window_id": opened["window_id"]})
+        broker.request(client, "tabs", {"op": "claim", "tab_id": opened["tab_id"]})
+        old_revision = client.revision
+        broker.request(client, "tabs", {"op": "release", "tab_id": opened["tab_id"]})
+
+    extension.calls.clear()
+    assert client.window_id == opened["window_id"]
+    assert client.tab_id == opened["tab_id"]
+    assert client.revision == old_revision
+    with pytest.raises(OwnershipConflict):
+        broker.request(client, "read_text", {})
+    assert [op for op, _params in extension.calls] == ["profiles"]
+
+
 def test_tab_open_uses_the_explicit_owned_window_not_the_current_window():
     extension = ExtensionBridge()
     broker = BrowserBroker(extension)
