@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -237,9 +238,7 @@ class TestKeyboardTools:
         assert long_text not in str(result)
 
     @pytest.mark.asyncio
-    async def test_human_type_cancellation_returns_truthful_completed_units(
-        self, mock_engine
-    ):
+    async def test_human_type_cancellation_returns_truthful_completed_units(self, mock_engine):
         from computer_use.core.typing import TypingCancelled
         from computer_use.mcp_server import type_text
 
@@ -256,6 +255,42 @@ class TestKeyboardTools:
         with pytest.raises(TypingCancelled) as captured:
             await task
         assert captured.value.completed_units == 2
+
+    @pytest.mark.asyncio
+    async def test_cooperative_worker_success_does_not_swallow_task_cancellation(self):
+        import computer_use.mcp_server as mod
+
+        cancelled = threading.Event()
+
+        def return_after_cancel():
+            while not cancelled.is_set():
+                time.sleep(0.005)
+            return "late success"
+
+        task = asyncio.create_task(mod._run_cooperative_thread(return_after_cancel, cancelled))
+        await asyncio.sleep(0.03)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_human_type_has_no_implicit_total_deadline(self, mock_engine):
+        from computer_use.mcp_server import type_text
+
+        mock_engine.type_text.return_value = 0
+        result = await type_text("a" * 400, human=True, wpm=65, iki_cv=0)
+        assert result["predicted_ms"] > 60_000
+        assert result["units"] == 400
+
+    @pytest.mark.asyncio
+    async def test_human_type_explicit_deadline_refuses_before_input(self, mock_engine):
+        from computer_use.core.typing import TypingDeadlineExceeded
+        from computer_use.mcp_server import type_text
+
+        with pytest.raises(TypingDeadlineExceeded) as captured:
+            await type_text("abcdef", human=True, wpm=10, iki_cv=0, timeout=100)
+        assert captured.value.completed_units == 0
+        mock_engine.type_text.assert_not_called()
 
     def test_key_press_single(self, mock_engine):
         from computer_use.mcp_server import key_press
@@ -293,9 +328,7 @@ class TestBrowserCancellation:
             )
 
         monkeypatch.setattr("computer_use.mcp_server._browser_impl.browser", cancellable)
-        task = asyncio.create_task(
-            browser(op="type", selector="#field", text="hello", human=True)
-        )
+        task = asyncio.create_task(browser(op="type", selector="#field", text="hello", human=True))
         await asyncio.sleep(0.03)
         task.cancel()
 

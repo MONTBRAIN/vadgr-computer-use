@@ -7,6 +7,7 @@ import argparse
 import functools
 import io
 import logging
+import math
 import os
 import queue
 import sys
@@ -40,10 +41,12 @@ async def _run_cooperative_thread(call, cancellation: threading.Event):
 
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
+    cancellation_error = None
     try:
         while worker.is_alive():
             await anyio.sleep(0.02)
-    except anyio.get_cancelled_exc_class():
+    except anyio.get_cancelled_exc_class() as error:
+        cancellation_error = error
         cancellation.set()
         with anyio.CancelScope(shield=True):
             while worker.is_alive():
@@ -51,6 +54,8 @@ async def _run_cooperative_thread(call, cancellation: threading.Event):
     worker.join()
     ok, value = outcome.get_nowait()
     if ok:
+        if cancellation_error is not None:
+            raise cancellation_error
         return value
     raise value
 
@@ -372,15 +377,24 @@ async def type_text(
     timing_profile: str | None = None,
     wpm: int | None = None,
     iki_cv: float | None = None,
+    timeout: int | None = None,
 ) -> dict[str, object]:
     """Type text into the focused field, optionally with human-paced timing."""
     from computer_use.core.typing import (
-        MAX_TYPING_DURATION_MS,
         TypingOptions,
         build_typing_plan,
         require_typing_deadline,
     )
 
+    started = _time_module.monotonic()
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError("timeout must be a positive finite number of milliseconds")
+    deadline = started + timeout / 1000 if timeout is not None else None
     plan = build_typing_plan(
         text,
         TypingOptions(
@@ -390,18 +404,22 @@ async def type_text(
             iki_cv=iki_cv,
         ),
     )
-    if human:
-        require_typing_deadline(plan, MAX_TYPING_DURATION_MS)
+    if human and deadline is not None:
+        require_typing_deadline(plan, (deadline - _time_module.monotonic()) * 1000)
     engine = _get_engine()
-    started = _time_module.monotonic()
     if human:
         cancelled = threading.Event()
+        execution = {
+            "cancelled": cancelled.is_set,
+        }
+        if deadline is not None:
+            execution["deadline"] = deadline
         fallback_units = await _run_cooperative_thread(
             functools.partial(
                 engine.type_text,
                 text,
                 plan,
-                cancelled=cancelled.is_set,
+                **execution,
             ),
             cancelled,
         )
@@ -673,8 +691,8 @@ async def browser(
       pointer-driven control that exposes no such state. VERIFY: ok, or a
       read-back op.
     - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok};
-      human type uses a 45-second safety ceiling unless a shorter timeout is
-      supplied
+      human type has no implicit total deadline. An optional positive timeout
+      is one explicit caller deadline
     - clear(selector) -> {value:"", ok}
     - select(selector, value) -> {selected, value, ok}
     - focus(selector) / blur(selector) -> {focused}

@@ -47,7 +47,7 @@ class BridgeActionExecutor(ActionExecutor):
             else:
                 raise
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         def emit(text: str) -> bool:
             try:
                 result = self._client.call(
@@ -66,7 +66,12 @@ class BridgeActionExecutor(ActionExecutor):
                     "Bridge human typing state is uncertain; input was not replayed"
                 ) from error
 
-        return consume_typing_plan(plan, emit, cancelled=cancelled)
+        return consume_typing_plan(
+            plan,
+            emit,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         try:

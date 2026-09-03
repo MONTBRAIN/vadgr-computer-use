@@ -152,14 +152,15 @@ class TcpBrowserSession(BrowserSession):
     Ops are serialized over the one native port under a per-connection lock, but
     the reply stream is NOT guaranteed 1:1 - a reconnect ``hello`` or a late
     result can appear - so ``request`` matches the reply by ``id`` (see
-    ``_read_reply``) rather than trusting arrival order, and a per-op socket
-    timeout keeps a stuck tab from hanging the pipe.
+    ``_read_reply``) rather than trusting arrival order, and a per-op inactivity
+    backstop keeps a stuck tab from hanging the pipe.
     """
 
     # Per-op read backstop. The extension bounds navigation itself, so this only
     # trips when a reply never arrives at all (tab/window vanished mid-op). It
     # must be terminal, never a silent hang of the whole single-lock pipe.
     _OP_TIMEOUT_S = 60.0
+    _CANCEL_GRACE_S = 5.0
 
     def __init__(
         self,
@@ -198,6 +199,14 @@ class TcpBrowserSession(BrowserSession):
                 BrowserErrorCode.NOT_CONNECTED,
                 "browser session is closed; reconnect the extension",
             )
+        typing_stream = dict(params.get("typing_stream") or {})
+        typing_action = typing_stream.get("action") if op == "human_type_stream" else None
+        deadline_epoch_ms = typing_stream.get("deadline_epoch_ms")
+        if deadline_epoch_ms is not None:
+            epoch_remaining = float(deadline_epoch_ms) - time.time() * 1000
+            sent_remaining = float(typing_stream.get("remaining_ms", epoch_remaining))
+            typing_stream["remaining_ms"] = max(0.0, min(sent_remaining, epoch_remaining))
+            params = {**params, "typing_stream": typing_stream}
         reply_queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=1)
         with self._write_lock:
             self._next_id += 1
@@ -213,10 +222,16 @@ class TcpBrowserSession(BrowserSession):
                 raise BrowserError(
                     BrowserErrorCode.NOT_CONNECTED, f"browser session connection lost: {error}"
                 ) from error
-        deadline = time.monotonic() + self._OP_TIMEOUT_S
+        request_timeout = self._OP_TIMEOUT_S
+        remaining_ms = typing_stream.get("remaining_ms")
+        if remaining_ms is not None:
+            request_timeout = min(request_timeout, max(float(remaining_ms) / 1000, 0))
+        deadline = time.monotonic() + request_timeout
+        typing_mutation = typing_action in {"chunk", "finish"}
         reply = None
         received = False
         cancel_sent = False
+        cancel_deadline = None
         while time.monotonic() < deadline:
             if cancelled is not None and cancelled() and not cancel_sent:
                 with self._write_lock:
@@ -230,24 +245,76 @@ class TcpBrowserSession(BrowserSession):
                 # the truthful number of complete units and confirms submit was
                 # skipped; the control acknowledgement has its own id.
                 cancel_sent = True
+                cancel_deadline = time.monotonic() + self._CANCEL_GRACE_S
+                deadline = min(deadline, cancel_deadline)
             try:
                 reply = reply_queue.get(timeout=min(0.02, max(deadline - time.monotonic(), 0)))
                 received = True
                 break
             except queue.Empty:
                 continue
+        if not received and typing_mutation:
+            if not cancel_sent:
+                with self._write_lock:
+                    self._next_id += 1
+                    cancel_id = self._next_id
+                    write_message(
+                        self._file,
+                        op_message(cancel_id, "_cancel", {"request_id": msg_id}),
+                    )
+                cancel_sent = True
+                cancel_deadline = time.monotonic() + self._CANCEL_GRACE_S
+            assert cancel_deadline is not None
+            while time.monotonic() < cancel_deadline:
+                try:
+                    reply = reply_queue.get(
+                        timeout=min(0.02, max(cancel_deadline - time.monotonic(), 0))
+                    )
+                    received = True
+                    break
+                except queue.Empty:
+                    continue
+            if received:
+                if reply is None:
+                    raise BrowserError(
+                        BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                        "browser session closed after a typing operation was dispatched",
+                        remediation="inspect the target state before deciding whether to retry",
+                    )
+                return parse_result(reply)
+            with self._pending_lock:
+                self._pending.pop(msg_id, None)
+            self._teardown()
+            raise BrowserError(
+                BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                "a browser typing operation stopped after its progress backstop expired",
+                remediation="inspect the target state before deciding whether to retry",
+            )
         if not received:
             with self._pending_lock:
                 self._pending.pop(msg_id, None)
             raise BrowserError(
                 BrowserErrorCode.OP_FAILED,
-                f"browser op {op!r} timed out after {self._OP_TIMEOUT_S:.0f}s",
+                f"browser op {op!r} made no progress reply for {request_timeout:.0f}s",
                 remediation="check the page for a blocking dialog, then retry only after reading its state",
             )
         if reply is None:
             raise BrowserError(
-                BrowserErrorCode.NOT_CONNECTED,
-                "browser session closed before replying",
+                (
+                    BrowserErrorCode.TYPING_STATE_UNCERTAIN
+                    if typing_mutation
+                    else BrowserErrorCode.NOT_CONNECTED
+                ),
+                (
+                    "browser session closed after a typing operation was dispatched"
+                    if typing_mutation
+                    else "browser session closed before replying"
+                ),
+                remediation=(
+                    "inspect the target state before deciding whether to retry"
+                    if typing_mutation
+                    else None
+                ),
             )
         return parse_result(reply)
 
@@ -287,7 +354,15 @@ class TcpBrowserSession(BrowserSession):
                 target.put_nowait(None)
             except queue.Full:
                 pass
-        for closer in (self._file, self._sock):
+        if self._sock is not None:
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        # Close the socket before its buffered file. Otherwise another thread
+        # blocked in read_message can hold the file lock while teardown waits
+        # to close it.
+        for closer in (self._sock, self._file):
             try:
                 if closer is not None:
                     closer.close()

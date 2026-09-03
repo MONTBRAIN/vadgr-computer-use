@@ -8,6 +8,8 @@
 
 """The browser / browser_eval MCP tools against a FakeBridge (no browser)."""
 
+import time
+
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -39,8 +41,17 @@ class TestOpRouting:
         assert params["text"] == "hello"
         assert params["submit"] is True
 
-    def test_human_type_forwards_one_validated_schedule(self):
-        fake = FakeBridge(responses={"type": {"human": True, "units": 3}})
+    def test_human_type_streams_one_validated_schedule(self):
+        def respond(**params):
+            stream = params["typing_stream"]
+            action = stream["action"]
+            if action == "finish":
+                return {"human": True, "units": 3}
+            if action == "chunk":
+                return {"completed_units": stream["confirmed_units"] + len(stream["units"])}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
         result = T.browser(
             op="type",
             bridge=fake,
@@ -51,20 +62,92 @@ class TestOpRouting:
             iki_cv=0,
         )
         assert result == {"human": True, "units": 3}
-        plan = fake.calls[0][1]["typing_plan"]
-        assert plan["nominal_wpm"] == 60
-        assert [unit["delay_before_ms"] for unit in plan["units"]] == [0, 200, 200]
+        actions = [params["typing_stream"]["action"] for _, params in fake.calls]
+        assert actions == ["begin", "chunk", "finish"]
+        begin = fake.calls[0][1]["typing_stream"]
+        assert begin["nominal_wpm"] == 60
+        chunk = fake.calls[1][1]["typing_stream"]
+        assert [unit["delay_before_ms"] for unit in chunk["units"]] == [0, 200, 200]
 
-    def test_default_human_deadline_allows_normal_paced_text(self):
-        fake = FakeBridge(responses={"type": {"human": True, "units": 20}})
+    def test_default_human_type_allows_a_plan_longer_than_sixty_seconds(self):
+        def respond(**params):
+            stream = params["typing_stream"]
+            action = stream["action"]
+            if action == "finish":
+                return {"human": True, "units": 80}
+            if action == "chunk":
+                return {"completed_units": stream["confirmed_units"] + len(stream["units"])}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
         result = T.browser(
             op="type",
             bridge=fake,
             selector="#n",
-            text="abcdefghijklmnopqrst",
+            text="a" * 80,
             human=True,
+            wpm=10,
+            iki_cv=0,
         )
-        assert result["units"] == 20
+        assert result["units"] == 80
+        assert fake.calls[0][1]["typing_stream"]["predicted_ms"] > 60_000
+
+    def test_explicit_human_deadline_refuses_before_bridge_dispatch(self):
+        fake = FakeBridge()
+        with pytest.raises(ToolError, match="typing_deadline_exceeded"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="abcdef",
+                human=True,
+                wpm=10,
+                iki_cv=0,
+                timeout=100,
+            )
+        assert fake.calls == []
+
+    def test_explicit_deadline_cannot_be_extended_by_finish_transport(self):
+        def respond(**params):
+            action = params["typing_stream"]["action"]
+            if action == "finish":
+                time.sleep(0.02)
+                return {"human": True, "units": 0}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        with pytest.raises(ToolError, match="typing_deadline_exceeded"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="",
+                human=True,
+                timeout=5,
+            )
+        actions = [params["typing_stream"]["action"] for _, params in fake.calls]
+        assert actions == ["begin", "finish", "abort"]
+
+    def test_human_stream_aborts_after_a_dispatched_chunk_fails(self):
+        actions = []
+
+        def respond(**params):
+            action = params["typing_stream"]["action"]
+            actions.append(action)
+            if action == "chunk":
+                raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "lost after dispatch")
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        with pytest.raises(ToolError, match="typing_state_uncertain"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="abc",
+                human=True,
+            )
+        assert actions == ["begin", "chunk", "abort"]
 
     def test_invalid_human_options_fail_before_bridge_dispatch(self):
         fake = FakeBridge()

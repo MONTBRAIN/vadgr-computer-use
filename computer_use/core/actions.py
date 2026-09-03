@@ -18,7 +18,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from computer_use.core.typing import TypingCancelled, TypingPlan
+from computer_use.core.typing import TypingCancelled, TypingDeadlineExceeded, TypingPlan
 
 
 def consume_typing_plan(
@@ -26,6 +26,7 @@ def consume_typing_plan(
     emit: Callable[[str], bool],
     *,
     cancelled: Callable[[], bool] | None = None,
+    deadline: float | None = None,
 ) -> int:
     """Run one absolute schedule and return the number of fallback units.
 
@@ -39,12 +40,29 @@ def consume_typing_plan(
     for completed, unit in enumerate(plan.units):
         if cancelled is not None and cancelled():
             raise TypingCancelled(completed)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TypingDeadlineExceeded(completed)
         scheduled += unit.delay_before_ms / 1000
         while (remaining := started + scheduled - time.monotonic()) > 0:
             if cancelled is not None and cancelled():
                 raise TypingCancelled(completed)
+            if deadline is not None:
+                deadline_remaining = deadline - time.monotonic()
+                if deadline_remaining <= 0:
+                    raise TypingDeadlineExceeded(completed)
+                remaining = min(remaining, deadline_remaining)
             time.sleep(min(remaining, 0.02))
+        if unit.delay_before_ms > 0:
+            if cancelled is not None and cancelled():
+                raise TypingCancelled(completed)
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TypingDeadlineExceeded(completed)
         fallback_units += int(emit(unit.text))
+        complete = completed + 1
+        if cancelled is not None and cancelled():
+            raise TypingCancelled(complete)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise TypingDeadlineExceeded(complete)
     return fallback_units
 
 
@@ -76,6 +94,7 @@ class ActionExecutor(ABC):
         plan: TypingPlan,
         *,
         cancelled: Callable[[], bool] | None = None,
+        deadline: float | None = None,
     ) -> int:
         """Consume one shared human-paced schedule.
 
@@ -87,6 +106,7 @@ class ActionExecutor(ABC):
             plan,
             lambda text: bool(self.type_text(text)) if text else False,
             cancelled=cancelled,
+            deadline=deadline,
         )
 
     @abstractmethod

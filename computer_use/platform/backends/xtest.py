@@ -151,8 +151,13 @@ class XTestExecutor(ActionExecutor):
                 self._x.key(shift, False)
         return False
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
-        return consume_typing_plan(plan, self._type_char, cancelled=cancelled)
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
+        return consume_typing_plan(
+            plan,
+            self._type_char,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:

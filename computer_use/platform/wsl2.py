@@ -696,7 +696,7 @@ $escaped = if ($raw -eq "`n" -or $raw -eq "`r") {{ '{{ENTER}}' }} elseif ($raw -
         except Exception as e:
             raise ActionError(f"Type text failed: {e}") from e
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         from computer_use.core.actions import consume_typing_plan
 
         def emit(text: str) -> bool:
@@ -715,7 +715,12 @@ $escaped = if ($raw -eq "`n" -or $raw -eq "`r") {{ '{{ENTER}}' }} elseif ($raw -
                 len(text) == 1 and 0x20 <= ord(text) <= 0x7E
             )
 
-        return consume_typing_plan(plan, emit, cancelled=cancelled)
+        return consume_typing_plan(
+            plan,
+            emit,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:

@@ -63,6 +63,11 @@ type_text(text="...", human=true)
 
 Both tools use the versioned `us_adult_transcription_2026` timing profile by
 default. An advanced caller can instead provide both `wpm` and `iki_cv`.
+Human-paced input has no implicit total deadline, so long text continues while
+complete units make progress. A caller may provide a positive `timeout` in
+milliseconds as an explicit total budget. Browser pacing transports long plans
+in bounded progress-confirmed chunks and never replays a chunk whose dispatch
+result is uncertain.
 `browser(op="fill")` stays a bulk value operation. Paced input models event
 cadence for input-driven interfaces. It does not claim stealth or biometric
 human identity. Browser pacing sends page-visible synthetic DOM events to the
