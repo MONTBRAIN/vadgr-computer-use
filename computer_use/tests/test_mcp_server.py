@@ -241,6 +241,7 @@ class TestKeyboardTools:
     async def test_human_type_cancellation_returns_truthful_completed_units(self, mock_engine):
         from computer_use.core.typing import TypingCancelled
         from computer_use.mcp_server import type_text
+        from mcp.server.mcpserver.exceptions import ToolError
 
         def cancellable(_text, _plan, *, cancelled):
             while not cancelled():
@@ -252,9 +253,8 @@ class TestKeyboardTools:
         await asyncio.sleep(0.03)
         task.cancel()
 
-        with pytest.raises(TypingCancelled) as captured:
+        with pytest.raises(ToolError, match="typing_cancelled: 2 complete units"):
             await task
-        assert captured.value.completed_units == 2
 
     @pytest.mark.asyncio
     async def test_cooperative_worker_success_does_not_swallow_task_cancellation(self):
@@ -284,13 +284,22 @@ class TestKeyboardTools:
 
     @pytest.mark.asyncio
     async def test_human_type_explicit_deadline_refuses_before_input(self, mock_engine):
+        from computer_use.mcp_server import type_text
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        with pytest.raises(ToolError, match="typing_deadline_exceeded: 0 complete units"):
+            await type_text("abcdef", human=True, wpm=10, iki_cv=0, timeout=100)
+        mock_engine.type_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_human_type_runtime_deadline_is_a_named_tool_error(self, mock_engine):
         from computer_use.core.typing import TypingDeadlineExceeded
         from computer_use.mcp_server import type_text
+        from mcp.server.mcpserver.exceptions import ToolError
 
-        with pytest.raises(TypingDeadlineExceeded) as captured:
-            await type_text("abcdef", human=True, wpm=10, iki_cv=0, timeout=100)
-        assert captured.value.completed_units == 0
-        mock_engine.type_text.assert_not_called()
+        mock_engine.type_text.side_effect = TypingDeadlineExceeded(3)
+        with pytest.raises(ToolError, match="typing_deadline_exceeded: 3 complete units"):
+            await type_text("abcdef", human=True, wpm=200, iki_cv=0, timeout=10_000)
 
     def test_key_press_single(self, mock_engine):
         from computer_use.mcp_server import key_press

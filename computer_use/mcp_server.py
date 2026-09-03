@@ -74,6 +74,7 @@ def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
 
 
 from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as PILImage
 
 from computer_use.core import REGISTRY, Risk, Tier, tool
@@ -381,6 +382,8 @@ async def type_text(
 ) -> dict[str, object]:
     """Type text into the focused field, optionally with human-paced timing."""
     from computer_use.core.typing import (
+        TypingCancelled,
+        TypingDeadlineExceeded,
         TypingOptions,
         build_typing_plan,
         require_typing_deadline,
@@ -405,7 +408,10 @@ async def type_text(
         ),
     )
     if human and deadline is not None:
-        require_typing_deadline(plan, (deadline - _time_module.monotonic()) * 1000)
+        try:
+            require_typing_deadline(plan, (deadline - _time_module.monotonic()) * 1000)
+        except TypingDeadlineExceeded as error:
+            raise ToolError(str(error)) from error
     engine = _get_engine()
     if human:
         cancelled = threading.Event()
@@ -414,15 +420,18 @@ async def type_text(
         }
         if deadline is not None:
             execution["deadline"] = deadline
-        fallback_units = await _run_cooperative_thread(
-            functools.partial(
-                engine.type_text,
-                text,
-                plan,
-                **execution,
-            ),
-            cancelled,
-        )
+        try:
+            fallback_units = await _run_cooperative_thread(
+                functools.partial(
+                    engine.type_text,
+                    text,
+                    plan,
+                    **execution,
+                ),
+                cancelled,
+            )
+        except (TypingCancelled, TypingDeadlineExceeded) as error:
+            raise ToolError(str(error)) from error
     else:
         await anyio.to_thread.run_sync(engine.type_text, text)
     elapsed_ms = round((_time_module.monotonic() - started) * 1000)
