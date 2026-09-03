@@ -151,6 +151,11 @@ present in a given runbook, the entry is all there is.
     daemon.** Two drivers sharing one daemon read each other's work and neither
     verdict means anything. [Repeatability] [../README.md]
 
+21. **This runbook gates only the minor that contains it.** A sibling minor in
+    the same iteration is never a prerequisite, cell, blocker or overall-gate
+    input here. Put an integration proof in the runbook for the minor that
+    builds the integrated artifact. [Paired surfaces this pass depends on]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -254,6 +259,11 @@ it.
 > behind the route, name the version the part depends on in a table here, and
 > write a part whose surface arrives later into that release's runbook instead,
 > stating its absence rather than leaving it silent.
+>
+> **A same-iteration sibling minor never becomes a dependency merely because it
+> packages, launches or consumes this runtime.** Its runbook owns that combined
+> proof. Do not add the sibling's future artifact as a cell here, and never let
+> its absence block this minor's part or overall result.
 >
 > | repository | released version | what this pass relies on |
 > |---|---|---|

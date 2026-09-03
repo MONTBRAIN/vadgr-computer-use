@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.6 implementation:**
 > `feature/0.7.6-browser-reliability` at product commit
-> `3bcd83177d2c5362e9315d04d34e4f822167c4cd`.
+> `c5c78b803e684c3532a5533553fbf58485df5065`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
@@ -49,7 +49,7 @@ temporary roots. It does not change host network state or privacy settings.
 
 | repository | released surface | use in this pass |
 |---|---|---|
-| `vadgr` | `0.4.12` | No live dependency. Packaged delivery is proved later by `vadgr 0.5.0` |
+| none | not applicable | This runtime is installed and driven through its own entry point |
 
 ## Setup and identity
 
@@ -86,7 +86,7 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 |---|---|---|---|---|---|---|---|---|
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: one read recovered the same target at `c5c78b8` | not run: remote host | not run: remote host | not run: remote host |
 | A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | blocked: host suspension would terminate the only WSL driver | not run: remote host | not run: remote host | not run: remote host |
-| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | blocked: no isolated Windows extension-disable state exists | not run: remote host | not run: remote host | not run: remote host |
+| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: status and read returned `extension_disabled` | not run: remote host | not run: remote host | not run: remote host |
 | A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | blocked: registration is shared with the owner's Windows profile | not run: remote host | not run: remote host | not run: remote host |
 
 ## Part B: shared broker and target ownership
@@ -153,18 +153,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 |---|---|---|---|---|---|---|---|---|
 | E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: final wheel at `c5c78b8` | not run: remote host | not run: remote host | not run: remote host |
 | E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact foreground-window setup before the pixel action. | Run one owned-window browser read, one human browser type, and one human pixel type | The installed package and matching extension execute the released behavior | MCP JSON with input text removed; close test state | pass | not run: remote host | not run: remote host | not run: remote host |
-| E03 | `vadgr 0.5.0` release vehicle exists | Install the vehicle and run its bundled CUA proof | The bundled runtime reports and executes CUA 0.7.6 without a separate CUA or system Python | Filed by the `vadgr 0.5.0` runbook | blocked: vadgr 0.5.0 is not built | blocked: vadgr 0.5.0 is not built | blocked: vadgr 0.5.0 is not built | blocked: vadgr 0.5.0 is not built |
 
 ## Per-OS results
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | blocked: A02-A04 need an external or isolated Windows owner boundary | not run: remote host | not run: remote host | not run: remote host |
+| A: recovery and setup diagnosis | blocked: A02 and A04 need an external or isolated Windows owner boundary | not run: remote host | not run: remote host | not run: remote host |
 | B: shared broker and target ownership | blocked: NAT and distribution-termination cells need another WSL host | not run: remote host | not run: remote host | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | not run: remote host | not run: remote host |
 | D: pixel typing | pass | not run: remote host | not run: remote host | not run: remote host |
-| E: packaged and clean delivery | blocked: E03 awaits vadgr 0.5.0 | blocked: E03 awaits vadgr 0.5.0 | blocked: E03 awaits vadgr 0.5.0 | blocked: E03 awaits vadgr 0.5.0 |
-| overall | blocked: A02-A04, B02a-B02c, B13 and E03 | not run: remote host | not run: remote host | not run: remote host |
+| E: packaged and clean delivery | pass | not run: remote host | not run: remote host | not run: remote host |
+| overall | blocked: A02, A04, B02a-B02c and B13 | not run: remote host | not run: remote host | not run: remote host |
 
 ## Evidence
 
