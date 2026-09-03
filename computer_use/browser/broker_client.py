@@ -215,7 +215,16 @@ class BrokerClient:
 
         expected_bundle = expected_bundle_hash()
         deadline = time.monotonic() + self._connect_timeout
-        self._start_broker()
+        try:
+            self._start_broker()
+        except FileNotFoundError as error:
+            raise BrowserError(
+                BrowserErrorCode.NOT_CONNECTED,
+                "the Windows browser broker cannot start because Windows interop is unavailable",
+                remediation=(
+                    "enable Windows interop and retry; cua never changes WSL networking"
+                ),
+            ) from error
         while time.monotonic() < deadline:
             transport = None
             file = None

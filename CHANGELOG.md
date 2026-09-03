@@ -31,6 +31,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Return the named Windows interop remedy when WSL cannot launch the shared
+  browser broker, instead of collapsing the setup failure to a generic tool error.
 - Preserve a released current target as a stale fenced selection. The next page
   dispatch now fails before extension execution instead of silently creating a
   replacement window, so lease revisions remain observable and race-safe.
