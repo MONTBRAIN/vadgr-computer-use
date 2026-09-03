@@ -1,6 +1,6 @@
 {
-  "archive_sha256": "0b36cf4c941efffc249986f15c388c24fc24e065a6e1d0b23f2ed95db1af90d5",
-  "archive_size": 9186800,
+  "archive_sha256": "d09a5a38c746e45442b8ffd5ce0b7a27cde84964c5218cbf669cc91faa46acf9",
+  "archive_size": 9187027,
   "builder": {
     "pyinstaller": "6.22.2",
     "uv": "0.12.6"
@@ -133,8 +133,8 @@
     },
     {
       "path": "vadgr-cua-browser-broker.exe",
-      "sha256": "79e74a7626430ee17df5836aba68e7195a7ccda48d27c60032b481c84d3ed36b",
-      "size": 2758461
+      "sha256": "40bf9b5655eb191416922374567a2caa085ebeaa7aa947ce16882c517b3bea58",
+      "size": 2758688
     },
     {
       "path": "VADGR-CUA-LICENSE.txt",
@@ -149,7 +149,7 @@
     "version": "3.12.14"
   },
   "schema": 1,
-  "source_commit": "464b1bb559a8a254c58e0288009097d2e43f4234",
+  "source_commit": "546160901ad3806a1f1ad5bfe518ea3e5e03b7e6",
   "source_files": [
     {
       "path": "computer_use/__init__.py",
@@ -161,7 +161,7 @@
     },
     {
       "path": "computer_use/browser/broker.py",
-      "sha256": "c9a139a291418953627c36b29cbf3fbac7df81e413dee64db03ea9ef25d6cbf5"
+      "sha256": "e05f0dd0dfb6e09aca6f4b5c40169ba0b83a68e9e75463c6398eee9cad67e76a"
     },
     {
       "path": "computer_use/browser/native_host.py",
