@@ -415,15 +415,11 @@ class BrowserBroker:
         if op == "windows" and sub == "release":
             window_id = int(params["window_id"])
             revision = self.ownership.release_window(profile_id, window_id, state.client_id)
-            if state.window_id == window_id:
-                state.window_id = state.tab_id = state.revision = None
             return {"released": True, "window_id": window_id, "revision": revision}
         if op == "tabs" and sub == "release":
             revision = self.ownership.release_tab(
                 profile_id, int(params["tab_id"]), state.client_id
             )
-            if state.tab_id == int(params["tab_id"]):
-                state.window_id = state.tab_id = state.revision = None
             return {"released": True, "tab_id": int(params["tab_id"]), "revision": revision}
         if op == "windows" and sub == "open":
             target = self._send_profile(profile_id, op, **params)
