@@ -1,6 +1,6 @@
 {
-  "archive_sha256": "fcbbea9529caa28846ed6e278d840dc8f5a7541d09f26518d4f951b6d4648059",
-  "archive_size": 9186785,
+  "archive_sha256": "0b36cf4c941efffc249986f15c388c24fc24e065a6e1d0b23f2ed95db1af90d5",
+  "archive_size": 9186800,
   "builder": {
     "pyinstaller": "6.22.2",
     "uv": "0.12.6"
@@ -8,67 +8,67 @@
   "files": [
     {
       "path": "_internal/_asyncio.pyd",
-      "sha256": "02c681521aa0eaa4822b206e2ed0cb51de969af86045846a52a321908e041f14",
+      "sha256": "d5f81776a1d9a85ff9f00cb1d505816ca01a18ceb7d2f679bc7ff0cdf6d27829",
       "size": 59392
     },
     {
       "path": "_internal/_bz2.pyd",
-      "sha256": "1cedba5927c6f00b4278c2b60b5696506ccc73af4859384a26160e1cf4945d01",
+      "sha256": "a99475b2e0203da2c7552d5c984796f446976c86fbd98e661684643f29349732",
       "size": 73216
     },
     {
       "path": "_internal/_ctypes.pyd",
-      "sha256": "78edcd2a863472cded0f311eac31c778bc30fb9754fa815bb32c4e286eb7f155",
+      "sha256": "a44c4a9cdf3d8f75f26f5f7591fe4179c2ee03c3ca3899e5afeb0770421cce90",
       "size": 116224
     },
     {
       "path": "_internal/_decimal.pyd",
-      "sha256": "14ec08311a3ee2248eaa332cec544bfda6a777bf649029303ee5675bb8ffa939",
+      "sha256": "6b54d3da6a03478d0de40eee579b5e4da7740637f86425778ab486871808797f",
       "size": 248320
     },
     {
       "path": "_internal/_hashlib.pyd",
-      "sha256": "0f234dd56319a354cbc103063e58ea25f57b05c0e3825bca0d608518e9c16583",
+      "sha256": "e8ed80ac9a5023657f485d2113aace9cd327e9a26116519664096d46850244b7",
       "size": 54784
     },
     {
       "path": "_internal/_lzma.pyd",
-      "sha256": "31cfc6fd91059f0e4fd819a3381615db6639faaca7d5428c07c37fb64385b3da",
+      "sha256": "0fc50bad7a00d7b6f9e8833b7f1b6119d2577bfc89086bd403188cff46ca788b",
       "size": 152576
     },
     {
       "path": "_internal/_multiprocessing.pyd",
-      "sha256": "95303df7e7be0b75e67d64127b69704392267e50b2306f5ad45a9e64e7764aa2",
+      "sha256": "029865bd497072b551ae9b922b3801fc2956f2cb9f984aba44bcd4f6d7beb7ea",
       "size": 24064
     },
     {
       "path": "_internal/_overlapped.pyd",
-      "sha256": "6a36b0102c76e6a931523725380ad8b9d4d559578c528f98110f7b42445feef3",
+      "sha256": "058617815ed17159fe47995856def239bd3392b2523d38fb404f3aaebfcab8de",
       "size": 44032
     },
     {
       "path": "_internal/_queue.pyd",
-      "sha256": "6f8dd84f376f5312b206acbe56d2a80eaea53cfadcf81f1c14fb97e75f82fc32",
+      "sha256": "79ce9cd7600262b0b9447f8022afa7d03687d8f37aa9756360f845e18f03c4b6",
       "size": 20480
     },
     {
       "path": "_internal/_socket.pyd",
-      "sha256": "df165b012ac7c7dbdd240bfec0237c215dea88ebcd988719658ca8afa4ec7692",
+      "sha256": "704b9d6c61aaf87a18d84a9854cb7d851437d6a652011bf607106faecc042400",
       "size": 71680
     },
     {
       "path": "_internal/_ssl.pyd",
-      "sha256": "480cce65c9b8fd755c5fafab5ba89b04dffd43ce64a1220b30c483e83f28fe6a",
+      "sha256": "8db3ba65f76cb5fe192cfbe6bc4486ce25555d919ac7b29aaf2531f99412e3ae",
       "size": 164864
     },
     {
       "path": "_internal/_uuid.pyd",
-      "sha256": "89b9c2751660b7821c4107f75821b3b705a6004e9a70517956c7cfb5edae7b42",
+      "sha256": "71644c774c1f3004c66e04c3b2859def238740a17225f9058308f1b66dfda2af",
       "size": 13824
     },
     {
       "path": "_internal/_wmi.pyd",
-      "sha256": "01e899f2e92bb73c25edfe2d69a7bb55bd2814a1c3f9eeb115377c19b388ed7a",
+      "sha256": "730bca946e7700bfe34513ed4c82105322de98c02119c6147269c8f9cc86c405",
       "size": 25600
     },
     {
@@ -78,37 +78,37 @@
     },
     {
       "path": "_internal/libcrypto-3-x64.dll",
-      "sha256": "7404fb0dc38e868aea1551ff8ceb3fce635ba6173439f882715a6e87e5237370",
+      "sha256": "8b54c7df707f1fbd046b2520250dc84a43d3cb90261210a3f2f4eaca239bd0f7",
       "size": 7987712
     },
     {
       "path": "_internal/libffi-8.dll",
-      "sha256": "634bca492b28c5d530f1bc321dd6d240b92c5013f3815f59653ec483890db27b",
+      "sha256": "78ec2d41bbc7bc9bcaf3b58a9cacc9efa1f53b2780fc33f4cb2e6e09d790c99c",
       "size": 28160
     },
     {
       "path": "_internal/libssl-3-x64.dll",
-      "sha256": "48d349578f5584f15fd3501501e75e87c80369c6ed35f39de55fbb92bee02df5",
+      "sha256": "77cb95d0ee83f8f0c3ddbc4cea6173140b50b74d4b28873091a5c00d8653219f",
       "size": 1583616
     },
     {
       "path": "_internal/pyexpat.pyd",
-      "sha256": "7c7197db94612b3904ef0ada2a4940bcc6853136cc70f3523a4f26fffccbf37e",
+      "sha256": "00936ea501e25bf227523163d25e02fb10f489f38f9fe8fcc08c200b6bd119d6",
       "size": 210432
     },
     {
       "path": "_internal/python312.dll",
-      "sha256": "53d38ecd2d9f4e19ac9328a715d1155e3e183473845e15d0044342909fc718a0",
+      "sha256": "786648b36f66e3476e9591a54aa3a0ca43ed09c3fb4ad0affbfd2768a4c6dbcd",
       "size": 6969856
     },
     {
       "path": "_internal/select.pyd",
-      "sha256": "de108cd0108e8cdfb1f1e95e9fe6b3ede886aaa80a9fe86deb2619ec17d4e625",
+      "sha256": "791551923b8c17bbee9360150462c0e6fca7786e9e9aa97f297da8d77e90464d",
       "size": 18944
     },
     {
       "path": "_internal/unicodedata.pyd",
-      "sha256": "f7cd7dfbc3c82be5f17fc61424ca316fa43b50193f3e633c5c042d62a47d0dd7",
+      "sha256": "78fa2612562e2b8ffa18e6a06dd6015a7e223665b9b970ec62b6a83f757dc96a",
       "size": 1127936
     },
     {
@@ -133,8 +133,8 @@
     },
     {
       "path": "vadgr-cua-browser-broker.exe",
-      "sha256": "b6da65566248f6a20b6448e6b492c30c83f382376272f2b60c42afa7bc8bf862",
-      "size": 2758512
+      "sha256": "79e74a7626430ee17df5836aba68e7195a7ccda48d27c60032b481c84d3ed36b",
+      "size": 2758461
     },
     {
       "path": "VADGR-CUA-LICENSE.txt",
@@ -149,7 +149,7 @@
     "version": "3.12.14"
   },
   "schema": 1,
-  "source_commit": "2aaffbb6e74777d058d2382e5d5d035f568e2e90",
+  "source_commit": "464b1bb559a8a254c58e0288009097d2e43f4234",
   "source_files": [
     {
       "path": "computer_use/__init__.py",
@@ -161,7 +161,7 @@
     },
     {
       "path": "computer_use/browser/broker.py",
-      "sha256": "241df9f2f286cb5a3f96a0a3ef594ee272bec2fb0f28bcc76f99110fa7b3a4c6"
+      "sha256": "c9a139a291418953627c36b29cbf3fbac7df81e413dee64db03ea9ef25d6cbf5"
     },
     {
       "path": "computer_use/browser/native_host.py",
