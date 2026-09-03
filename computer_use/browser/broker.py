@@ -176,6 +176,26 @@ class BrowserBroker:
 
     def _profile(self, state: ClientState) -> str:
         profiles = self._profiles(state).get("profiles", [])
+        if state.profile_id and not any(
+            item.get("profile_id") == state.profile_id for item in profiles
+        ):
+            # An MV3 worker restart briefly removes only its profile session. If
+            # another profile remains connected, falling through to the
+            # single-profile convenience would silently retarget this client
+            # and make its still-valid lease look foreign. Keep the explicit
+            # profile sticky while bounded recovery gives that worker time to
+            # reconnect.
+            deadline = time.monotonic() + 25.0
+            while time.monotonic() < deadline:
+                time.sleep(0.1)
+                profiles = self._profiles(state).get("profiles", [])
+                if any(item.get("profile_id") == state.profile_id for item in profiles):
+                    return state.profile_id
+            raise BrowserError(
+                BrowserErrorCode.RECOVERY_TIMEOUT,
+                f"the selected profile {state.profile_id!r} did not reconnect during bounded recovery",
+                remediation="reopen that browser profile, then retry once",
+            )
         if not profiles and self.bridge.status().reason == "waking":
             deadline = time.monotonic() + 25.0
             while time.monotonic() < deadline and not profiles:

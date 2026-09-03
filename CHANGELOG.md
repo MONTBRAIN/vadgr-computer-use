@@ -31,6 +31,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Keep an explicitly selected browser profile and its owned target pinned while
+  its MV3 worker reconnects, instead of silently retargeting a remaining browser
+  profile and rejecting the original operation as foreign ownership.
 - Return the named Windows interop remedy when WSL cannot launch the shared
   browser broker, instead of collapsing the setup failure to a generic tool error.
 - Preserve a released current target as a stale fenced selection. The next page

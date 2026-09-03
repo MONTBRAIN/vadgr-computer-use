@@ -148,6 +148,41 @@ def test_reconnect_secret_restores_client_state_inside_grace():
     assert broker.request(restored, "read_text", {})["value"] == "target-10"
 
 
+def test_worker_recovery_keeps_selected_profile_and_original_target():
+    class RestartingProfileBridge(ExtensionBridge):
+        def __init__(self):
+            super().__init__()
+            self.profile_lists = 0
+
+        def send(self, op, /, **params):
+            if op == "profiles":
+                self.profile_lists += 1
+                if self.profile_lists == 2:
+                    return {
+                        "profiles": [
+                            {"profile_id": "other-profile", "browser": "chrome"}
+                        ]
+                    }
+            return super().send(op, **params)
+
+    extension = RestartingProfileBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+    extension.calls.clear()
+
+    result = broker.request(client, "read_text", {})
+
+    assert result["value"] == "target-10"
+    assert client.profile_id == "profile-one"
+    assert client.window_id == 1
+    assert client.tab_id == 10
+    assert [operation for operation, _params in extension.calls].count("read_text") == 1
+    assert next(
+        params for operation, params in extension.calls if operation == "read_text"
+    )["profile_id"] == "profile-one"
+
+
 def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
     broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
     client = broker.connect(None, None)
