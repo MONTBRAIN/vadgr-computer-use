@@ -64,6 +64,7 @@ class TestOpRouting:
         assert result == {"human": True, "units": 3}
         actions = [params["typing_stream"]["action"] for _, params in fake.calls]
         assert actions == ["begin", "chunk", "finish"]
+        assert callable(fake.calls[0][1]["_cancelled"])
         begin = fake.calls[0][1]["typing_stream"]
         assert begin["nominal_wpm"] == 60
         chunk = fake.calls[1][1]["typing_stream"]

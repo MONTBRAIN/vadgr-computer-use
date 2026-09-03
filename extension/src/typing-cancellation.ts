@@ -35,6 +35,7 @@ export async function waitTypingDelay(
       ),
     );
   }
+  if (typingCancelled(requestId) || stopped?.()) return "cancelled";
   if (deadlineMs !== undefined && performance.now() >= deadlineMs) return "deadline";
   return "complete";
 }

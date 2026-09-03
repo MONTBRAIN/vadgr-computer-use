@@ -227,13 +227,19 @@ class TcpBrowserSession(BrowserSession):
         if remaining_ms is not None:
             request_timeout = min(request_timeout, max(float(remaining_ms) / 1000, 0))
         deadline = time.monotonic() + request_timeout
+        typing_phase = typing_action in {"begin", "chunk", "finish"}
         typing_mutation = typing_action in {"chunk", "finish"}
+        deadline_limited = remaining_ms is not None and (
+            max(float(remaining_ms) / 1000, 0) <= self._OP_TIMEOUT_S
+        )
         reply = None
         received = False
         cancel_sent = False
         cancel_deadline = None
+        caller_cancelled = False
         while time.monotonic() < deadline:
             if cancelled is not None and cancelled() and not cancel_sent:
+                caller_cancelled = True
                 with self._write_lock:
                     self._next_id += 1
                     cancel_id = self._next_id
@@ -253,7 +259,7 @@ class TcpBrowserSession(BrowserSession):
                 break
             except queue.Empty:
                 continue
-        if not received and typing_mutation:
+        if not received and typing_phase:
             if not cancel_sent:
                 with self._write_lock:
                     self._next_id += 1
@@ -277,14 +283,42 @@ class TcpBrowserSession(BrowserSession):
             if received:
                 if reply is None:
                     raise BrowserError(
-                        BrowserErrorCode.TYPING_STATE_UNCERTAIN,
-                        "browser session closed after a typing operation was dispatched",
-                        remediation="inspect the target state before deciding whether to retry",
+                        (
+                            BrowserErrorCode.TYPING_STATE_UNCERTAIN
+                            if typing_mutation
+                            else BrowserErrorCode.NOT_CONNECTED
+                        ),
+                        (
+                            "browser session closed after a typing operation was dispatched"
+                            if typing_mutation
+                            else "browser session closed before starting human typing"
+                        ),
+                        remediation=(
+                            "inspect the target state before deciding whether to retry"
+                            if typing_mutation
+                            else None
+                        ),
                     )
                 return parse_result(reply)
             with self._pending_lock:
                 self._pending.pop(msg_id, None)
             self._teardown()
+            if not typing_mutation:
+                if caller_cancelled:
+                    raise BrowserError(
+                        BrowserErrorCode.TYPING_CANCELLED,
+                        "typing_cancelled: 0 complete units",
+                    )
+                if deadline_limited:
+                    raise BrowserError(
+                        BrowserErrorCode.TYPING_DEADLINE,
+                        "typing_deadline_exceeded: 0 complete units",
+                    )
+                raise BrowserError(
+                    BrowserErrorCode.OP_FAILED,
+                    f"browser typing begin made no progress reply for {request_timeout:.0f}s",
+                    remediation="check the page for a blocking dialog, then retry",
+                )
             raise BrowserError(
                 BrowserErrorCode.TYPING_STATE_UNCERTAIN,
                 "a browser typing operation stopped after its progress backstop expired",

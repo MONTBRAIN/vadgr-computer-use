@@ -173,8 +173,7 @@ class BrokerClient:
                         and reply.get("ok")
                         and reply.get("epoch") == endpoint.get("epoch")
                         and reply.get("pid") == endpoint.get("pid")
-                        and reply.get("process_started_ns")
-                        == endpoint.get("process_started_ns")
+                        and reply.get("process_started_ns") == endpoint.get("process_started_ns")
                         and reply.get("bundle_hash") == expected_bundle
                     ):
                         if isinstance(transport, socket.socket):
@@ -221,9 +220,7 @@ class BrokerClient:
             raise BrowserError(
                 BrowserErrorCode.NOT_CONNECTED,
                 "the Windows browser broker cannot start because Windows interop is unavailable",
-                remediation=(
-                    "enable Windows interop and retry; cua never changes WSL networking"
-                ),
+                remediation=("enable Windows interop and retry; cua never changes WSL networking"),
             ) from error
         while time.monotonic() < deadline:
             transport = None
@@ -252,9 +249,7 @@ class BrokerClient:
                     self._secret = str(reply["secret"])
                     self._broker_identity = {
                         "broker_pid": reply.get("pid"),
-                        "broker_process_started_ns": reply.get(
-                            "process_started_ns"
-                        ),
+                        "broker_process_started_ns": reply.get("process_started_ns"),
                         "broker_bundle_hash": reply.get("bundle_hash"),
                     }
                     self._start_heartbeat()
@@ -320,8 +315,8 @@ class BrokerClient:
                 def monitor() -> None:
                     while not monitor_stop.wait(0.02):
                         if cancelled():
-                            self._send_cancel(request_id)
-                            return
+                            if self._send_cancel(request_id):
+                                return
 
                 threading.Thread(target=monitor, daemon=True).start()
             try:
@@ -358,10 +353,10 @@ class BrokerClient:
                 remediation=error.get("remediation"),
             )
 
-    def _send_cancel(self, request_id: int) -> None:
+    def _send_cancel(self, request_id: int) -> bool:
         endpoint = {"platform": "win32", "token": None} if _running_under_wsl() else read_endpoint()
         if not endpoint or not self._client_id or not self._secret:
-            return
+            return False
         transport = None
         file = None
         try:
@@ -376,11 +371,11 @@ class BrokerClient:
                 },
             )
             if not (self._read(file) or {}).get("ok"):
-                return
+                return False
             self._write(file, {"type": "cancel", "request_id": request_id})
-            self._read(file)
+            return bool((self._read(file) or {}).get("ok"))
         except (OSError, ValueError):
-            return
+            return False
         finally:
             if file is not None:
                 file.close()
@@ -400,8 +395,6 @@ class BrokerClient:
             broker_epoch=result.get("broker_epoch"),
             client_id=result.get("client_id"),
             broker_pid=self._broker_identity.get("broker_pid"),
-            broker_process_started_ns=self._broker_identity.get(
-                "broker_process_started_ns"
-            ),
+            broker_process_started_ns=self._broker_identity.get("broker_process_started_ns"),
             broker_bundle_hash=self._broker_identity.get("broker_bundle_hash"),
         )

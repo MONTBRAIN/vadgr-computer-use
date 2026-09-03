@@ -54,6 +54,31 @@ def test_broker_client_eof_cancels_an_active_request():
     assert result == {"value": {"stopped": True}}
 
 
+def test_broker_client_retries_cancel_until_request_registration(monkeypatch):
+    client = broker_client.BrokerClient()
+    client._file = object()
+    attempts = []
+
+    monkeypatch.setattr(client, "_write", lambda _file, _message: None)
+
+    def read_after_cancel_registration(_file):
+        deadline = time.monotonic() + 1
+        while len(attempts) < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        return {"ok": True, "result": {"stopped": True}}
+
+    monkeypatch.setattr(client, "_read", read_after_cancel_registration)
+
+    def cancel_after_registration(request_id):
+        attempts.append(request_id)
+        return len(attempts) >= 2
+
+    monkeypatch.setattr(client, "_send_cancel", cancel_after_registration)
+
+    assert client.send("human_type_stream", _cancelled=lambda: True) == {"stopped": True}
+    assert attempts == [1, 1]
+
+
 def test_broker_client_disconnect_aborts_a_stream_between_requests():
     server = object.__new__(BrokerServer)
     server.auth_token = "token"

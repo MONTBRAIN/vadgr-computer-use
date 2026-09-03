@@ -435,6 +435,47 @@ class TestListener:
         finally:
             srv.stop()
 
+    def test_begin_explicit_deadline_returns_zero_progress_and_cancels(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 1.0)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {
+                        "typing_stream": {
+                            "action": "begin",
+                            "stream_id": "s",
+                            "remaining_ms": 0,
+                        }
+                    },
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_DEADLINE
+            assert captured.value.message == "typing_deadline_exceeded: 0 complete units"
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
+            shim.close()
+        finally:
+            srv.stop()
+
     def test_bad_auth_token_is_rejected(self, tmp_path):
         srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
         srv.start()
