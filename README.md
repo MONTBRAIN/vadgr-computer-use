@@ -62,7 +62,13 @@ type_text(text="...", human=true)
 ```
 
 Both tools use the versioned `us_adult_transcription_2026` timing profile by
-default. An advanced caller can instead provide both `wpm` and `iki_cv`.
+default. It samples one cadence style per operation, keeps nearby motor timing
+correlated, and adds fitted pauses only at clause, sentence, newline, or
+paragraph boundaries. Ordinary spaces never add a pause and never exceed 300
+milliseconds. The generator does not rescale a complete message to force an
+exact duration. An advanced caller can instead provide both `wpm` from 10
+through 200 and `iki_cv` from 0 through 1. These options tune the same sequence
+model.
 Human-paced input has no implicit total deadline, so long text continues while
 complete units make progress. A caller may provide a positive `timeout` in
 milliseconds as an explicit total budget. Browser pacing transports long plans
@@ -83,7 +89,9 @@ by Tiago Dias, João Vitorino, Eva Maia, Orlando Sousa, and Isabel Praça
 ([dataset](https://doi.org/10.5281/zenodo.7886743),
 [data article](https://doi.org/10.1016/j.dib.2023.109509)). The checked-in
 artifact records the exact source hashes, filtering, weighting, and derivation
-script.
+script. Grouped leave-one-participant-out checks select the smallest sequence
+model that improves likelihood, timing quantiles, adjacent-gap correlation,
+and slow-run behavior over the released independent sampler.
 
 ---
 

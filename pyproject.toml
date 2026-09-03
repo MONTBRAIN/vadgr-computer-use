@@ -32,6 +32,7 @@ dependencies = [
     "pillow>=10",
     "mss>=9",
     "nodriver>=0.40",                                                   # stealth (all OSes)
+    "uniseg>=0.10.1",                                                   # Unicode grapheme clusters for one timed input unit
     "python-xlib>=0.33; sys_platform == 'linux'",                       # pixel: X11 input via XTEST (pure-python, no xdotool)
     "jeepney>=0.8; sys_platform == 'linux'",                            # pure-python D-Bus
     "dbus-fast>=2.21; sys_platform == 'linux'",                         # structured: Linux AT-SPI (pure-python D-Bus, NOT pygobject)
@@ -47,7 +48,7 @@ data-yaml = ["pyyaml>=6"]
 # writer in computer_use.platform.uinput, so a plain `pip install` never needs a
 # compiler. Install this only to use the evdev-backed path.
 linux-uinput = ["evdev>=1.6; sys_platform == 'linux'"]
-dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1"]
+dev = ["pytest>=7", "pytest-asyncio>=0.23", "ruff>=0.1", "numpy>=2.0"]
 
 [project.scripts]
 vadgr-cua = "computer_use.mcp_server:main"

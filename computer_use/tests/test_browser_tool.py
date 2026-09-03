@@ -68,7 +68,10 @@ class TestOpRouting:
         begin = fake.calls[0][1]["typing_stream"]
         assert begin["nominal_wpm"] == 60
         chunk = fake.calls[1][1]["typing_stream"]
-        assert [unit["delay_before_ms"] for unit in chunk["units"]] == [0, 200, 200]
+        delays = [unit["delay_before_ms"] for unit in chunk["units"]]
+        assert delays[0] == 0
+        assert delays[1] == pytest.approx(delays[2])
+        assert delays[1] > 0
 
     def test_default_human_type_allows_a_plan_longer_than_sixty_seconds(self):
         def respond(**params):
