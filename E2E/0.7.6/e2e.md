@@ -110,7 +110,7 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 | B10 | Browser resources remain open | Restart only the broker | New epoch marks rediscovered targets orphaned; old secrets and revisions fail; URL and title do not restore identity | Before and after registry plus epoch; reclaim or close test state | pass | not run: remote host | not run: remote host | not run: remote host |
 | B11 | Windows and WSL clients share one broker | Exit only the WSL client, then operate from Windows | Windows continues through the same PID and epoch | Windows stream and broker identity | pass | Not-Needed: no cross-OS seam | not run: paired WSL client required | Not-Needed: no cross-OS seam |
 | B12 | Windows and WSL clients share one broker | Exit only the Windows client, then operate from WSL | WSL continues through the proxy and the same Windows PID and epoch | WSL stream and broker identity | pass | Not-Needed: no cross-OS seam | not run: paired WSL client required | Not-Needed: no cross-OS seam |
-| B13 | WSL client disconnected; Windows broker has a live Windows client or extension | Terminate only the test WSL distribution session | The Windows broker remains alive and usable | Windows process and operation read-back | blocked: terminating the only active WSL distribution would terminate this driver | Not-Needed: no cross-OS seam | not run: paired WSL client required | Not-Needed: no cross-OS seam |
+| B13 | WSL client disconnected; Windows broker has a live Windows client or extension | Terminate only the test WSL distribution session | The Windows broker remains alive and usable | Windows process and operation read-back | pass: disposable distro stopped; native client kept the same broker | Not-Needed: no cross-OS seam | not run: paired WSL client required | Not-Needed: no cross-OS seam |
 | B14 | Fresh verified bundle and endpoint | Corrupt isolated copies of the endpoint token and bundle | Bad authentication is refused and altered payload fails before execution | Named errors and unchanged live bundle hash; delete isolated copies | pass | Not-Needed: Windows-only packaging seam | not run: paired WSL client required | Not-Needed: Windows-only packaging seam |
 | B15 | Broker running with owned resources | Terminate only that broker process and reconnect both clients | One new Windows PID and epoch appear; rediscovered leases are orphaned | Before/after identity and registry | pass | Not-Needed: no cross-OS seam | not run: paired WSL client required | Not-Needed: no cross-OS seam |
 | B16 | Isolated stale and corrupt endpoint copies | Start both clients through the normal launcher | Startup rejects corrupt identity and safely recovers stale state without trusting its token | Named result, one Windows process and clean identity | pass | Not-Needed: Windows-only packaging seam | not run: paired WSL client required | Not-Needed: Windows-only packaging seam |
@@ -159,11 +159,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
 | A: recovery and setup diagnosis | blocked: A02 and A04 need an external or isolated Windows owner boundary | not run: remote host | not run: remote host | not run: remote host |
-| B: shared broker and target ownership | blocked: NAT and distribution-termination cells need another WSL host | not run: remote host | not run: remote host | not run: remote host |
+| B: shared broker and target ownership | blocked: NAT cells need a NAT WSL host | not run: remote host | not run: remote host | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | not run: remote host | not run: remote host |
 | D: pixel typing | pass | not run: remote host | not run: remote host | not run: remote host |
 | E: packaged and clean delivery | pass | not run: remote host | not run: remote host | not run: remote host |
-| overall | blocked: A02, A04, B02a-B02c and B13 | not run: remote host | not run: remote host | not run: remote host |
+| overall | blocked: A02, A04 and B02a-B02c | not run: remote host | not run: remote host | not run: remote host |
 
 ## Evidence
 
