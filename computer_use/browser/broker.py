@@ -8,8 +8,8 @@ from __future__ import annotations
 import copy
 import json
 import os
-import select
 import secrets
+import select
 import socket
 import sys
 import threading
