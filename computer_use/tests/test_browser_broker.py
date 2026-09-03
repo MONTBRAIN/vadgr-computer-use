@@ -247,6 +247,26 @@ def test_wsl_uses_windows_stdio_proxy_for_a_native_windows_broker(monkeypatch):
     assert file._process is proxy
 
 
+def test_wsl_missing_interop_returns_the_named_remedy(monkeypatch):
+    client = broker_client.BrokerClient(connect_timeout=0.01)
+    monkeypatch.setattr(
+        "computer_use.browser.windows_broker.expected_bundle_hash", lambda: "a" * 64
+    )
+    monkeypatch.setattr(
+        client,
+        "_start_broker",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("powershell.exe")),
+    )
+
+    with pytest.raises(BrowserError) as captured:
+        client._connect_through_windows_proxy()
+
+    assert captured.value.code.value == "not_connected"
+    assert captured.value.remediation == (
+        "enable Windows interop and retry; cua never changes WSL networking"
+    )
+
+
 def test_broker_socket_transport_never_maps_loopback_to_the_wsl_gateway():
     assert (
         broker_client._endpoint_host({"host": "127.0.0.1", "platform": "win32"})
