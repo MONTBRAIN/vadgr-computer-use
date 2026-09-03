@@ -33,13 +33,49 @@ def sha256(path: Path) -> str:
 
 
 def write_zip(source: Path, destination: Path) -> None:
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as out:
+    with zipfile.ZipFile(
+        destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as out:
         for path in sorted(item for item in source.rglob("*") if item.is_file()):
             relative = path.relative_to(source).as_posix()
             info = zipfile.ZipInfo(relative, FIXED_ZIP_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             out.writestr(info, path.read_bytes(), compresslevel=9)
+
+
+def normalize_embedded_zip(path: Path) -> None:
+    """Rewrite a PyInstaller ZIP with stable ordering and metadata."""
+    with zipfile.ZipFile(path, "r") as source:
+        entries: dict[str, tuple[int, bytes]] = {}
+        for info in source.infolist():
+            if info.is_dir():
+                continue
+            if info.filename in entries:
+                raise ValueError(f"duplicate embedded ZIP member: {info.filename}")
+            if info.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}:
+                raise ValueError(
+                    f"unsupported embedded ZIP compression for {info.filename}: "
+                    f"{info.compress_type}"
+                )
+            entries[info.filename] = (info.compress_type, source.read(info))
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with zipfile.ZipFile(temporary, "w") as out:
+            out.comment = b""
+            for name in sorted(entries):
+                compression, data = entries[name]
+                info = zipfile.ZipInfo(name, FIXED_ZIP_TIME)
+                info.compress_type = compression
+                info.create_system = 3
+                info.external_attr = 0o100644 << 16
+                if compression == zipfile.ZIP_DEFLATED:
+                    out.writestr(info, data, compresslevel=9)
+                else:
+                    out.writestr(info, data)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def inventory(root: Path) -> list[dict[str, object]]:
@@ -126,6 +162,7 @@ def build(source_commit: str, output: Path) -> None:
         executable = bundle / "vadgr-cua-browser-broker.exe"
         if not executable.is_file():
             raise SystemExit("PyInstaller did not produce the broker executable")
+        normalize_embedded_zip(bundle / "_internal" / "base_library.zip")
 
         python_license = Path(sys.base_prefix) / "LICENSE.txt"
         if not python_license.is_file():
@@ -137,9 +174,7 @@ def build(source_commit: str, output: Path) -> None:
             for file in pyinstaller_distribution.files or ()
             if str(file).replace("\\", "/").endswith("/licenses/COPYING.txt")
         )
-        pyinstaller_license = Path(
-            pyinstaller_distribution.locate_file(pyinstaller_license_entry)
-        )
+        pyinstaller_license = Path(pyinstaller_distribution.locate_file(pyinstaller_license_entry))
         if not pyinstaller_license.is_file():
             raise SystemExit("the pinned PyInstaller license is missing")
         shutil.copyfile(pyinstaller_license, bundle / "PYINSTALLER-COPYING.txt")
@@ -200,8 +235,7 @@ def build(source_commit: str, output: Path) -> None:
                     "SPDXID": "SPDXRef-Package-CPython",
                     "versionInfo": EXPECTED_PYTHON,
                     "downloadLocation": (
-                        "https://github.com/astral-sh/python-build-standalone/"
-                        "releases/tag/20260825"
+                        "https://github.com/astral-sh/python-build-standalone/releases/tag/20260825"
                     ),
                     "filesAnalyzed": False,
                     "licenseConcluded": "Python-2.0",
@@ -230,7 +264,9 @@ def main() -> int:
         default=Path("computer_use/browser/winbroker"),
     )
     args = parser.parse_args()
-    if len(args.source_commit) != 40 or any(c not in "0123456789abcdef" for c in args.source_commit):
+    if len(args.source_commit) != 40 or any(
+        c not in "0123456789abcdef" for c in args.source_commit
+    ):
         raise SystemExit("--source-commit must be one lowercase 40-character Git commit")
     build(args.source_commit, args.output.resolve())
     return 0
