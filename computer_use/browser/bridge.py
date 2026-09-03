@@ -382,6 +382,10 @@ class NativeMessagingBridge:
 
     def _probe_setup(self) -> list[str]:
         self._maybe_self_register()
+        if _browser_platform().startswith("win"):
+            from computer_use.setup.extension_setup import probe_windows_registry
+
+            return probe_windows_registry()
         return probe_manifests(manifest_paths())
 
     def _active_session(self) -> BrowserSession | None:

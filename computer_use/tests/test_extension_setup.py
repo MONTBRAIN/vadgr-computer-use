@@ -171,6 +171,16 @@ class TestSelfRegister:
         assert any(r"Microsoft\Edge" in k for k in keys)
         assert all(v.endswith("com.vadgr.cua.json") for _, v in calls)
 
+    def test_probe_windows_registry_requires_key_and_target(self, tmp_path):
+        chrome = tmp_path / "chrome.json"
+        chrome.write_text("{}")
+        values = {
+            S._WIN_REGISTRY_KEYS["chrome"]: str(chrome),
+            S._WIN_REGISTRY_KEYS["edge"]: str(tmp_path / "missing.json"),
+        }
+
+        assert S.probe_windows_registry(reader=values.get) == ["chrome"]
+
     def test_ensure_registered_writes_manifest_with_host_and_id(self, tmp_path):
         chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
         result = S.ensure_registered(
