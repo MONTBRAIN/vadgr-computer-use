@@ -94,9 +94,9 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | B01 | One profile; two independent MCP clients | Attach both clients and list profiles, windows, and tabs | Both remain connected through one broker and see one complete registry | Both JSON streams and broker identity | pass | not run: remote host | not run: remote host | not run: remote host |
-| B02a | NAT host; WSL client starts before native Windows | Start both against the same Windows browser, then interleave separate owned-window mutations and reads | One Windows PID, process start, epoch, bundle hash, profile and registry; both read-backs are exact | Both streams, Windows listener and broker identity | blocked: this host is mirrored and network changes are prohibited | Not-Needed: no cross-OS seam | not run: NAT paired WSL client required | Not-Needed: no cross-OS seam |
-| B02b | NAT host; native Windows client starts before WSL | Repeat B02a in the opposite startup order | Same B02a identity and routing oracle | Both streams, Windows listener and broker identity | blocked: this host is mirrored and network changes are prohibited | Not-Needed: no cross-OS seam | not run: NAT paired WSL client required | Not-Needed: no cross-OS seam |
-| B02c | NAT host; neither client started | Start native Windows and WSL clients simultaneously, then repeat the B02a operations | The atomic Windows lock elects one winner and both clients converge on it | Both streams, winner identity and listener | blocked: this host is mirrored and network changes are prohibited | Not-Needed: no cross-OS seam | not run: NAT paired WSL client required | Not-Needed: no cross-OS seam |
+| B02a | NAT host; WSL client starts before native Windows | Start both against the same Windows browser, then interleave separate owned-window mutations and reads | One Windows PID, process start, epoch, bundle hash, profile and registry; both read-backs are exact | Both streams, Windows listener and broker identity | Not-Needed: WSL always uses the stdio proxy; B02d covers this order | Not-Needed: no cross-OS seam | Not-Needed: no native Windows topology branch | Not-Needed: no cross-OS seam |
+| B02b | NAT host; native Windows client starts before WSL | Repeat B02a in the opposite startup order | Same B02a identity and routing oracle | Both streams, Windows listener and broker identity | Not-Needed: WSL always uses the stdio proxy; B02e covers this order | Not-Needed: no cross-OS seam | Not-Needed: no native Windows topology branch | Not-Needed: no cross-OS seam |
+| B02c | NAT host; neither client started | Start native Windows and WSL clients simultaneously, then repeat the B02a operations | The atomic Windows lock elects one winner and both clients converge on it | Both streams, winner identity and listener | Not-Needed: WSL always uses the stdio proxy; B02f covers this order | Not-Needed: no cross-OS seam | Not-Needed: no native Windows topology branch | Not-Needed: no cross-OS seam |
 | B02d | Mirrored host; WSL client starts before native Windows | Repeat B02a | Same B02a identity and routing oracle; WSL uses the stdio proxy, not shared localhost | Both streams, Windows listener and broker identity | pass | Not-Needed: no cross-OS seam | not run: mirrored paired WSL client required | Not-Needed: no cross-OS seam |
 | B02e | Mirrored host; native Windows client starts before WSL | Repeat B02b | Same B02b identity and routing oracle; WSL uses the stdio proxy | Both streams, Windows listener and broker identity | pass | Not-Needed: no cross-OS seam | not run: mirrored paired WSL client required | Not-Needed: no cross-OS seam |
 | B02f | Mirrored host; neither client started | Repeat B02c | Same B02c winner and routing oracle; WSL uses the stdio proxy | Both streams, winner identity and listener | pass | Not-Needed: no cross-OS seam | not run: mirrored paired WSL client required | Not-Needed: no cross-OS seam |
@@ -159,11 +159,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
 | A: recovery and setup diagnosis | blocked: A02 needs host suspend and resume | not run: remote host | not run: remote host | not run: remote host |
-| B: shared broker and target ownership | blocked: NAT cells need a NAT WSL host | not run: remote host | not run: remote host | not run: remote host |
+| B: shared broker and target ownership | pass | not run: remote host | not run: remote host | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | not run: remote host | not run: remote host |
 | D: pixel typing | pass | not run: remote host | not run: remote host | not run: remote host |
 | E: packaged and clean delivery | pass | not run: remote host | not run: remote host | not run: remote host |
-| overall | blocked: A02 and B02a-B02c | not run: remote host | not run: remote host | not run: remote host |
+| overall | blocked: A02 needs host suspend and resume | not run: remote host | not run: remote host | not run: remote host |
 
 ## Evidence
 
@@ -195,6 +195,9 @@ after cleanup.
   was absent because the broker checked a separate manifest copy. The repaired
   broker reads the actual HKCU registration. The sealed rerun returned
   `not_set_up`, and both registry keys were restored.
+- B02a-B02c specified a NAT variant that does not exist in the product. Every
+  WSL client uses the same stdio proxy without a network-mode branch. B02d-B02f
+  already pass the three startup orders, so the NAT duplicates are Not-Needed.
 - WSL human browser typing initially returned `typing_mismatch` for plain and
   nested-shadow inputs. A later strict inactive-tab diagnostic proved that CDP
   keyboard input could pass on a selected background-window tab yet be
