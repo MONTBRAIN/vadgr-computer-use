@@ -21,7 +21,10 @@ masked), so the guidance actually reaches the model.
 
 from __future__ import annotations
 
+import math
+import secrets
 import sys
+import time
 from typing import Any
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -30,7 +33,7 @@ from computer_use.browser.bridge import (
     PIXEL_FALLBACK,
     BrowserBridge,
 )
-from computer_use.browser.protocol import BrowserError
+from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 from computer_use.browser.upload import translate_upload_paths
 from computer_use.core.ops import OperationGroup
 
@@ -165,15 +168,27 @@ def _type(
     timing_profile: str | None = None,
     wpm: int | None = None,
     iki_cv: float | None = None,
-    timeout: int = 45_000,
+    timeout: int | None = None,
     _cancelled=None,
 ) -> Any:
     from computer_use.core.typing import (
+        TypingDeadlineExceeded,
         TypingOptions,
         build_typing_plan,
+        chunk_typing_plan,
         require_typing_deadline,
     )
 
+    started = time.monotonic()
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError("timeout must be a positive finite number of milliseconds")
+    deadline = started + timeout / 1000 if timeout is not None else None
+    deadline_epoch_ms = time.time() * 1000 + timeout if timeout is not None else None
     plan = build_typing_plan(
         text,
         TypingOptions(
@@ -183,33 +198,149 @@ def _type(
             iki_cv=iki_cv,
         ),
     )
-    if human:
-        require_typing_deadline(plan, timeout)
-    params: dict[str, Any] = {
+    if not human:
+        return bridge.send(
+            "type",
+            selector=selector,
+            text=text,
+            clear=clear,
+            submit=submit,
+            force=force,
+            human=False,
+        )
+    if deadline is not None:
+        try:
+            require_typing_deadline(plan, (deadline - time.monotonic()) * 1000)
+        except TypingDeadlineExceeded as error:
+            raise BrowserError(
+                BrowserErrorCode.TYPING_DEADLINE,
+                str(error),
+            ) from error
+
+    stream_id = secrets.token_hex(16)
+    base: dict[str, Any] = {
         "selector": selector,
-        "text": text,
         "clear": clear,
         "submit": submit,
         "force": force,
-        "human": human,
+        "human": True,
     }
-    if human:
-        params["typing_plan"] = {
-            "timing_profile": plan.timing_profile,
-            "nominal_wpm": plan.nominal_wpm,
-            "predicted_ms": plan.predicted_ms,
-            "units": [
-                {
-                    "text": unit.text,
-                    "delay_before_ms": unit.delay_before_ms,
-                    "fallback": unit.fallback,
-                }
-                for unit in plan.units
-            ],
-        }
-    if _cancelled is not None:
-        params["_cancelled"] = _cancelled
-    return bridge.send("type", **params)
+
+    def remaining_ms(completed_units: int) -> float | None:
+        if deadline is None:
+            return None
+        remaining = (deadline - time.monotonic()) * 1000
+        if remaining <= 0:
+            raise TypingDeadlineExceeded(completed_units)
+        return remaining
+
+    def send_stream(action: str, *, cancelled=None, **fields: Any) -> Any:
+        stream = {"action": action, "stream_id": stream_id, **fields}
+        remaining = remaining_ms(int(fields.get("confirmed_units", 0)))
+        if remaining is not None:
+            stream["remaining_ms"] = remaining
+            stream["deadline_epoch_ms"] = deadline_epoch_ms
+        params = {**base, "typing_stream": stream}
+        if cancelled is not None:
+            params["_cancelled"] = cancelled
+        try:
+            return bridge.send("human_type_stream", **params)
+        except BrowserError as error:
+            user_cancelled = _cancelled is not None and _cancelled()
+            deadline_expired = deadline is not None and time.monotonic() >= deadline
+            if (
+                error.code == BrowserErrorCode.TYPING_CANCELLED
+                and deadline_expired
+                and not user_cancelled
+            ):
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_DEADLINE,
+                    error.message.replace("typing_cancelled", "typing_deadline_exceeded", 1),
+                ) from error
+            raise
+
+    completed_units = 0
+    began = False
+    finished = False
+
+    def require_not_cancelled() -> None:
+        if _cancelled is not None and _cancelled():
+            raise BrowserError(
+                BrowserErrorCode.TYPING_CANCELLED,
+                f"typing_cancelled: {completed_units} complete units",
+            )
+
+    def transport_cancelled() -> bool:
+        return (_cancelled is not None and _cancelled()) or (
+            deadline is not None and time.monotonic() >= deadline
+        )
+
+    try:
+        require_not_cancelled()
+        send_stream(
+            "begin",
+            timing_profile=plan.timing_profile,
+            nominal_wpm=plan.nominal_wpm,
+            predicted_ms=plan.predicted_ms,
+            total_units=len(plan.units),
+            fallback_units=plan.fallback_units,
+        )
+        began = True
+        for chunk in chunk_typing_plan(plan):
+            require_not_cancelled()
+            try:
+                reply = send_stream(
+                    "chunk",
+                    cancelled=transport_cancelled,
+                    confirmed_units=completed_units,
+                    units=[
+                        {
+                            "text": unit.text,
+                            "delay_before_ms": unit.delay_before_ms,
+                            "fallback": unit.fallback,
+                        }
+                        for unit in chunk
+                    ],
+                )
+            except BrowserError as error:
+                if error.code != BrowserErrorCode.NOT_CONNECTED:
+                    raise
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                    "typing_state_uncertain: the browser connection was lost after "
+                    "a typing chunk was dispatched",
+                    remediation="inspect the target state before deciding whether to retry",
+                ) from error
+            expected = completed_units + len(chunk)
+            if not isinstance(reply, dict) or reply.get("completed_units") != expected:
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                    "a browser typing chunk returned an invalid progress count",
+                    remediation="inspect the target state before deciding whether to retry",
+                )
+            completed_units = expected
+        require_not_cancelled()
+        result = send_stream(
+            "finish",
+            cancelled=transport_cancelled,
+            confirmed_units=completed_units,
+        )
+        remaining_ms(completed_units)
+        require_not_cancelled()
+        finished = True
+        return result
+    except TypingDeadlineExceeded as error:
+        raise BrowserError(BrowserErrorCode.TYPING_DEADLINE, str(error)) from error
+    finally:
+        if began and not finished:
+            try:
+                bridge.send(
+                    "human_type_stream",
+                    **base,
+                    typing_stream={"action": "abort", "stream_id": stream_id},
+                )
+            except (BrowserError, ValueError):
+                pass
 
 
 @_ops.operation("fill")

@@ -1,14 +1,109 @@
 import io
+import socket
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from computer_use.browser import broker_client
 from computer_use.browser.bridge import BridgeStatus
-from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrowserBroker
+from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrokerServer, BrowserBroker
 from computer_use.browser.ownership import OwnershipConflict
 from computer_use.browser.protocol import BrowserError
+
+
+def test_broker_client_eof_cancels_an_active_request():
+    server = object.__new__(BrokerServer)
+    server.broker = type("BlockingBroker", (), {})()
+    entered = threading.Event()
+    observed = {}
+
+    def request(_state, _op, _params, *, cancelled):
+        entered.set()
+        while not cancelled():
+            time.sleep(0.005)
+        observed["cancelled"] = True
+        return {"stopped": True}
+
+    server.broker.request = request
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    peer = socket.create_connection(listener.getsockname())
+    local, _ = listener.accept()
+    listener.close()
+    result = {}
+
+    def run():
+        result["value"] = server._request_while_client_connected(
+            local,
+            object(),
+            {"op": "human_type_stream", "params": {}},
+            threading.Event(),
+        )
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    assert entered.wait(1)
+    peer.close()
+    worker.join(timeout=1)
+    local.close()
+    assert not worker.is_alive()
+    assert observed == {"cancelled": True}
+    assert result == {"value": {"stopped": True}}
+
+
+def test_broker_client_disconnect_aborts_a_stream_between_requests():
+    server = object.__new__(BrokerServer)
+    server.auth_token = "token"
+    server._stop = threading.Event()
+    server._requests = {}
+    server._requests_lock = threading.Lock()
+    state = SimpleNamespace(client_id="client", secret="secret", active_requests=0, last_seen=0.0)
+    calls = []
+
+    class FakeBroker:
+        epoch = "epoch"
+        _lock = threading.Lock()
+
+        def connect(self, _client_id, _secret):
+            return state
+
+        def request(self, _state, op, params, *, cancelled=None):
+            calls.append((op, dict(params)))
+            return {"ok": True}
+
+        def disconnect(self, _state):
+            calls.append(("disconnect", {}))
+
+    server.broker = FakeBroker()
+    local, peer = socket.socketpair()
+    worker = threading.Thread(target=server._serve_client, args=(local,))
+    worker.start()
+    file = peer.makefile("rwb")
+    BrokerServer._write_line(file, {"token": "token"})
+    assert BrokerServer._read_line(file)["ok"] is True
+    BrokerServer._write_line(
+        file,
+        {
+            "id": 1,
+            "op": "human_type_stream",
+            "params": {
+                "selector": "#n",
+                "typing_stream": {"action": "begin", "stream_id": "stream"},
+            },
+        },
+    )
+    assert BrokerServer._read_line(file)["ok"] is True
+    peer.shutdown(socket.SHUT_RDWR)
+    file.close()
+    peer.close()
+    worker.join(timeout=1)
+    assert not worker.is_alive()
+    assert calls[0][1]["typing_stream"]["action"] == "begin"
+    assert calls[1][1]["typing_stream"] == {"action": "abort", "stream_id": "stream"}
+    assert calls[2] == ("disconnect", {})
 
 
 class ExtensionBridge:
@@ -158,11 +253,7 @@ def test_worker_recovery_keeps_selected_profile_and_original_target():
             if op == "profiles":
                 self.profile_lists += 1
                 if self.profile_lists == 2:
-                    return {
-                        "profiles": [
-                            {"profile_id": "other-profile", "browser": "chrome"}
-                        ]
-                    }
+                    return {"profiles": [{"profile_id": "other-profile", "browser": "chrome"}]}
             return super().send(op, **params)
 
     extension = RestartingProfileBridge()
@@ -178,9 +269,12 @@ def test_worker_recovery_keeps_selected_profile_and_original_target():
     assert client.window_id == 1
     assert client.tab_id == 10
     assert [operation for operation, _params in extension.calls].count("read_text") == 1
-    assert next(
-        params for operation, params in extension.calls if operation == "read_text"
-    )["profile_id"] == "profile-one"
+    assert (
+        next(params for operation, params in extension.calls if operation == "read_text")[
+            "profile_id"
+        ]
+        == "profile-one"
+    )
 
 
 def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
@@ -272,9 +366,7 @@ def test_wsl_uses_windows_stdio_proxy_for_a_native_windows_broker(monkeypatch):
 
     proxy = Proxy()
     monkeypatch.setattr(broker_client, "_running_under_wsl", lambda: True)
-    monkeypatch.setattr(
-        "computer_use.browser.windows_broker.open_windows_proxy", lambda: proxy
-    )
+    monkeypatch.setattr("computer_use.browser.windows_broker.open_windows_proxy", lambda: proxy)
     transport, file = broker_client.BrokerClient._open_transport(
         {"host": "127.0.0.1", "platform": "win32"}
     )
@@ -303,10 +395,7 @@ def test_wsl_missing_interop_returns_the_named_remedy(monkeypatch):
 
 
 def test_broker_socket_transport_never_maps_loopback_to_the_wsl_gateway():
-    assert (
-        broker_client._endpoint_host({"host": "127.0.0.1", "platform": "win32"})
-        == "127.0.0.1"
-    )
+    assert broker_client._endpoint_host({"host": "127.0.0.1", "platform": "win32"}) == "127.0.0.1"
 
 
 def test_existing_foreign_target_is_rejected_before_extension_dispatch():

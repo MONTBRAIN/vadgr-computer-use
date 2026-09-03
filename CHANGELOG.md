@@ -17,7 +17,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
   claims for a single tab in a shared user window. Registry listings show mine,
   other, unowned, and orphaned targets without hiding foreign targets.
 - Add opt-in human-paced browser and pixel typing. Both surfaces use one
-  validated schedule, a versioned 38 WPM default profile, or an explicit WPM
+  validated schedule, a versioned 65 WPM default profile, or an explicit WPM
   and within-session IKI coefficient of variation.
 
 ### Changed
@@ -28,6 +28,10 @@ All notable changes to this project are documented here. Format follows [Keep a 
   composed-tree containment while retaining real-overlay rejection.
 - Keep `browser fill`, fast browser `type`, and fast pixel `type_text` as the
   backward-compatible bulk or existing backend paths.
+- Remove the implicit total deadline from human-paced browser and pixel typing.
+  An optional caller timeout remains one explicit monotonic budget. Browser
+  typing now streams bounded, progress-confirmed chunks with a per-chunk
+  inactivity backstop and never replays an uncertain dispatch.
 
 ### Fixed
 

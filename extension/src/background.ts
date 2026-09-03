@@ -17,7 +17,7 @@
 // The pure router + op handlers are unit-tested (router.test / ops.test); the
 // connect wiring is unit-tested in background.test.ts with a chrome.* stub.
 
-import { buildRouter, sharedResolver } from "./ops";
+import { abortAllHumanTypingStreams, buildRouter, sharedResolver } from "./ops";
 import {
   PROTOCOL_VERSION,
   OpMessage,
@@ -74,6 +74,7 @@ export function connect(): void {
   p.onDisconnect.addListener(() => {
     if (port === p) port = null;
     if (helloPort === p) helloPort = null;
+    abortAllHumanTypingStreams();
     // Schedule a backed-off reconnect so the session self-heals.
     reconnect.onDisconnect();
   });

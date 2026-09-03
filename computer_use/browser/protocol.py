@@ -46,6 +46,7 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "get_attribute",
     "click",
     "type",
+    "human_type_stream",
     "fill",
     "select",
     "scroll",
@@ -96,9 +97,8 @@ class BrowserErrorCode(str, Enum):
     TYPING_MISMATCH = "typing_mismatch"
     TYPING_DEADLINE = "typing_deadline_exceeded"
     TYPING_CANCELLED = "typing_cancelled"
-    INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED = (
-        "inactive_tab_trusted_keyboard_unsupported"
-    )
+    TYPING_STATE_UNCERTAIN = "typing_state_uncertain"
+    INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED = "inactive_tab_trusted_keyboard_unsupported"
     TARGET_DISCARDED = "target_discarded"
     TARGET_FROZEN = "target_frozen"
     TARGET_RESTRICTED = "target_restricted"
@@ -199,6 +199,8 @@ _WIRE_CODES: dict[str, BrowserErrorCode] = {
     "target_owned_by_another_client": BrowserErrorCode.TARGET_OWNED,
     "typing_mismatch": BrowserErrorCode.TYPING_MISMATCH,
     "typing_cancelled": BrowserErrorCode.TYPING_CANCELLED,
+    "typing_deadline_exceeded": BrowserErrorCode.TYPING_DEADLINE,
+    "typing_state_uncertain": BrowserErrorCode.TYPING_STATE_UNCERTAIN,
     "inactive_tab_trusted_keyboard_unsupported": (
         BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED
     ),
@@ -225,8 +227,9 @@ _WIRE_REMEDIATION: dict[BrowserErrorCode, str] = {
     BrowserErrorCode.TARGET_FROZEN: (
         "explicitly activate the frozen tab before using page operations"
     ),
-    BrowserErrorCode.TARGET_RESTRICTED: (
-        "choose a normal web page where the extension has access"
+    BrowserErrorCode.TARGET_RESTRICTED: ("choose a normal web page where the extension has access"),
+    BrowserErrorCode.TYPING_STATE_UNCERTAIN: (
+        "inspect the target state before deciding whether to retry"
     ),
 }
 

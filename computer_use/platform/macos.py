@@ -444,9 +444,14 @@ class MacOSActionExecutor(ActionExecutor):
         _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev_up)
         return fallback
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         _require_accessibility()
-        return consume_typing_plan(plan, self._type_char, cancelled=cancelled)
+        return consume_typing_plan(
+            plan,
+            self._type_char,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:

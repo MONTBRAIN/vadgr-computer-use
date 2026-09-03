@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import select
 import secrets
 import socket
 import sys
@@ -244,9 +245,7 @@ class BrowserBroker:
     def _use_profile(self, state: ClientState, requested: str) -> dict[str, Any]:
         profiles = self._profiles(state).get("profiles", [])
         matches = [
-            item
-            for item in profiles
-            if str(item.get("profile_id", "")).startswith(requested)
+            item for item in profiles if str(item.get("profile_id", "")).startswith(requested)
         ]
         if len(matches) != 1:
             raise BrowserError(
@@ -579,7 +578,11 @@ class BrokerServer:
         self._requests: dict[tuple[str, int], threading.Event] = {}
         self._requests_lock = threading.Lock()
         self._last_activity = time.monotonic()
-        win_copy = wsl_discovery_path() if sys.platform != "win32" and windows_broker_endpoint_path() is not None else None
+        win_copy = (
+            wsl_discovery_path()
+            if sys.platform != "win32" and windows_broker_endpoint_path() is not None
+            else None
+        )
         self.browser_server = BrowserServer(bridge=self.broker.bridge, windows_copy=win_copy)
 
     @staticmethod
@@ -592,8 +595,46 @@ class BrokerServer:
         file.write((json.dumps(value, separators=(",", ":")) + "\n").encode())
         file.flush()
 
+    def _request_while_client_connected(
+        self,
+        conn: socket.socket,
+        state: ClientState,
+        message: dict[str, Any],
+        cancellation: threading.Event,
+    ) -> Any:
+        """Run one request while EOF remains able to cancel owned work."""
+        done = threading.Event()
+        outcome: dict[str, Any] = {}
+
+        def run() -> None:
+            try:
+                outcome["result"] = self.broker.request(
+                    state,
+                    str(message.get("op")),
+                    dict(message.get("params") or {}),
+                    cancelled=cancellation.is_set,
+                )
+            except BaseException as error:
+                outcome["error"] = error
+            finally:
+                done.set()
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        while not done.wait(0.02):
+            try:
+                if select.select([conn], [], [], 0)[0] and not conn.recv(1, socket.MSG_PEEK):
+                    cancellation.set()
+            except OSError:
+                cancellation.set()
+        worker.join()
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome.get("result")
+
     def _serve_client(self, conn: socket.socket) -> None:
         state: ClientState | None = None
+        active_streams: dict[str, dict[str, Any]] = {}
         try:
             with conn, conn.makefile("rwb") as file:
                 hello = self._read_line(file)
@@ -646,12 +687,25 @@ class BrokerServer:
                             self._requests[request_key] = cancellation
                         with self.broker._lock:
                             state.active_requests += 1
-                        result = self.broker.request(
+                        result = self._request_while_client_connected(
+                            conn,
                             state,
-                            str(message.get("op")),
-                            dict(message.get("params") or {}),
-                            cancelled=cancellation.is_set,
+                            message,
+                            cancellation,
                         )
+                        params = dict(message.get("params") or {})
+                        stream = params.get("typing_stream") or {}
+                        if message.get("op") == "human_type_stream":
+                            stream_id = str(stream.get("stream_id", ""))
+                            action = stream.get("action")
+                            if stream_id and action == "begin":
+                                params["typing_stream"] = {
+                                    "action": "abort",
+                                    "stream_id": stream_id,
+                                }
+                                active_streams[stream_id] = params
+                            elif stream_id and action in {"finish", "abort"}:
+                                active_streams.pop(stream_id, None)
                         self._write_line(
                             file, {"ok": True, "id": message.get("id"), "result": result}
                         )
@@ -697,6 +751,11 @@ class BrokerServer:
             pass
         finally:
             if state is not None:
+                for params in active_streams.values():
+                    try:
+                        self.broker.request(state, "human_type_stream", params)
+                    except (BrowserError, OwnershipConflict, OSError, ValueError):
+                        pass
                 self.broker.disconnect(state)
 
     def run(self) -> None:

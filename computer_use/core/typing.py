@@ -19,7 +19,9 @@ MIN_WPM = 10
 MAX_WPM = 200
 MAX_INTERVAL_MS = 1500.0
 MIN_INTERVAL_MS = 20.0
-MAX_TYPING_DURATION_MS = 45_000
+MAX_TYPING_CHUNK_UNITS = 256
+MAX_TYPING_CHUNK_PLANNED_MS = 5_000.0
+MAX_TYPING_CHUNK_BYTES = 256 * 1024
 
 
 class RandomSource(Protocol):
@@ -75,6 +77,14 @@ class TypingCancelled(RuntimeError):
         self.completed_units = completed_units
 
 
+class TypingDeadlineExceeded(RuntimeError):
+    """Human-paced input exhausted an explicit caller deadline."""
+
+    def __init__(self, completed_units: int):
+        super().__init__(f"typing_deadline_exceeded: {completed_units} complete units")
+        self.completed_units = completed_units
+
+
 def _load_profile() -> dict[str, object]:
     resource = files("computer_use.core").joinpath("typing_profiles", f"{DEFAULT_PROFILE}.json")
     return json.loads(resource.read_text(encoding="utf-8"))
@@ -90,9 +100,52 @@ _EMPIRICAL_QUANTILES = {
 def require_typing_deadline(plan: TypingPlan, remaining_ms: float) -> None:
     """Refuse a plan before mutation when the available time is insufficient."""
     if not math.isfinite(remaining_ms) or remaining_ms < 0:
-        raise ValueError("typing_deadline_exceeded")
-    if plan.predicted_ms > min(float(remaining_ms), MAX_TYPING_DURATION_MS):
-        raise ValueError("typing_deadline_exceeded")
+        raise TypingDeadlineExceeded(0)
+    if plan.predicted_ms > float(remaining_ms):
+        raise TypingDeadlineExceeded(0)
+
+
+def _typing_unit_wire_size(unit: TypingUnit) -> int:
+    return len(
+        json.dumps(
+            {
+                "text": unit.text,
+                "delay_before_ms": unit.delay_before_ms,
+                "fallback": unit.fallback,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+
+
+def chunk_typing_plan(plan: TypingPlan) -> tuple[tuple[TypingUnit, ...], ...]:
+    """Split a human plan into bounded native-message progress units."""
+    chunks: list[tuple[TypingUnit, ...]] = []
+    current: list[TypingUnit] = []
+    planned_ms = 0.0
+    wire_bytes = 2
+    for unit in plan.units:
+        unit_bytes = _typing_unit_wire_size(unit)
+        added_bytes = unit_bytes + int(bool(current))
+        if unit_bytes + 2 > MAX_TYPING_CHUNK_BYTES:
+            raise ValueError("one typing unit exceeds the browser chunk byte limit")
+        if current and (
+            len(current) >= MAX_TYPING_CHUNK_UNITS
+            or planned_ms + unit.delay_before_ms > MAX_TYPING_CHUNK_PLANNED_MS
+            or wire_bytes + added_bytes > MAX_TYPING_CHUNK_BYTES
+        ):
+            chunks.append(tuple(current))
+            current = []
+            planned_ms = 0.0
+            wire_bytes = 2
+            added_bytes = unit_bytes
+        current.append(unit)
+        planned_ms += unit.delay_before_ms
+        wire_bytes += added_bytes
+    if current:
+        chunks.append(tuple(current))
+    return tuple(chunks)
 
 
 def validate_typing_options(options: TypingOptions) -> None:
@@ -182,7 +235,7 @@ def build_typing_plan(
         return TypingPlan(False, None, None, (TypingUnit(text, 0.0),), 0)
     source = rng or random.SystemRandom()
     profile = options.timing_profile or (DEFAULT_PROFILE if options.wpm is None else None)
-    wpm = options.wpm or 38
+    wpm = options.wpm or int(_PROFILE["nominal_wpm"])
     mean_ms = 12_000.0 / wpm
     raw: list[float] = []
     for index in range(1, len(text)):
@@ -210,9 +263,7 @@ def build_typing_plan(
         TypingUnit(
             char,
             0.0 if index == 0 else intervals[index - 1],
-            fallback=not (
-                char in "\n\t" or (len(char) == 1 and 0x20 <= ord(char) <= 0x7E)
-            ),
+            fallback=not (char in "\n\t" or (len(char) == 1 and 0x20 <= ord(char) <= 0x7E)),
         )
         for index, char in enumerate(text)
     )

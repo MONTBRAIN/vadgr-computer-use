@@ -23,7 +23,7 @@
   },
   "derivation": {
     "path": "scripts/derive_typing_profile.py",
-    "sha256": "528ae151368e658ced19f162cf2afc027d49cc9d24cb2106e76b0d76f2e5b701"
+    "sha256": "181fdff6cbcbe552bc1195869931b4e86f5e6fadbe8f65f06f5deb05af080048"
   },
   "filters": {
     "interval_ms": "DD.key1.key2 greater than 0 and at most 1500",
@@ -33,7 +33,7 @@
     "task": "free-text.csv transcription sessions only",
     "weighting": "participants equal; sessions equal within participant; intervals equal within session and context bucket"
   },
-  "nominal_wpm": 38,
+  "nominal_wpm": 65,
   "profile": "us_adult_transcription_2026",
   "quantile_probabilities": [
     0.0,
@@ -469,7 +469,7 @@
   },
   "schema": 1,
   "speed_source": {
-    "doi": "10.1038/s41598-026-36500-7",
-    "statistic": "rounded United States adult computer transcription median"
+    "doi": "10.1136/bmj-2022-072784",
+    "statistic": "rounded corrected mean among trained professional computer users"
   }
 }

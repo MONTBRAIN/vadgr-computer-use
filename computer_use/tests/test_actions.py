@@ -5,7 +5,18 @@ implement. There is no router / Action dataclass anymore; MCP tool calls
 go directly to primitives like click() / type_text().
 """
 
-from computer_use.core.actions import ActionExecutor
+import threading
+import time
+
+import pytest
+
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
+from computer_use.core.typing import (
+    TypingCancelled,
+    TypingDeadlineExceeded,
+    TypingPlan,
+    TypingUnit,
+)
 
 
 class MockExecutor(ActionExecutor):
@@ -49,3 +60,47 @@ class TestActionExecutorContract:
         ex.scroll(50, 60, -3)
         ex.drag(1, 2, 3, 4, 0.5)
         assert len(ex.calls) == 5
+
+
+def test_plan_deadline_expires_between_complete_units_with_exact_progress():
+    emitted = []
+    plan = TypingPlan(
+        True,
+        "test",
+        60,
+        (TypingUnit("a", 0), TypingUnit("b", 100)),
+        100,
+    )
+    with pytest.raises(TypingDeadlineExceeded) as captured:
+        consume_typing_plan(
+            plan,
+            lambda text: emitted.append(text) is None,
+            deadline=time.monotonic() + 0.01,
+        )
+    assert captured.value.completed_units == 1
+    assert emitted == ["a"]
+
+
+def test_deadline_expiring_during_final_unit_reports_that_unit_complete():
+    plan = TypingPlan(True, "test", 60, (TypingUnit("a", 0),), 0)
+
+    def slow_emit(_text):
+        time.sleep(0.02)
+        return False
+
+    with pytest.raises(TypingDeadlineExceeded) as captured:
+        consume_typing_plan(plan, slow_emit, deadline=time.monotonic() + 0.005)
+    assert captured.value.completed_units == 1
+
+
+def test_cancellation_during_final_unit_reports_that_unit_complete():
+    cancelled = threading.Event()
+    plan = TypingPlan(True, "test", 60, (TypingUnit("a", 0),), 0)
+
+    def cancelling_emit(_text):
+        cancelled.set()
+        return False
+
+    with pytest.raises(TypingCancelled) as captured:
+        consume_typing_plan(plan, cancelling_emit, cancelled=cancelled.is_set)
+    assert captured.value.completed_units == 1

@@ -317,11 +317,7 @@ class WindowsActionExecutor(ActionExecutor):
             return True
         key_code = vk & 0xFF
         modifiers = (vk >> 8) & 0xFF
-        held = [
-            code
-            for bit, code in ((1, 0x10), (2, 0x11), (4, 0x12))
-            if modifiers & bit
-        ]
+        held = [code for bit, code in ((1, 0x10), (2, 0x11), (4, 0x12)) if modifiers & bit]
         for code in held:
             self._send_key_event(code, down=True)
         try:
@@ -332,10 +328,15 @@ class WindowsActionExecutor(ActionExecutor):
                 self._send_key_event(code, down=False)
         return False
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         if sys.platform != "win32":
             raise ActionError("WindowsActionExecutor requires Windows")
-        return consume_typing_plan(plan, self._type_char, cancelled=cancelled)
+        return consume_typing_plan(
+            plan,
+            self._type_char,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:

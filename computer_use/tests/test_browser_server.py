@@ -305,6 +305,136 @@ class TestListener:
         finally:
             srv.stop()
 
+    def test_typing_chunk_inactivity_is_state_uncertain_and_not_replayed(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 0.03)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["type"])
+            session = _wait_for_session(srv)
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {
+                        "human": True,
+                        "typing_stream": {
+                            "action": "chunk",
+                            "stream_id": "test-stream",
+                        },
+                    },
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_STATE_UNCERTAIN
+            assert "progress backstop" in captured.value.message
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_typing_timeout_returns_truthful_reply_received_during_grace(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 0.03)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.1)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+
+            def reply_after_cancel():
+                request = read_message(shim._file)
+                cancel = read_message(shim._file)
+                assert cancel["op"] == "_cancel"
+                write_message(
+                    shim._file,
+                    {
+                        "type": "result",
+                        "id": request["id"],
+                        "ok": False,
+                        "error": {
+                            "code": "typing_cancelled",
+                            "message": "typing_cancelled: 3 complete units",
+                        },
+                    },
+                )
+
+            receiver = threading.Thread(target=reply_after_cancel, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {"typing_stream": {"action": "chunk", "stream_id": "s"}},
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_CANCELLED
+            assert captured.value.message == "typing_cancelled: 3 complete units"
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_user_cancellation_starts_grace_without_waiting_for_op_timeout(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 1.0)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+            cancelled = threading.Event()
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            started = time.monotonic()
+            cancelled.set()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {"typing_stream": {"action": "chunk", "stream_id": "s"}},
+                    cancelled=cancelled.is_set,
+                )
+            elapsed = time.monotonic() - started
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_STATE_UNCERTAIN
+            assert elapsed < 0.3
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
+            shim.close()
+        finally:
+            srv.stop()
+
     def test_bad_auth_token_is_rejected(self, tmp_path):
         srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
         srv.start()

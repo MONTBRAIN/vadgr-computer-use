@@ -123,10 +123,10 @@ def derive(path: Path) -> dict[str, object]:
     return {
         "schema": 1,
         "profile": "us_adult_transcription_2026",
-        "nominal_wpm": 38,
+        "nominal_wpm": 65,
         "speed_source": {
-            "doi": "10.1038/s41598-026-36500-7",
-            "statistic": "rounded United States adult computer transcription median",
+            "doi": "10.1136/bmj-2022-072784",
+            "statistic": "rounded corrected mean among trained professional computer users",
         },
         "residual_source": {
             "title": "KeyRecs: Keystroke Dynamics Dataset",

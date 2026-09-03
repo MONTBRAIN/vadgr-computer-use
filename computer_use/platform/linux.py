@@ -841,11 +841,12 @@ class _WaylandActionExecutor(ActionExecutor):
         time.sleep(delay)
         return entry is None and ord(ch) > 0x7F
 
-    def type_text_plan(self, plan: TypingPlan, *, cancelled=None) -> int:
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         return consume_typing_plan(
             plan,
             lambda text: self._type_char(text, delay=0.0),
             cancelled=cancelled,
+            deadline=deadline,
         )
 
     def key_press(self, keys: list[str]) -> None:

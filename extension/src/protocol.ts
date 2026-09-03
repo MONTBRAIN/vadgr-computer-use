@@ -22,6 +22,7 @@ export const SUPPORTED_OPS = [
   "get_attribute",
   "click",
   "type",
+  "human_type_stream",
   "fill",
   "select",
   "scroll",

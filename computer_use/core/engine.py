@@ -96,13 +96,17 @@ class ComputerUseEngine:
         ax, ay = self._to_abs(x, y)
         self._executor.move_mouse(ax, ay)
 
-    def type_text(self, text: str, plan=None, *, cancelled=None) -> int:
+    def type_text(self, text: str, plan=None, *, cancelled=None, deadline=None) -> int:
         """Type text through the fast path or one validated timing plan."""
         if plan is None:
             self._executor.type_text(text)
             return 0
         else:
-            return self._executor.type_text_plan(plan, cancelled=cancelled)
+            return self._executor.type_text_plan(
+                plan,
+                cancelled=cancelled,
+                deadline=deadline,
+            )
 
     def key_press(self, *keys: str) -> None:
         """Press a key combination. e.g. engine.key_press('ctrl', 'c')"""

@@ -444,10 +444,70 @@ const domExecutor: Executor = {
   },
 };
 
-export async function humanTypeViaExactContentTarget(
-  p: Params,
-  dom: Executor = domExecutor,
-) {
+interface HumanTypingStream {
+  identity: string;
+  selector: string;
+  clear: boolean;
+  submit: boolean;
+  expectedValue: string;
+  totalUnits: number;
+  completedUnits: number;
+  fallbackUnits: number;
+  timingProfile: string | null;
+  nominalWpm: number | null;
+  started: number;
+  aborted: boolean;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const humanTypingStreams = new Map<string, HumanTypingStream>();
+const HUMAN_TYPING_STREAM_IDLE_MS = 60_000;
+
+function removeHumanTypingStream(
+  streamId: string,
+  state: HumanTypingStream,
+): void {
+  state.aborted = true;
+  if (state.idleTimer !== null) clearTimeout(state.idleTimer);
+  state.idleTimer = null;
+  if (humanTypingStreams.get(streamId) === state) {
+    humanTypingStreams.delete(streamId);
+  }
+}
+
+function refreshHumanTypingStreamIdle(
+  streamId: string,
+  state: HumanTypingStream,
+): void {
+  if (state.idleTimer !== null) clearTimeout(state.idleTimer);
+  state.idleTimer = setTimeout(() => {
+    if (humanTypingStreams.get(streamId) === state) {
+      removeHumanTypingStream(streamId, state);
+    }
+  }, HUMAN_TYPING_STREAM_IDLE_MS);
+}
+
+export function abortAllHumanTypingStreams(): void {
+  for (const [streamId, state] of humanTypingStreams) {
+    removeHumanTypingStream(streamId, state);
+  }
+}
+
+function typingTargetIdentity(p: Params): string {
+  return JSON.stringify({
+    target: p._target ?? null,
+    ownership_revision: p._ownership_revision ?? null,
+  });
+}
+
+function typingProgressError(code: string, completedUnits: number): Error {
+  return Object.assign(
+    new Error(`${code}: ${completedUnits} complete units`),
+    { code },
+  );
+}
+
+async function legacyHumanTypeViaExactContentTarget(p: Params, dom: Executor) {
   const plan = p.typing_plan as any;
   if (!plan || !Array.isArray(plan.units)) {
     throw new Error("human typing requires a validated typing plan");
@@ -457,7 +517,6 @@ export async function humanTypeViaExactContentTarget(
   if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
     throw new Error(`${String(p.selector)} is not a text input or textarea`);
   }
-
   const requestId = Number(p._request_id);
   let completedUnits = 0;
   let fallbackUnits = 0;
@@ -479,10 +538,7 @@ export async function humanTypeViaExactContentTarget(
       }
       if (delay > 0) await waitTypingDelay(delay, requestId);
       if (typingCancelled(requestId)) {
-        throw Object.assign(
-          new Error(`typing_cancelled: ${completedUnits} complete units`),
-          { code: "typing_cancelled" },
-        );
+        throw typingProgressError("typing_cancelled", completedUnits);
       }
       const unitText = String(unit?.text ?? "");
       const unitResult = await dom.execute("human_type_unit", {
@@ -494,42 +550,263 @@ export async function humanTypeViaExactContentTarget(
         ? unitText
         : expectedValue + unitText;
       if (!unitResult || unitResult.ok !== true || unitResult.value !== expectedValue) {
-        throw new Error("typing_rejected: the page rejected a planned input unit");
+        throw Object.assign(new Error("typing_mismatch: the page rejected a planned input unit"), {
+          code: "typing_mismatch",
+        });
       }
       if (unit?.fallback === true) fallbackUnits += 1;
       completedUnits += 1;
     }
     if (typingCancelled(requestId)) {
+      throw typingProgressError("typing_cancelled", completedUnits);
+    }
+    const finalResult = await dom.execute("get_value", p) as any;
+    const expected = p.clear !== false
+      ? String(p.text ?? "")
+      : beforeResult.value + String(p.text ?? "");
+    if (!finalResult || finalResult.value !== expected) {
       throw Object.assign(
-        new Error(`typing_cancelled: ${completedUnits} complete units`),
-        { code: "typing_cancelled" },
+        new Error("typing_mismatch: final value does not match expected text"),
+        { code: "typing_mismatch" },
       );
     }
+    if (p.submit) await dom.execute("human_submit", p);
+    return {
+      human: true,
+      timing_profile: plan.timing_profile ?? null,
+      nominal_wpm: plan.nominal_wpm ?? null,
+      units: plan.units.length,
+      fallback_units: fallbackUnits,
+      elapsed_ms: Date.now() - started,
+      ok: true,
+      via: "content",
+    };
   } finally {
     clearTypingCancellation(requestId);
   }
+}
 
-  const finalResult = await dom.execute("get_value", p) as any;
-  const expected = p.clear !== false
-    ? String(p.text ?? "")
-    : beforeResult.value + String(p.text ?? "");
-  if (!finalResult || finalResult.value !== expected) {
-    throw Object.assign(
-      new Error("typing_mismatch: final value does not match expected text"),
-      { code: "typing_mismatch" },
-    );
+export async function humanTypeViaExactContentTarget(
+  p: Params,
+  dom: Executor = domExecutor,
+) {
+  if (p.typing_stream === undefined && p.typing_plan !== undefined) {
+    return legacyHumanTypeViaExactContentTarget(p, dom);
   }
-  if (p.submit) await dom.execute("human_submit", p);
-  return {
-    human: true,
-    timing_profile: plan.timing_profile ?? null,
-    nominal_wpm: plan.nominal_wpm ?? null,
-    units: plan.units.length,
-    fallback_units: fallbackUnits,
-    elapsed_ms: Date.now() - started,
-    ok: true,
-    via: "content",
-  };
+  const stream = p.typing_stream as any;
+  const action = String(stream?.action ?? "");
+  const streamId = String(stream?.stream_id ?? "");
+  if (!streamId || !["begin", "chunk", "finish", "abort"].includes(action)) {
+    throw new Error("human typing requires a validated typing stream");
+  }
+  if (action === "abort") {
+    const state = humanTypingStreams.get(streamId);
+    if (state) removeHumanTypingStream(streamId, state);
+    return { aborted: true };
+  }
+
+  const identity = typingTargetIdentity(p);
+  if (action === "begin") {
+    if (humanTypingStreams.has(streamId)) {
+      throw new Error("human typing stream already exists");
+    }
+    await dom.execute("assert_actionable", p);
+    const beforeResult = await dom.execute("get_value", p) as any;
+    if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
+      throw new Error(`${String(p.selector)} is not a text input or textarea`);
+    }
+    const totalUnits = Number(stream.total_units);
+    const predictedMs = Number(stream.predicted_ms);
+    if (!Number.isInteger(totalUnits) || totalUnits < 0 || !Number.isFinite(predictedMs)) {
+      throw new Error("human typing stream metadata is invalid");
+    }
+    const state: HumanTypingStream = {
+      identity,
+      selector: String(p.selector),
+      clear: p.clear !== false,
+      submit: p.submit === true,
+      expectedValue: p.clear !== false ? "" : beforeResult.value,
+      totalUnits,
+      completedUnits: 0,
+      fallbackUnits: 0,
+      timingProfile: stream.timing_profile ?? null,
+      nominalWpm: stream.nominal_wpm ?? null,
+      started: Date.now(),
+      aborted: false,
+      idleTimer: null,
+    };
+    humanTypingStreams.set(streamId, state);
+    refreshHumanTypingStreamIdle(streamId, state);
+    return { started: true, completed_units: 0, value_length: beforeResult.value.length };
+  }
+
+  const state = humanTypingStreams.get(streamId);
+  if (!state || state.aborted) {
+    throw new Error("human typing stream is not active");
+  }
+  if (state.identity !== identity || state.selector !== String(p.selector)) {
+    removeHumanTypingStream(streamId, state);
+    throw Object.assign(new Error("typing_state_uncertain: typing target changed"), {
+      code: "typing_state_uncertain",
+    });
+  }
+
+  let remainingMs = stream.remaining_ms === undefined
+    ? undefined
+    : Number(stream.remaining_ms);
+  if (stream.deadline_epoch_ms !== undefined) {
+    const epochRemaining = Number(stream.deadline_epoch_ms) - Date.now();
+    remainingMs = remainingMs === undefined
+      ? epochRemaining
+      : Math.min(remainingMs, epochRemaining);
+  }
+  if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs <= 0)) {
+    removeHumanTypingStream(streamId, state);
+    throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+  }
+  const deadlineMs = remainingMs === undefined ? undefined : performance.now() + remainingMs;
+
+  if (action === "chunk") {
+    const requestId = Number(p._request_id);
+    try {
+      const units = stream.units as any[];
+      if (!Array.isArray(units) || units.length === 0 || units.length > 256) {
+        throw new Error("human typing chunk unit count is invalid");
+      }
+      if (Number(stream.confirmed_units) !== state.completedUnits) {
+        throw Object.assign(new Error("typing_state_uncertain: progress count changed"), {
+          code: "typing_state_uncertain",
+        });
+      }
+      const plannedMs = units.reduce(
+        (sum, unit) => sum + Number(unit?.delay_before_ms ?? Number.NaN),
+        0,
+      );
+      const wireBytes = new TextEncoder().encode(JSON.stringify(units)).byteLength;
+      if (!Number.isFinite(plannedMs) || plannedMs < 0 || plannedMs > 5_000) {
+        throw new Error("human typing chunk duration is invalid");
+      }
+      if (wireBytes > 256 * 1024) {
+        throw new Error("human typing chunk is too large");
+      }
+      refreshHumanTypingStreamIdle(streamId, state);
+
+      for (const unit of units) {
+        if (state.aborted || typingCancelled(requestId)) {
+          throw typingProgressError("typing_cancelled", state.completedUnits);
+        }
+        if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+          throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+        }
+        const delay = Number(unit?.delay_before_ms ?? Number.NaN);
+        if (!Number.isFinite(delay) || delay < 0) {
+          throw new Error("typing plan contains an invalid delay");
+        }
+        if (delay > 0) {
+          const waited = await waitTypingDelay(
+            delay,
+            requestId,
+            deadlineMs,
+            () => state.aborted,
+          );
+          if (waited === "deadline") {
+            throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+          }
+          if (waited === "cancelled") {
+            throw typingProgressError("typing_cancelled", state.completedUnits);
+          }
+        }
+        const unitText = String(unit?.text ?? "");
+        const unitResult = await dom.execute("human_type_unit", {
+          ...p,
+          text: unitText,
+          replace: state.clear && state.completedUnits === 0,
+        }) as any;
+        const expected = state.clear && state.completedUnits === 0
+          ? unitText
+          : state.expectedValue + unitText;
+        if (!unitResult || unitResult.ok !== true || unitResult.value !== expected) {
+          throw Object.assign(
+            new Error("typing_mismatch: the page rejected a planned input unit"),
+            { code: "typing_mismatch" },
+          );
+        }
+        state.expectedValue = expected;
+        if (unit?.fallback === true) state.fallbackUnits += 1;
+        state.completedUnits += 1;
+        if (state.aborted || typingCancelled(requestId)) {
+          throw typingProgressError("typing_cancelled", state.completedUnits);
+        }
+        if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+          throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+        }
+      }
+      refreshHumanTypingStreamIdle(streamId, state);
+      return {
+        completed_units: state.completedUnits,
+        value_length: state.expectedValue.length,
+      };
+    } catch (error) {
+      removeHumanTypingStream(streamId, state);
+      throw error;
+    } finally {
+      clearTypingCancellation(requestId);
+    }
+  }
+
+  const finishRequestId = Number(p._request_id);
+  try {
+    if (Number(stream.confirmed_units) !== state.completedUnits) {
+      throw Object.assign(new Error("typing_state_uncertain: progress count changed"), {
+        code: "typing_state_uncertain",
+      });
+    }
+    if (state.completedUnits !== state.totalUnits) {
+      throw Object.assign(new Error("typing_state_uncertain: typing stream is incomplete"), {
+        code: "typing_state_uncertain",
+      });
+    }
+    refreshHumanTypingStreamIdle(streamId, state);
+    const requireRemainingDeadline = () => {
+      if (state.aborted || typingCancelled(finishRequestId)) {
+        throw typingProgressError("typing_cancelled", state.completedUnits);
+      }
+      if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+        throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+      }
+    };
+    requireRemainingDeadline();
+    if (state.totalUnits === 0 && state.clear) {
+      const cleared = await dom.execute("clear", p) as any;
+      if (!cleared || cleared.ok !== true || cleared.value !== "") {
+        throw Object.assign(new Error("typing_mismatch: empty clear did not complete"), {
+          code: "typing_mismatch",
+        });
+      }
+    }
+    const finalResult = await dom.execute("get_value", p) as any;
+    if (!finalResult || finalResult.value !== state.expectedValue) {
+      throw Object.assign(
+        new Error("typing_mismatch: final value does not match expected text"),
+        { code: "typing_mismatch" },
+      );
+    }
+    requireRemainingDeadline();
+    if (state.submit) await dom.execute("human_submit", p);
+    return {
+      human: true,
+      timing_profile: state.timingProfile,
+      nominal_wpm: state.nominalWpm,
+      units: state.completedUnits,
+      fallback_units: state.fallbackUnits,
+      elapsed_ms: Date.now() - state.started,
+      ok: true,
+      via: "content",
+    };
+  } finally {
+    clearTypingCancellation(finishRequestId);
+    removeHumanTypingStream(streamId, state);
+  }
 }
 
 // The CDP universal path (chrome.debugger). Null when the API is absent (no
@@ -874,6 +1151,11 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
       reg(op, (p) => domExecutor.execute(op, p));
     }
   }
+
+  // Private streamed form of human `type`. Advertising this separately makes
+  // a matching extension a precondition, instead of sending stream data to an
+  // older extension that only understands the released whole-operation shape.
+  reg("human_type_stream", (p) => humanTypeViaExactContentTarget(p));
 
   if (cdp) {
     for (const op of CDP_ONLY) {

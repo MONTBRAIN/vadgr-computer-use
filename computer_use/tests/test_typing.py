@@ -8,9 +8,12 @@ import pytest
 
 from computer_use.core.typing import (
     DEFAULT_PROFILE,
+    TypingDeadlineExceeded,
     TypingCancelled,
     TypingOptions,
     build_typing_plan,
+    chunk_typing_plan,
+    require_typing_deadline,
     validate_typing_options,
 )
 
@@ -19,6 +22,12 @@ def test_cancellation_error_reports_only_completed_unit_count():
     error = TypingCancelled(3)
     assert str(error) == "typing_cancelled: 3 complete units"
     assert error.completed_units == 3
+
+
+def test_deadline_error_reports_only_completed_unit_count():
+    error = TypingDeadlineExceeded(4)
+    assert str(error) == "typing_deadline_exceeded: 4 complete units"
+    assert error.completed_units == 4
 
 
 def test_fast_plan_preserves_one_bulk_unit():
@@ -33,7 +42,7 @@ def test_named_profile_is_deterministic_with_injected_random_source():
     two = build_typing_plan("one two. Three", TypingOptions(human=True), rng=random.Random(7))
     assert one == two
     assert one.timing_profile == DEFAULT_PROFILE
-    assert one.nominal_wpm == 38
+    assert one.nominal_wpm == 65
     assert len({round(unit.delay_before_ms, 3) for unit in one.units[1:]}) > 1
 
 
@@ -58,6 +67,56 @@ def test_custom_plan_has_requested_duration_and_finite_bounds():
     assert all(math.isfinite(value) and 20 <= value <= 1500 for value in delays)
     expected = 12_000 / 52 * 999
     assert sum(delays) == pytest.approx(expected, rel=0.01)
+
+
+def test_long_plan_has_no_implicit_total_deadline():
+    plan = build_typing_plan(
+        "a" * 400,
+        TypingOptions(human=True, wpm=65, iki_cv=0),
+        rng=random.Random(1),
+    )
+    assert plan.predicted_ms > 60_000
+    require_typing_deadline(plan, plan.predicted_ms + 1)
+
+
+def test_explicit_deadline_refuses_the_complete_plan():
+    plan = build_typing_plan(
+        "a" * 400,
+        TypingOptions(human=True, wpm=65, iki_cv=0),
+        rng=random.Random(1),
+    )
+    with pytest.raises(TypingDeadlineExceeded) as captured:
+        require_typing_deadline(plan, plan.predicted_ms - 1)
+    assert captured.value.completed_units == 0
+
+
+def test_browser_chunks_obey_every_transport_bound_and_reconstruct_the_plan():
+    plan = build_typing_plan(
+        "a" * 800,
+        TypingOptions(human=True, wpm=65, iki_cv=0),
+        rng=random.Random(1),
+    )
+    chunks = chunk_typing_plan(plan)
+    assert tuple(unit for chunk in chunks for unit in chunk) == plan.units
+    assert all(len(chunk) <= 256 for chunk in chunks)
+    assert all(sum(unit.delay_before_ms for unit in chunk) <= 5_000 for chunk in chunks)
+    assert all(
+        len(
+            json.dumps(
+                [
+                    {
+                        "text": unit.text,
+                        "delay_before_ms": unit.delay_before_ms,
+                        "fallback": unit.fallback,
+                    }
+                    for unit in chunk
+                ],
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        <= 256 * 1024
+        for chunk in chunks
+    )
 
 
 def test_checked_in_profile_names_redistributable_source_and_exact_deriver():
