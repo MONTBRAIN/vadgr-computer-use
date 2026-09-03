@@ -1,6 +1,6 @@
 {
-  "archive_sha256": "1bf53b1d3ab9c5f884d5b466e361af487c0f9e6583130d690ef2a119afd2339e",
-  "archive_size": 9187740,
+  "archive_sha256": "007297d2bfe7a30f17807da47947d15ba8bf093919abda3b907b8618efffcb4d",
+  "archive_size": 9191519,
   "builder": {
     "pyinstaller": "6.22.2",
     "uv": "0.12.6"
@@ -73,7 +73,7 @@
     },
     {
       "path": "_internal/base_library.zip",
-      "sha256": "d19b26c93ea5fc50bed4a8b9e5da7b4d24f840d04a5f9ad3dd95a41980df6bb5",
+      "sha256": "34c48547846665387cc7117a44a8526d3286a8554c917b4ba862f12bfb190023",
       "size": 1333490
     },
     {
@@ -133,8 +133,8 @@
     },
     {
       "path": "vadgr-cua-browser-broker.exe",
-      "sha256": "1c356189855124225d102453ff40c53c98f546d249a77406d57abd0874ad3afb",
-      "size": 2759371
+      "sha256": "e639d0cd6d2e5dbbb6c27476b73df52d3f918307e9452753b9435fc3f4848577",
+      "size": 2763758
     },
     {
       "path": "VADGR-CUA-LICENSE.txt",
@@ -149,7 +149,7 @@
     "version": "3.12.14"
   },
   "schema": 1,
-  "source_commit": "1375f50d507513a3893ad58ce7d4d2d5ba7d1621",
+  "source_commit": "d5e84c64eeb806387b8dcc527589ce8bf533bc1f",
   "source_files": [
     {
       "path": "computer_use/__init__.py",
@@ -161,7 +161,7 @@
     },
     {
       "path": "computer_use/browser/broker.py",
-      "sha256": "e05f0dd0dfb6e09aca6f4b5c40169ba0b83a68e9e75463c6398eee9cad67e76a"
+      "sha256": "20b9e90cee51e96c9543d4e039cec6e85b4fbbeade3fa49bf684d8951c3a0d33"
     },
     {
       "path": "computer_use/browser/native_host.py",
@@ -173,11 +173,11 @@
     },
     {
       "path": "computer_use/browser/protocol.py",
-      "sha256": "9def3d61c9558e5f41382a1b0cf0704c77382594e24490ff23507934114f080b"
+      "sha256": "68461563fd0eff3f9afd28dfa517e64b18d3e28fd914f000a2d7139889eab7bb"
     },
     {
       "path": "computer_use/browser/server.py",
-      "sha256": "3e7c512fbcf645b0b5b40bfd134ad7eae832ec43b48d3eb9fd562813808cdea5"
+      "sha256": "66be96dadd0e7729c22f7cfde9c1d5fd5994f1f22a631cdf28c41ce8ee3ac026"
     },
     {
       "path": "computer_use/browser/windows_acl.py",
