@@ -123,6 +123,115 @@ describe("humanTypeViaExactContentTarget", () => {
       .toMatchObject({ aborted: true });
   });
 
+  it("rechecks cancellation after the final delay tick before dispatch", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeContent();
+      await humanTypeViaExactContentTarget(
+        stream("begin", { total_units: 1 }), fake.executor,
+      );
+      const pending = humanTypeViaExactContentTarget({
+        ...stream("chunk", {
+          total_units: 1,
+          confirmed_units: 0,
+          units: [{ text: "a", delay_before_ms: 20 }],
+        }),
+        _request_id: 404,
+      }, fake.executor);
+      setTimeout(() => cancelTyping(404), 10);
+      const outcome = pending.then(() => null, (error) => error);
+
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(await outcome).toMatchObject({
+        code: "typing_cancelled",
+        message: "typing_cancelled: 0 complete units",
+      });
+      expect(fake.calls.some((call) => call.op === "human_type_unit")).toBe(false);
+    } finally {
+      abortAllHumanTypingStreams();
+      vi.useRealTimers();
+    }
+  });
+
+  it("expires a begin deadline before retaining stream state", async () => {
+    vi.useFakeTimers();
+    let monotonicMs = 0;
+    const performanceNow = vi.spyOn(performance, "now")
+      .mockImplementation(() => monotonicMs);
+    try {
+      const fake = fakeContent();
+      const executor: Executor = {
+        name: "slow-begin",
+        async execute(op, params) {
+          if (op === "assert_actionable") {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          return fake.executor.execute(op, params);
+        },
+      };
+      const pending = humanTypeViaExactContentTarget({
+        ...stream("begin", { total_units: 1, remaining_ms: 10 }),
+        _request_id: 405,
+      }, executor);
+      const outcome = pending.then(() => null, (error) => error);
+
+      monotonicMs = 20;
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(await outcome).toMatchObject({
+        code: "typing_deadline_exceeded",
+        message: "typing_deadline_exceeded: 0 complete units",
+      });
+      await expect(humanTypeViaExactContentTarget(stream("chunk", {
+        total_units: 1,
+        confirmed_units: 0,
+        units: [{ text: "a", delay_before_ms: 0 }],
+      }), fake.executor)).rejects.toThrow("human typing stream is not active");
+    } finally {
+      performanceNow.mockRestore();
+      abortAllHumanTypingStreams();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels begin during its asynchronous target checks", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeContent();
+      const executor: Executor = {
+        name: "cancel-begin",
+        async execute(op, params) {
+          if (op === "assert_actionable") {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          return fake.executor.execute(op, params);
+        },
+      };
+      const pending = humanTypeViaExactContentTarget({
+        ...stream("begin", { total_units: 1 }),
+        _request_id: 406,
+      }, executor);
+      const outcome = pending.then(() => null, (error) => error);
+      setTimeout(() => cancelTyping(406), 10);
+
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(await outcome).toMatchObject({
+        code: "typing_cancelled",
+        message: "typing_cancelled: 0 complete units",
+      });
+      await expect(humanTypeViaExactContentTarget(stream("chunk", {
+        total_units: 1,
+        confirmed_units: 0,
+        units: [{ text: "a", delay_before_ms: 0 }],
+      }), fake.executor)).rejects.toThrow("human typing stream is not active");
+    } finally {
+      abortAllHumanTypingStreams();
+      vi.useRealTimers();
+    }
+  });
+
   it("expires an unfinished stream after bounded inactivity", async () => {
     vi.useFakeTimers();
     try {

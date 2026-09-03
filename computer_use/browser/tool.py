@@ -279,6 +279,7 @@ def _type(
         require_not_cancelled()
         send_stream(
             "begin",
+            cancelled=transport_cancelled,
             timing_profile=plan.timing_profile,
             nominal_wpm=plan.nominal_wpm,
             predicted_ms=plan.predicted_ms,

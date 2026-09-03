@@ -507,6 +507,19 @@ function typingProgressError(code: string, completedUnits: number): Error {
   );
 }
 
+function typingStreamRemainingMs(stream: any): number | undefined {
+  let remainingMs = stream.remaining_ms === undefined
+    ? undefined
+    : Number(stream.remaining_ms);
+  if (stream.deadline_epoch_ms !== undefined) {
+    const epochRemaining = Number(stream.deadline_epoch_ms) - Date.now();
+    remainingMs = remainingMs === undefined
+      ? epochRemaining
+      : Math.min(remainingMs, epochRemaining);
+  }
+  return remainingMs;
+}
+
 async function legacyHumanTypeViaExactContentTarget(p: Params, dom: Executor) {
   const plan = p.typing_plan as any;
   if (!plan || !Array.isArray(plan.units)) {
@@ -610,34 +623,55 @@ export async function humanTypeViaExactContentTarget(
     if (humanTypingStreams.has(streamId)) {
       throw new Error("human typing stream already exists");
     }
-    await dom.execute("assert_actionable", p);
-    const beforeResult = await dom.execute("get_value", p) as any;
-    if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
-      throw new Error(`${String(p.selector)} is not a text input or textarea`);
+    const requestId = Number(p._request_id);
+    const remainingMs = typingStreamRemainingMs(stream);
+    if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs <= 0)) {
+      throw typingProgressError("typing_deadline_exceeded", 0);
     }
-    const totalUnits = Number(stream.total_units);
-    const predictedMs = Number(stream.predicted_ms);
-    if (!Number.isInteger(totalUnits) || totalUnits < 0 || !Number.isFinite(predictedMs)) {
-      throw new Error("human typing stream metadata is invalid");
-    }
-    const state: HumanTypingStream = {
-      identity,
-      selector: String(p.selector),
-      clear: p.clear !== false,
-      submit: p.submit === true,
-      expectedValue: p.clear !== false ? "" : beforeResult.value,
-      totalUnits,
-      completedUnits: 0,
-      fallbackUnits: 0,
-      timingProfile: stream.timing_profile ?? null,
-      nominalWpm: stream.nominal_wpm ?? null,
-      started: Date.now(),
-      aborted: false,
-      idleTimer: null,
+    const deadlineMs = remainingMs === undefined ? undefined : performance.now() + remainingMs;
+    const requireActive = () => {
+      if (typingCancelled(requestId)) {
+        throw typingProgressError("typing_cancelled", 0);
+      }
+      if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+        throw typingProgressError("typing_deadline_exceeded", 0);
+      }
     };
-    humanTypingStreams.set(streamId, state);
-    refreshHumanTypingStreamIdle(streamId, state);
-    return { started: true, completed_units: 0, value_length: beforeResult.value.length };
+    try {
+      requireActive();
+      const totalUnits = Number(stream.total_units);
+      const predictedMs = Number(stream.predicted_ms);
+      if (!Number.isInteger(totalUnits) || totalUnits < 0 || !Number.isFinite(predictedMs)) {
+        throw new Error("human typing stream metadata is invalid");
+      }
+      await dom.execute("assert_actionable", p);
+      requireActive();
+      const beforeResult = await dom.execute("get_value", p) as any;
+      requireActive();
+      if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
+        throw new Error(`${String(p.selector)} is not a text input or textarea`);
+      }
+      const state: HumanTypingStream = {
+        identity,
+        selector: String(p.selector),
+        clear: p.clear !== false,
+        submit: p.submit === true,
+        expectedValue: p.clear !== false ? "" : beforeResult.value,
+        totalUnits,
+        completedUnits: 0,
+        fallbackUnits: 0,
+        timingProfile: stream.timing_profile ?? null,
+        nominalWpm: stream.nominal_wpm ?? null,
+        started: Date.now(),
+        aborted: false,
+        idleTimer: null,
+      };
+      humanTypingStreams.set(streamId, state);
+      refreshHumanTypingStreamIdle(streamId, state);
+      return { started: true, completed_units: 0, value_length: beforeResult.value.length };
+    } finally {
+      clearTypingCancellation(requestId);
+    }
   }
 
   const state = humanTypingStreams.get(streamId);
@@ -651,15 +685,7 @@ export async function humanTypeViaExactContentTarget(
     });
   }
 
-  let remainingMs = stream.remaining_ms === undefined
-    ? undefined
-    : Number(stream.remaining_ms);
-  if (stream.deadline_epoch_ms !== undefined) {
-    const epochRemaining = Number(stream.deadline_epoch_ms) - Date.now();
-    remainingMs = remainingMs === undefined
-      ? epochRemaining
-      : Math.min(remainingMs, epochRemaining);
-  }
+  const remainingMs = typingStreamRemainingMs(stream);
   if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs <= 0)) {
     removeHumanTypingStream(streamId, state);
     throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
