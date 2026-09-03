@@ -239,9 +239,10 @@ class TestKeyboardTools:
 
     @pytest.mark.asyncio
     async def test_human_type_cancellation_returns_truthful_completed_units(self, mock_engine):
+        from mcp.server.mcpserver.exceptions import ToolError
+
         from computer_use.core.typing import TypingCancelled
         from computer_use.mcp_server import type_text
-        from mcp.server.mcpserver.exceptions import ToolError
 
         def cancellable(_text, _plan, *, cancelled):
             while not cancelled():
@@ -284,8 +285,9 @@ class TestKeyboardTools:
 
     @pytest.mark.asyncio
     async def test_human_type_explicit_deadline_refuses_before_input(self, mock_engine):
-        from computer_use.mcp_server import type_text
         from mcp.server.mcpserver.exceptions import ToolError
+
+        from computer_use.mcp_server import type_text
 
         with pytest.raises(ToolError, match="typing_deadline_exceeded: 0 complete units"):
             await type_text("abcdef", human=True, wpm=10, iki_cv=0, timeout=100)
@@ -293,9 +295,10 @@ class TestKeyboardTools:
 
     @pytest.mark.asyncio
     async def test_human_type_runtime_deadline_is_a_named_tool_error(self, mock_engine):
+        from mcp.server.mcpserver.exceptions import ToolError
+
         from computer_use.core.typing import TypingDeadlineExceeded
         from computer_use.mcp_server import type_text
-        from mcp.server.mcpserver.exceptions import ToolError
 
         mock_engine.type_text.side_effect = TypingDeadlineExceeded(3)
         with pytest.raises(ToolError, match="typing_deadline_exceeded: 3 complete units"):

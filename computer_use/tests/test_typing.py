@@ -8,8 +8,8 @@ import pytest
 
 from computer_use.core.typing import (
     DEFAULT_PROFILE,
-    TypingDeadlineExceeded,
     TypingCancelled,
+    TypingDeadlineExceeded,
     TypingOptions,
     build_typing_plan,
     chunk_typing_plan,
