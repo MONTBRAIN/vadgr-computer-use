@@ -151,12 +151,17 @@ present in a given runbook, the entry is all there is.
     daemon.** Two drivers sharing one daemon read each other's work and neither
     verdict means anything. [Repeatability] [../README.md]
 
-21. **Every browser-tier cell uses a versioned Chrome for Testing executable
+21. **This runbook gates only the minor that contains it.** A sibling minor in
+    the same iteration is never a prerequisite, cell, blocker or overall-gate
+    input here. Put an integration proof in the runbook for the minor that
+    builds the integrated artifact. [Paired surfaces this pass depends on]
+
+22. **Every browser-tier cell uses a versioned Chrome for Testing executable
     with a fresh isolated profile and the matching development extension.**
     Never attach to the owner's normal browser process or profile. A normal
     Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
 
-22. **The agent driver uses the CLI's existing interactive login and permission
+23. **The agent driver uses the CLI's existing interactive login and permission
     bypass.** Do not require, read, export or pass an OpenAI or Anthropic API key
     solely to drive this e2e. Until the Vadgr-native e2e harness is ready, start
     each live task with `codex --yolo exec --json` or Claude Code with
@@ -319,6 +324,11 @@ a substitute login and do not select an unapproved driver.
 > behind the route, name the version the part depends on in a table here, and
 > write a part whose surface arrives later into that release's runbook instead,
 > stating its absence rather than leaving it silent.
+>
+> **A same-iteration sibling minor never becomes a dependency merely because it
+> packages, launches or consumes this runtime.** Its runbook owns that combined
+> proof. Do not add the sibling's future artifact as a cell here, and never let
+> its absence block this minor's part or overall result.
 >
 > | repository | released version | what this pass relies on |
 > |---|---|---|
