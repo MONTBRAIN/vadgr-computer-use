@@ -57,7 +57,11 @@
       const events = [];
       records.set(name, { element, events });
       for (const kind of eventKinds) {
-        element.addEventListener(kind, () => events.push({ kind, at: performance.now() }));
+        element.addEventListener(kind, (event) => events.push({
+          kind,
+          at: performance.now(),
+          trusted: event.isTrusted,
+        }));
       }
     }
 
@@ -127,6 +131,7 @@
           length: record.element.value.length,
           sha256: await digest(record.element.value),
           event_kinds: Object.fromEntries(eventKinds.map((kind) => [kind, record.events.filter((event) => event.kind === kind).length])),
+          trust_flags: Object.fromEntries(eventKinds.map((kind) => [kind, [...new Set(record.events.filter((event) => event.kind === kind).map((event) => event.trusted))]])),
           intervals_ms: intervals,
           keydown_intervals_ms: keydownIntervals,
         };
