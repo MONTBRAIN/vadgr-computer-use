@@ -11,14 +11,13 @@ E2E driver after this helper has established and independently verified state.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
-
-from websockets.sync.client import connect
 
 
 class LifecycleSetupError(RuntimeError):
@@ -46,6 +45,7 @@ class DevTools:
 
     @staticmethod
     def command(target: dict[str, Any], method: str, params: dict[str, Any]) -> Any:
+        connect = importlib.import_module("websockets.sync.client").connect
         websocket_url = target.get("webSocketDebuggerUrl")
         if not isinstance(websocket_url, str):
             raise LifecycleSetupError("target has no DevTools websocket")
