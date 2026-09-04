@@ -32,14 +32,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
   An optional caller timeout remains one explicit monotonic budget. Browser
   typing now streams bounded, progress-confirmed chunks with a per-chunk
   inactivity backstop and never replays an uncertain dispatch.
-- Replace independent key delays and whole-message normalization with a fitted
-  sequence model. One operation keeps one sampled cadence style, motor timing
-  remains correlated, and realized speed varies around its requested center.
-  Clause, sentence, newline, and paragraph boundaries can add one fitted pause.
-  Ordinary spaces never add a pause and stay at or below 300 milliseconds.
+- Replace independent key delays and whole-message normalization with the
+  released empirical gap tables plus one stationary four-bin rank chain. The
+  chain adds local cadence while preserving each timing distribution. Ordinary
+  spaces add no separate pause.
 - Use Unicode grapheme clusters as timed units. Custom human timing accepts an
-  IKI coefficient of variation from 0 through 1 and keeps the same sequence
-  and boundary model instead of switching to an independent sampler.
+  IKI coefficient of variation from 0 through 1 and keeps the same rank chain.
 
 ### Fixed
 

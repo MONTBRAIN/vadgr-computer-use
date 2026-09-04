@@ -62,13 +62,14 @@ type_text(text="...", human=true)
 ```
 
 Both tools use the versioned `us_adult_transcription_2026` timing profile by
-default. It samples one cadence style per operation, keeps nearby motor timing
-correlated, and adds fitted pauses only at clause, sentence, newline, or
-paragraph boundaries. Ordinary spaces never add a pause and never exceed 300
-milliseconds. The generator does not rescale a complete message to force an
-exact duration. An advanced caller can instead provide both `wpm` from 10
-through 200 and `iki_cv` from 0 through 1. These options tune the same sequence
-model.
+default. It draws from the released within-word, after-space, and after-sentence
+empirical gap tables. A fitted stationary four-bin rank chain adds nearby
+cadence while preserving those marginal distributions. The runtime has no
+latent motor, pause, or learned model. Ordinary spaces add no artificial pause and their
+complete total gaps remain within 20 through 1,500 milliseconds. The generator
+does not rescale a complete message to force an exact duration. An advanced
+caller can instead provide both `wpm` from 10 through 200 and `iki_cv` from 0
+through 1. These options tune the same sequence model.
 Human-paced input has no implicit total deadline, so long text continues while
 complete units make progress. A caller may provide a positive `timeout` in
 milliseconds as an explicit total budget. Browser pacing transports long plans
@@ -89,9 +90,14 @@ by Tiago Dias, João Vitorino, Eva Maia, Orlando Sousa, and Isabel Praça
 ([dataset](https://doi.org/10.5281/zenodo.7886743),
 [data article](https://doi.org/10.1016/j.dib.2023.109509)). The checked-in
 artifact records the exact source hashes, filtering, weighting, and derivation
-script. Grouped leave-one-participant-out checks select the smallest sequence
-model that improves likelihood, timing quantiles, adjacent-gap correlation,
-and slow-run behavior over the released independent sampler.
+script. Participant-grouped inner folds select empirical shrinkage and four-bin
+rank dependence from training participants only. A fixed KeyRecs pilot sets
+simulation precision, and five participant-disjoint outer folds select the
+smallest eligible model. Independent participant-clustered confirmation accepts
+that model only when normalized gap CRPS is superior, sequence energy has a
+favorable point estimate and a 95 percent upper bound below the operational
+`0.10` standardized-energy loss margin, and the predeclared secondary
+non-inferiority, rate, boundary, and bounded-support gates all clear.
 
 ---
 

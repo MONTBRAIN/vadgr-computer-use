@@ -11,6 +11,8 @@ from PIL import Image as PILImage
 
 from computer_use.core.types import Platform, ScreenState
 
+pytestmark = pytest.mark.usefixtures("schema_six_typing_runtime")
+
 
 def _make_png(width: int, height: int) -> bytes:
     """Create a minimal valid PNG of the given size."""
@@ -279,7 +281,7 @@ class TestKeyboardTools:
         from computer_use.mcp_server import type_text
 
         mock_engine.type_text.return_value = 0
-        result = await type_text("a" * 400, human=True, wpm=65, iki_cv=0)
+        result = await type_text("a" * 400, human=True, wpm=10, iki_cv=0)
         assert result["predicted_ms"] > 60_000
         assert result["units"] == 400
 
