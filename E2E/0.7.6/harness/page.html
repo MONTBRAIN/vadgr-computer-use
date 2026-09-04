@@ -8,7 +8,7 @@
     body { font: 16px system-ui, sans-serif; margin: 2rem; max-width: 64rem; }
     main { display: grid; gap: 1rem; }
     section { border: 1px solid #999; border-radius: .6rem; padding: 1rem; position: relative; }
-    input, button { font: inherit; padding: .5rem; margin: .25rem; }
+    input, textarea, button { font: inherit; padding: .5rem; margin: .25rem; }
     #hover-reveal { display: none; }
     #hover-target:hover #hover-reveal { display: inline; }
     #report { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -20,6 +20,7 @@
     <h1>CUA 0.7.6 local fixture</h1>
     <section id="plain-section">
       <form id="plain-form"><label>Instrumented field <input id="plain" autocomplete="off"></label></form>
+      <label>Instrumented multiline field <textarea id="multiline" autocomplete="off"></textarea></label>
       <output id="counter">0</output>
       <output id="validation">empty</output>
       <output id="typeahead">hidden</output>
@@ -66,9 +67,11 @@
     }
 
     const plain = document.querySelector("#plain");
+    const multiline = document.querySelector("#multiline");
     const unicode = document.querySelector("#unicode");
     const mismatch = document.querySelector("#mismatch");
     track(plain, "plain");
+    track(multiline, "multiline");
     track(unicode, "unicode");
     track(mismatch, "mismatch");
     let debounceTimer;
