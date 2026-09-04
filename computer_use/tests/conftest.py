@@ -39,7 +39,7 @@ def _schema_six_profile():
     profile = {
         "schema": 6,
         "profile": "test",
-        "nominal_wpm": 65,
+        "nominal_wpm": 68,
         "limits": {
             "minimum_interval_ms": 20.0,
             "maximum_total_gap_ms": 5000.0,
@@ -75,7 +75,7 @@ def _schema_six_profile():
     }
     interpreter = ArtifactInterpreter(profile)
     profile["model"]["calibration_scale"] = interpreter._scale_for_quantiles(
-        65,
+        68,
         interpreter.class_quantiles,
         custom=False,
     )

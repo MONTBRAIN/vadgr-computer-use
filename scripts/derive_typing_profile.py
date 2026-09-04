@@ -43,6 +43,7 @@ SKAID_MD5 = "b14e1817c552e8bffe1b18afaa9d3b90"
 SKAID_README_SHA256 = "c51f24e74879a79f36d37e3da56ce7e79a23a5b83b227a5b2948c66f960b93e3"
 SKAID_DOI = "10.5281/zenodo.17282184"
 SKAID_VERSION = "1.0"
+RELEASE_NOMINAL_WPM = 68
 SKAID_DEMOGRAPHICS_SHA256 = "5dcc02ad315d01f91563a9434a856d198b9f52a1d26036b940cd332e0f047569"
 SKAID_DEMOGRAPHICS_MD5 = "8a3fdb18d7ca72defa0ce6e39d85e4a1"
 RELEASED_BASELINE_COMMIT = "a4a5b298b90c005063a41db6210fa07fb3c62dfa"
@@ -2579,7 +2580,7 @@ def _released_rank_profile(
     profile: dict[str, object] = {
         "schema": 6,
         "profile": "us_adult_transcription_2026",
-        "nominal_wpm": 65,
+        "nominal_wpm": RELEASE_NOMINAL_WPM,
         "limits": {
             "minimum_interval_ms": MIN_INTERVAL_MS,
             "maximum_total_gap_ms": MAX_TOTAL_GAP_MS,
@@ -2650,7 +2651,7 @@ def _released_rank_profile(
     }
     interpreter = ArtifactInterpreter(profile, require_cleared=False)
     scale = interpreter._scale_for_quantiles(
-        65,
+        RELEASE_NOMINAL_WPM,
         interpreter.class_quantiles,
         custom=False,
     )
