@@ -17,6 +17,8 @@ from computer_use.browser import tool as T
 from computer_use.browser.bridge import BridgeStatus, FakeBridge
 from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 
+pytestmark = pytest.mark.usefixtures("schema_six_typing_runtime")
+
 
 class TestOpRouting:
     def test_navigate_maps_params(self):
