@@ -17,7 +17,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
   claims for a single tab in a shared user window. Registry listings show mine,
   other, unowned, and orphaned targets without hiding foreign targets.
 - Add opt-in human-paced browser and pixel typing. Both surfaces use one
-  validated schedule, a versioned 65 WPM default profile, or an explicit WPM
+  validated schedule, a versioned 68 WPM default profile, or an explicit WPM
   and within-session IKI coefficient of variation.
 
 ### Changed

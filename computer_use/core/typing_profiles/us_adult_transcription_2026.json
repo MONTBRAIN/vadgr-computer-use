@@ -646,7 +646,7 @@
     "minimum_validation_graphemes": 200
   },
   "model": {
-    "calibration_scale": 180.421126040822,
+    "calibration_scale": 172.202608430293,
     "class_quantiles": {
       "alternate_hand": [
         0.003122,
@@ -1737,14 +1737,14 @@
     ],
     "version": 1
   },
-  "nominal_wpm": 65,
+  "nominal_wpm": 68,
   "profile": "us_adult_transcription_2026",
   "provenance": {
     "numpy": "2.4.4",
     "python": "3.12.3",
     "scipy": "1.17.1",
     "script": "derive_typing_profile.py",
-    "script_sha256": "23df5b8d4e1b4f6a9aa224e5ab2392e9a3de3a3cf9704ae0ad3be8486c7793c5",
+    "script_sha256": "f44a2e4c803a99f30c1eb0c04f93bd326978dc16d32684abecf94e27d9a0ea15",
     "seed": 7602026
   },
   "schema": 6,

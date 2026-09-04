@@ -55,7 +55,7 @@ def test_named_profile_is_deterministic_with_injected_random_source():
     )
     assert one == two
     assert one.timing_profile == DEFAULT_PROFILE
-    assert one.nominal_wpm == 65
+    assert one.nominal_wpm == 68
     assert len({round(unit.delay_before_ms, 3) for unit in one.units[1:]}) > 1
 
 
@@ -70,7 +70,7 @@ def test_runtime_plan_matches_the_artifact_interpreter_for_one_fixed_stream(
         for index in range(len(units) - 1)
     )
     interpreter = ArtifactInterpreter(schema_six_profile)
-    expected = interpreter.simulate(classes, 65, random.Random(19))
+    expected = interpreter.simulate(classes, 68, random.Random(19))
 
     plan = build_typing_plan(
         text,
@@ -152,7 +152,7 @@ def test_default_profile_does_not_rescale_each_message_to_exact_wpm():
         for seed in range(8)
     }
     assert len(rates) > 1
-    assert rates != {65.0}
+    assert rates != {68.0}
 
 
 @pytest.mark.parametrize(
@@ -385,6 +385,7 @@ def test_checked_in_schema_six_profile_names_source_and_exact_deriver():
     assert len(source["sha256"]) == 64
     assert hashlib.sha256(script.read_bytes()).hexdigest() == profile["provenance"]["script_sha256"]
     assert profile["fit"]["candidate_rung"] == "released_marginals_rank4"
+    assert profile["nominal_wpm"] == 68
     assert profile["model"]["styles"] == [{"speed_log": 0.0, "weight": 1.0}]
     for gap_class, parent in profile["fit"]["class_aliases"].items():
         assert (
