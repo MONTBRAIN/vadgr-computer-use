@@ -15,6 +15,20 @@ import zipfile
 from pathlib import Path
 
 
+def listening_addresses(netstat_output: str, pid: int) -> set[str]:
+    """Return TCP listen addresses owned by *pid* from Windows netstat output."""
+    addresses: set[str] = set()
+    for line in netstat_output.splitlines():
+        fields = line.split()
+        if len(fields) != 5 or fields[0].upper() != "TCP":
+            continue
+        if fields[3].upper() != "LISTENING" or fields[4] != str(pid):
+            continue
+        address = fields[1].rsplit(":", 1)[0]
+        addresses.add(address.removeprefix("[").removesuffix("]"))
+    return addresses
+
+
 def exchange(file, value: dict[str, object]) -> dict[str, object]:
     file.write((json.dumps(value, separators=(",", ":")) + "\n").encode())
     file.flush()
@@ -72,21 +86,14 @@ def main() -> int:
                     if not status.get("ok"):
                         raise RuntimeError("broker status request failed")
             listeners = subprocess.run(
-                [
-                    "powershell.exe",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    (
-                        f"@(Get-NetTCPConnection -OwningProcess {process.pid} "
-                        "-State Listen).LocalAddress -join ','"
-                    ),
-                ],
+                ["netstat", "-ano", "-p", "tcp"],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            addresses = {item for item in listeners.stdout.strip().split(",") if item}
+            if listeners.returncode != 0:
+                raise RuntimeError(f"netstat failed: {listeners.stderr.strip()}")
+            addresses = listening_addresses(listeners.stdout, process.pid)
             if not addresses or addresses != {"127.0.0.1"}:
                 raise RuntimeError(f"broker exposed a non-loopback listener: {addresses}")
         finally:
