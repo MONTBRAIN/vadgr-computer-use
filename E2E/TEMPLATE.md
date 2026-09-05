@@ -331,15 +331,15 @@ never appears in.
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
 
-> Before each visual group, recheck the current official capability and token-
-> pricing pages for every available candidate. Start pixel and screenshot work
-> with GPT-5.6 Terra at medium reasoning or the current active Claude Sonnet at
-> medium reasoning, choosing the lower projected task cost among authenticated
-> CLIs that support image-result continuation and MCP/tool use. Do not select a
-> Gemini model. Record the source date, exact model, reasoning level, projected
-> ceiling and authentication path before the group. Use Sol, Opus, high
-> reasoning or another higher-cost tier only after a recorded capability failure
-> at the starting tier and within a predeclared escalation ceiling.
+> Pixel and screenshot-driven cells use GPT-5.6 Sol at medium reasoning when
+> driven by Codex, or the current Claude Opus at medium reasoning when driven by
+> Claude Code. Before selection, recheck the candidates' current official
+> capability and pricing pages and the authenticated account catalog; record
+> the source date, exact model id, reasoning level, projected cost and hard
+> ceiling. Choose between those two qualified paths using availability, task
+> fit and projected total cost. Do not substitute Terra, Sonnet or Gemini for a
+> visual cell. A higher reasoning level or cost tier requires a recorded
+> capability failure at medium and explicit owner approval.
 
 ## Prerequisites (per OS)
 
