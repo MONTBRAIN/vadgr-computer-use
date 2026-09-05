@@ -331,6 +331,11 @@ never appears in.
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
 
+> Pixel and screenshot-driven cells use an image-capable OpenAI GPT or
+> Anthropic Claude model. Do not select a Gemini model for pixel-driving work.
+> Use high reasoning when the agent CLI exposes that setting, and record the
+> exact model and reasoning level before the live group starts.
+
 ## Prerequisites (per OS)
 
 > One block per operating system this pass covers. Display server, browser and
