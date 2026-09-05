@@ -39,6 +39,7 @@ Tell the owner about these requirements before the affected group starts.
 | Browser restart and extension disable permission | A03-A04, B09 | Approve only the named browser action |
 | Host suspend and resume | A02 | Resume the host if automation cannot do so safely |
 | Native input permission | D01-D05 | Grant only the normal OS accessibility or input permission |
+| Stock plain-text editor | D01a | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; no installation solely for the cell |
 | Windows browser reachable from native Windows and WSL | B02a-B02f, B11-B17 | Keep both clients available during the convergence and lifecycle cells; provide hosts already configured for NAT and mirrored networking |
 
 No paid account or external site login is required. The harness serves a local
@@ -143,6 +144,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | D01 | Native event-recording field focused. On WSL, give the isolated Windows test window a unique title and use `harness/focus_window.ps1 -ExactTitle` to verify its exact non-minimized HWND is foreground. | Run fast `type_text` and named-profile human `type_text` | Fast mode stays compatible; human mode emits ordered varied input and exact final text | Native event record with text removed; clear field | pass: helper verified the exact foreground window; fast and default human read-backs matched | not run: remote host | not run: remote host | not run: remote host |
+| D01a | Fresh unsaved stock-editor document. Use Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and the available stock plain-text editor on Linux. Verify the exact non-minimized editor window is foreground and choose one path inside the isolated test root. | Through the agent and public pixel tools, type the fixed sensitive-file value with `type_text(human=true)` and no timing override, then save through the editor UI | Metadata names `us_adult_transcription_2026`, nominal WPM 68, all units complete and no unexpected fallback; the saved file's SHA-256 equals the sensitive-file value's SHA-256; no browser or structured typing path is used | Redacted agent JSON, foreground identity, timing metadata and hash comparison only; delete only the saved test file and close the test document | pass: Notepad completed 240 units in 38.729 seconds with zero fallback; saved bytes matched the fixture hash and the isolated file was deleted | not run: remote host | not run: remote host | not run: remote host |
 | D02 | D01 field focused | Run custom WPM plus IKI-CV at both accepted endpoints | Planned and achieved metadata are valid; IKI-CV zero removes marginal spread while the shared rank chain remains | Timing metadata and redacted event intervals only; clear field | pass: 10 WPM constant and 200 WPM varied endpoint plans completed exactly | not run: remote host | not run: remote host | not run: remote host |
 | D02b | D01 field focused; text contains ordinary spaces and every semantic-boundary class | Run default and custom human input | Ordinary spaces add no separate pause; grapheme order and final value remain exact; all complete gaps stay within the documented class bounds | Redacted native event timing, boundary counts, and independent value hash; clear field | pass: multiline field retained 47 graphemes, three line breaks and zero space-specific pauses | not run: remote host | not run: remote host | not run: remote host |
 | D03 | D01 field focused | Try incomplete or mixed timing options, IKI-CV below 0 or above 1, and a deadline shorter than the plan | Each fails before input and leaves the field unchanged | Error results and independent field read-back | pass: seven invalid or preflight-deadline requests left the field empty | not run: remote host | not run: remote host | not run: remote host |
@@ -186,6 +188,10 @@ after cleanup.
 
 ## Findings
 
+- The first pixel matrix proved timing only in an instrumented field. D01a now
+  also drives the stock editor on every affected OS and verifies its saved bytes
+  independently. The WSL rerun passed through Windows Notepad without using a
+  browser or structured typing path.
 - A01 first changed the selected client from its restarting profile to the one
   remaining profile. The resulting stale target failed as foreign ownership.
   The repaired broker keeps an explicit profile pinned during bounded MV3
