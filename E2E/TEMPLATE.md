@@ -331,10 +331,15 @@ never appears in.
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
 
-> Pixel and screenshot-driven cells use an image-capable OpenAI GPT or
-> Anthropic Claude model. Do not select a Gemini model for pixel-driving work.
-> Use high reasoning when the agent CLI exposes that setting, and record the
-> exact model and reasoning level before the live group starts.
+> Before each visual group, recheck the current official capability and token-
+> pricing pages for every available candidate. Start pixel and screenshot work
+> with GPT-5.6 Terra at medium reasoning or the current active Claude Sonnet at
+> medium reasoning, choosing the lower projected task cost among authenticated
+> CLIs that support image-result continuation and MCP/tool use. Do not select a
+> Gemini model. Record the source date, exact model, reasoning level, projected
+> ceiling and authentication path before the group. Use Sol, Opus, high
+> reasoning or another higher-cost tier only after a recorded capability failure
+> at the starting tier and within a predeclared escalation ceiling.
 
 ## Prerequisites (per OS)
 

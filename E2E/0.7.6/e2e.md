@@ -27,9 +27,13 @@ from this branch. The MCP configuration must call that environment's
    `Not-Needed`.
 9. Confirm evidence is committed and pushed before cleanup. Stop only processes
    started by this pass and remove only validated isolated test roots.
-10. Drive pixel and screenshot cells with an image-capable OpenAI GPT or
-    Anthropic Claude model, never Gemini. Use high reasoning when the CLI
-    exposes it, and record the exact model and reasoning level before the group.
+10. Before a pixel or screenshot group, compare current official capabilities
+    and prices. Start with GPT-5.6 Terra at medium reasoning or the current
+    Claude Sonnet at medium reasoning, choosing the lower projected cost among
+    authenticated capable CLIs. Never use Gemini. Record the exact model,
+    reasoning level, sources and cost ceiling. Escalate to Sol, Opus, high
+    reasoning or another higher-cost tier only after a recorded capability
+    failure and within a predeclared escalation ceiling.
 
 ## Owner and environment requirements
 
@@ -44,14 +48,30 @@ Tell the owner about these requirements before the affected group starts.
 | Native input permission | D01-D05 | Grant only the normal OS accessibility or input permission |
 | Stock plain-text editor | D01a | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; no installation solely for the cell |
 | Windows browser reachable from native Windows and WSL | B02a-B02f, B11-B17 | Keep both clients available during the convergence and lifecycle cells; provide hosts already configured for NAT and mirrored networking |
+| Authenticated agent CLI and bounded billing | D01, D01a, D02b, D04, E02 | Keep one supported Claude or Codex login available; approve no unbounded or higher-cost fallback |
 
-No paid account or external site login is required. The harness serves a local
-instrumented page. The pass changes browser test state and creates isolated
-temporary roots. It does not change host network state or privacy settings.
+No product account or external test-site login is required. The visual driver
+uses the separately declared authenticated agent CLI and billing ceiling. The
+harness serves a local instrumented page. The pass changes browser test state
+and creates isolated temporary roots. It does not change host network state or
+privacy settings.
 
-Pixel and screenshot-driven groups use an image-capable OpenAI GPT or Anthropic
-Claude model at high reasoning when the CLI supports it. Record both values in
-the host evidence before the group starts.
+## Billed model selection
+
+Official pages checked 2026-09-05 list GPT-5.6 Terra at USD 2 input and USD 12
+output per million tokens, with image input, computer use and MCP support, and
+Claude Sonnet 5 at USD 2 input and USD 10 output per million tokens, with vision
+and tool use. Sources: [OpenAI GPT-5.6 Terra][terra], [OpenAI models][models],
+[Anthropic models][claude-models] and [Anthropic pricing][claude-pricing].
+
+| cells | provider/auth | required capabilities | selected model | hard ceiling | escalation |
+|---|---|---|---|---|---|
+| D01, D01a, D02b, D04, E02 | installed Claude CLI owner login | image-result continuation and MCP tools | `claude-sonnet-5`, medium reasoning | 12 agent iterations, 200,000 input tokens, 30,000 output tokens and USD 0.75 | Stop at the first ceiling. Use GPT-5.6 Terra at medium only if Sonnet has a recorded availability or capability failure. Any higher-cost model requires a separate recorded failure and a new ceiling. |
+
+[terra]: https://developers.openai.com/api/docs/models/gpt-5.6-terra
+[models]: https://developers.openai.com/api/docs/models
+[claude-models]: https://platform.claude.com/docs/en/models/overview
+[claude-pricing]: https://platform.claude.com/docs/en/about-claude/pricing
 
 ## Paired surfaces this pass depends on
 
@@ -151,7 +171,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | D01 | Native event-recording field focused. On WSL, give the isolated Windows test window a unique title and use `harness/focus_window.ps1 -ExactTitle` to verify its exact non-minimized HWND is foreground. | Run fast `type_text` and named-profile human `type_text` | Fast mode stays compatible; human mode emits ordered varied input and exact final text | Native event record with text removed; clear field | not run: the 68 WPM rebuild invalidated the named-profile result | not run: remote host | not run: remote host | not run: remote host |
-| D01a | Fresh unsaved stock-editor document. Use Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and the available stock plain-text editor on Linux. Verify the exact non-minimized editor window is foreground and choose one path inside the isolated test root. | Through the agent and public pixel tools, type the fixed sensitive-file value with `type_text(human=true)` and no timing override, then save through the editor UI | Metadata names `us_adult_transcription_2026`, nominal WPM 68, all units complete and no unexpected fallback; the saved file's SHA-256 equals the sensitive-file value's SHA-256; no browser or structured typing path is used | Redacted agent JSON, foreground identity, timing metadata and hash comparison only; delete only the saved test file and close the test document | not run: the first functional pass used medium reasoning before rule 10 required high reasoning | not run: remote host | not run: remote host | not run: remote host |
+| D01a | Fresh unsaved stock-editor document. Use Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and the available stock plain-text editor on Linux. Verify the exact non-minimized editor window is foreground and choose one path inside the isolated test root. | Through the agent and public pixel tools, type the fixed sensitive-file value with `type_text(human=true)` and no timing override, then save through the editor UI | Metadata names `us_adult_transcription_2026`, nominal WPM 68, all units complete and no unexpected fallback; the saved file's SHA-256 equals the sensitive-file value's SHA-256; no browser or structured typing path is used | Redacted agent JSON, foreground identity, timing metadata and hash comparison only; delete only the saved test file and close the test document | not run: the first functional pass used a higher-cost Sol model before rule 10 established the starting tier | not run: remote host | not run: remote host | not run: remote host |
 | D02 | D01 field focused | Run custom WPM plus IKI-CV at both accepted endpoints | Planned and achieved metadata are valid; IKI-CV zero removes marginal spread while the shared rank chain remains | Timing metadata and redacted event intervals only; clear field | pass: 10 WPM constant and 200 WPM varied endpoint plans completed exactly | not run: remote host | not run: remote host | not run: remote host |
 | D02b | D01 field focused; text contains ordinary spaces and every semantic-boundary class | Run default and custom human input | Ordinary spaces add no separate pause; grapheme order and final value remain exact; all complete gaps stay within the documented class bounds | Redacted native event timing, boundary counts, and independent value hash; clear field | not run: the 68 WPM rebuild invalidated the default-profile result | not run: remote host | not run: remote host | not run: remote host |
 | D03 | D01 field focused | Try incomplete or mixed timing options, IKI-CV below 0 or above 1, and a deadline shorter than the plan | Each fails before input and leaves the field unchanged | Error results and independent field read-back | pass: seven invalid or preflight-deadline requests left the field empty | not run: remote host | not run: remote host | not run: remote host |
@@ -172,8 +192,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | A: recovery and setup diagnosis | pass | not run: remote host | not run: remote host | not run: remote host |
 | B: shared broker and target ownership | pass | not run: remote host | not run: remote host | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | not run: remote host | not run: remote host |
-| D: pixel typing | not run: high-reasoning 68 WPM rerun required | not run: remote host | not run: remote host | not run: remote host |
-| E: packaged and clean delivery | not run: high-reasoning pixel rerun required | not run: remote host | not run: remote host | not run: remote host |
+| D: pixel typing | not run: cost-bounded 68 WPM rerun required | not run: remote host | not run: remote host | not run: remote host |
+| E: packaged and clean delivery | not run: cost-bounded pixel rerun required | not run: remote host | not run: remote host | not run: remote host |
 | overall | not run: WSL pixel rerun remains | not run: remote host | not run: remote host | not run: remote host |
 
 ## Evidence
@@ -198,11 +218,13 @@ after cleanup.
 - The first pixel matrix proved timing only in an instrumented field. D01a now
   also drives the stock editor on every affected OS and verifies its saved bytes
   independently. The first WSL observation passed every functional oracle but
-  used medium reasoning before rule 10 required high reasoning, so it does not
-  close D01a.
-- A later medium-reasoning WSL driver did not converge on a clean Notepad setup.
-  The owner stopped it before typing. Its redacted stream remains a rejected
-  attempt, and the next driver must satisfy rule 10 before the group starts.
+  used the higher-cost GPT-5.6 Sol before rule 10 established Terra or Sonnet at
+  medium reasoning as the starting tier, so it does not close D01a.
+- A later GPT-5.6 Sol medium driver did not converge on a clean Notepad setup.
+  The owner stopped it before typing. A Sol high retry was also stopped by the
+  owner before product mutation because it violated the cost boundary. Both
+  redacted streams remain rejected attempts; the next driver must use the
+  selected Sonnet 5 medium tier and satisfy rule 10 before the group starts.
 - A01 first changed the selected client from its restarting profile to the one
   remaining profile. The resulting stale target failed as foreign ownership.
   The repaired broker keeps an explicit profile pinned during bounded MV3
