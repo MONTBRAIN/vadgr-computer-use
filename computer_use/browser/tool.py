@@ -21,7 +21,10 @@ masked), so the guidance actually reaches the model.
 
 from __future__ import annotations
 
+import math
+import secrets
 import sys
+import time
 from typing import Any
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -29,9 +32,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 from computer_use.browser.bridge import (
     PIXEL_FALLBACK,
     BrowserBridge,
-    NativeMessagingBridge,
 )
-from computer_use.browser.protocol import BrowserError
+from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 from computer_use.browser.upload import translate_upload_paths
 from computer_use.core.ops import OperationGroup
 
@@ -59,6 +61,7 @@ def _upload_platform() -> str:
     except Exception:  # pragma: no cover - detection best-effort
         return sys.platform
 
+
 # One default bridge instance, shared by the MCP wrappers. Tests inject a
 # FakeBridge explicitly.
 _DEFAULT_BRIDGE: BrowserBridge | None = None
@@ -67,7 +70,9 @@ _DEFAULT_BRIDGE: BrowserBridge | None = None
 def _default_bridge() -> BrowserBridge:
     global _DEFAULT_BRIDGE
     if _DEFAULT_BRIDGE is None:
-        _DEFAULT_BRIDGE = NativeMessagingBridge()
+        from computer_use.browser.broker_client import BrokerClient
+
+        _DEFAULT_BRIDGE = BrokerClient()
     return _DEFAULT_BRIDGE
 
 
@@ -75,6 +80,7 @@ _ops = OperationGroup("browser")
 
 
 # --- navigation ---
+
 
 @_ops.operation("navigate")
 def _navigate(bridge: BrowserBridge, url: str, wait: str = "load") -> Any:
@@ -98,6 +104,7 @@ def _reload(bridge: BrowserBridge) -> Any:
 
 # --- read ---
 
+
 @_ops.operation("wait_for")
 def _wait_for(
     bridge: BrowserBridge,
@@ -119,9 +126,7 @@ def _query(
 ) -> Any:
     # `limit`/`cursor` cap + paginate large match sets so a big page degrades to
     # pages, never a token-budget blowout. Returns {nodes, next_cursor?}.
-    return bridge.send(
-        "query", selector=selector, by=by, all=all, limit=limit, cursor=cursor
-    )
+    return bridge.send("query", selector=selector, by=by, all=all, limit=limit, cursor=cursor)
 
 
 @_ops.operation("read_text")
@@ -136,14 +141,19 @@ def _get_attribute(bridge: BrowserBridge, selector: str, name: str) -> Any:
 
 # --- act ---
 
+
 @_ops.operation("click")
-def _click(bridge: BrowserBridge, selector: str, by: str = "css",
-           force: bool = False, trusted: bool = False) -> Any:
+def _click(
+    bridge: BrowserBridge,
+    selector: str,
+    by: str = "css",
+    force: bool = False,
+    trusted: bool = False,
+) -> Any:
     # trusted=True skips the DOM fast path and clicks via the CDP Input domain
     # (a real mouseMoved/Pressed/Released stream). Needed for widgets that react
     # only to genuine pointer events AND expose no state to auto-escalate on.
-    return bridge.send("click", selector=selector, by=by, force=force,
-                       trusted=trusted)
+    return bridge.send("click", selector=selector, by=by, force=force, trusted=trusted)
 
 
 @_ops.operation("type")
@@ -154,9 +164,184 @@ def _type(
     clear: bool = True,
     submit: bool = False,
     force: bool = False,
+    human: bool = False,
+    timing_profile: str | None = None,
+    wpm: int | None = None,
+    iki_cv: float | None = None,
+    timeout: int | None = None,
+    _cancelled=None,
 ) -> Any:
-    return bridge.send("type", selector=selector, text=text, clear=clear,
-                       submit=submit, force=force)
+    from computer_use.core.typing import (
+        TypingDeadlineExceeded,
+        TypingOptions,
+        build_typing_plan,
+        chunk_typing_plan,
+        require_typing_deadline,
+    )
+
+    started = time.monotonic()
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError("timeout must be a positive finite number of milliseconds")
+    deadline = started + timeout / 1000 if timeout is not None else None
+    deadline_epoch_ms = time.time() * 1000 + timeout if timeout is not None else None
+    plan = build_typing_plan(
+        text,
+        TypingOptions(
+            human=human,
+            timing_profile=timing_profile,
+            wpm=wpm,
+            iki_cv=iki_cv,
+        ),
+    )
+    if not human:
+        return bridge.send(
+            "type",
+            selector=selector,
+            text=text,
+            clear=clear,
+            submit=submit,
+            force=force,
+            human=False,
+        )
+    if deadline is not None:
+        try:
+            require_typing_deadline(plan, (deadline - time.monotonic()) * 1000)
+        except TypingDeadlineExceeded as error:
+            raise BrowserError(
+                BrowserErrorCode.TYPING_DEADLINE,
+                str(error),
+            ) from error
+
+    stream_id = secrets.token_hex(16)
+    base: dict[str, Any] = {
+        "selector": selector,
+        "clear": clear,
+        "submit": submit,
+        "force": force,
+        "human": True,
+    }
+
+    def remaining_ms(completed_units: int) -> float | None:
+        if deadline is None:
+            return None
+        remaining = (deadline - time.monotonic()) * 1000
+        if remaining <= 0:
+            raise TypingDeadlineExceeded(completed_units)
+        return remaining
+
+    def send_stream(action: str, *, cancelled=None, **fields: Any) -> Any:
+        stream = {"action": action, "stream_id": stream_id, **fields}
+        remaining = remaining_ms(int(fields.get("confirmed_units", 0)))
+        if remaining is not None:
+            stream["remaining_ms"] = remaining
+            stream["deadline_epoch_ms"] = deadline_epoch_ms
+        params = {**base, "typing_stream": stream}
+        if cancelled is not None:
+            params["_cancelled"] = cancelled
+        try:
+            return bridge.send("human_type_stream", **params)
+        except BrowserError as error:
+            user_cancelled = _cancelled is not None and _cancelled()
+            deadline_expired = deadline is not None and time.monotonic() >= deadline
+            if (
+                error.code == BrowserErrorCode.TYPING_CANCELLED
+                and deadline_expired
+                and not user_cancelled
+            ):
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_DEADLINE,
+                    error.message.replace("typing_cancelled", "typing_deadline_exceeded", 1),
+                ) from error
+            raise
+
+    completed_units = 0
+    began = False
+    finished = False
+
+    def require_not_cancelled() -> None:
+        if _cancelled is not None and _cancelled():
+            raise BrowserError(
+                BrowserErrorCode.TYPING_CANCELLED,
+                f"typing_cancelled: {completed_units} complete units",
+            )
+
+    def transport_cancelled() -> bool:
+        return (_cancelled is not None and _cancelled()) or (
+            deadline is not None and time.monotonic() >= deadline
+        )
+
+    try:
+        require_not_cancelled()
+        send_stream(
+            "begin",
+            cancelled=transport_cancelled,
+            timing_profile=plan.timing_profile,
+            nominal_wpm=plan.nominal_wpm,
+            predicted_ms=plan.predicted_ms,
+            total_units=len(plan.units),
+            fallback_units=plan.fallback_units,
+        )
+        began = True
+        for chunk in chunk_typing_plan(plan):
+            require_not_cancelled()
+            try:
+                reply = send_stream(
+                    "chunk",
+                    cancelled=transport_cancelled,
+                    confirmed_units=completed_units,
+                    units=[
+                        {
+                            "text": unit.text,
+                            "delay_before_ms": unit.delay_before_ms,
+                            "fallback": unit.fallback,
+                        }
+                        for unit in chunk
+                    ],
+                )
+            except BrowserError as error:
+                if error.code != BrowserErrorCode.NOT_CONNECTED:
+                    raise
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                    "typing_state_uncertain: the browser connection was lost after "
+                    "a typing chunk was dispatched",
+                    remediation="inspect the target state before deciding whether to retry",
+                ) from error
+            expected = completed_units + len(chunk)
+            if not isinstance(reply, dict) or reply.get("completed_units") != expected:
+                raise BrowserError(
+                    BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+                    "a browser typing chunk returned an invalid progress count",
+                    remediation="inspect the target state before deciding whether to retry",
+                )
+            completed_units = expected
+        require_not_cancelled()
+        result = send_stream(
+            "finish",
+            cancelled=transport_cancelled,
+            confirmed_units=completed_units,
+        )
+        remaining_ms(completed_units)
+        require_not_cancelled()
+        finished = True
+        return result
+    except TypingDeadlineExceeded as error:
+        raise BrowserError(BrowserErrorCode.TYPING_DEADLINE, str(error)) from error
+    finally:
+        if began and not finished:
+            try:
+                bridge.send(
+                    "human_type_stream",
+                    **base,
+                    typing_stream={"action": "abort", "stream_id": stream_id},
+                )
+            except (BrowserError, ValueError):
+                pass
 
 
 @_ops.operation("fill")
@@ -168,13 +353,13 @@ def _fill(
     submit: bool = False,
     force: bool = False,
 ) -> Any:
-    return bridge.send("fill", selector=selector, text=text, clear=clear,
-                       submit=submit, force=force)
+    return bridge.send(
+        "fill", selector=selector, text=text, clear=clear, submit=submit, force=force
+    )
 
 
 @_ops.operation("select")
-def _select(bridge: BrowserBridge, selector: str, value: str,
-            force: bool = False) -> Any:
+def _select(bridge: BrowserBridge, selector: str, value: str, force: bool = False) -> Any:
     return bridge.send("select", selector=selector, value=value, force=force)
 
 
@@ -189,10 +374,12 @@ def _scroll(
 
 # --- CDP universal path (chrome.debugger) ---
 
+
 @_ops.operation("press")
 def _press(bridge: BrowserBridge, key: str, selector: str | None = None) -> Any:
-    # A *trusted* key event (via chrome.debugger Input) - for chords / keys that
-    # DOM-dispatched events can't trip (Enter on a custom widget, isTrusted-gated).
+    # A *trusted* key event (via chrome.debugger Input) for widgets gated on
+    # isTrusted. Chromium drops it on inactive targets, so the extension reports
+    # a named limitation and never activates the tab or window implicitly.
     return bridge.send("press", key=key, selector=selector)
 
 
@@ -205,6 +392,7 @@ def _accessibility_tree(bridge: BrowserBridge) -> Any:
 
 
 # --- 0.5.0: session targeting ---
+
 
 @_ops.operation("use_target")
 def _use_target(
@@ -220,11 +408,11 @@ def _use_target(
     # `profile_id` (0.6.1) also selects WHICH connected browser profile to act in
     # (cua-side); omitted when unset so single-profile setups are unchanged.
     extra = {"profile_id": profile_id} if profile_id is not None else {}
-    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode,
-                       **extra)
+    return bridge.send("use_target", window_id=window_id, tab_id=tab_id, mode=mode, **extra)
 
 
 # --- 0.5.0: the remaining interaction ops (CDP path) ---
+
 
 @_ops.operation("hover")
 def _hover(
@@ -294,9 +482,7 @@ def _snapshot(
 ) -> Any:
     # The paginated, shadow-/frame-piercing AX snapshot (supersedes
     # accessibility_tree). Returns {nodes:[{role,name,state,value,ref}], next_cursor?}.
-    return bridge.send(
-        "snapshot", selector=selector, roles=roles, cursor=cursor, limit=limit
-    )
+    return bridge.send("snapshot", selector=selector, roles=roles, cursor=cursor, limit=limit)
 
 
 @_ops.operation("cookies")
@@ -358,6 +544,7 @@ def browser_eval(expression: str, bridge: BrowserBridge | None = None) -> Any:
 # per-op `target` context the extension adds to each result is passed through
 # verbatim (an additive field an older cua tolerates).
 
+
 def tabs(
     op: str,
     bridge: BrowserBridge | None = None,
@@ -385,8 +572,8 @@ def tabs(
         params.update(url=url, window_id=window_id, background=background)
     elif op == "switch":
         params.update(tab_id=tab_id, window_id=window_id)
-    elif op == "close":
-        params.update(tab_id=tab_id, force=force)
+    elif op in ("close", "claim", "release"):
+        params.update(tab_id=tab_id, window_id=window_id, force=force)
     params = {k: v for k, v in params.items() if v is not None}
     try:
         return b.send("tabs", **params)
@@ -447,7 +634,7 @@ def windows(
         params.update(url=url, focused=focused)
     elif op == "focus":
         params.update(window_id=window_id)
-    elif op == "close":
+    elif op in ("close", "claim", "release"):
         params.update(window_id=window_id, force=force)
     params = {k: v for k, v in params.items() if v is not None}
     try:

@@ -18,6 +18,7 @@ import json
 import socket
 import struct
 import threading
+import time
 
 import pytest
 
@@ -26,6 +27,7 @@ from computer_use.browser.native_host import read_message, write_message
 from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 
 # --- a fake "extension over the shim": a raw TCP client speaking the framing ---
+
 
 class _FakeShim:
     """Connects to the listener, performs the extension half of the dialog."""
@@ -72,8 +74,12 @@ class _FakeShim:
         except Exception as e:  # pragma: no cover - defensive
             write_message(
                 self._file,
-                {"type": "result", "id": msg["id"], "ok": False,
-                 "error": {"code": "op_failed", "message": str(e)}},
+                {
+                    "type": "result",
+                    "id": msg["id"],
+                    "ok": False,
+                    "error": {"code": "op_failed", "message": str(e)},
+                },
             )
 
     def serve_one_op_prefixed_with_stray(self):
@@ -88,13 +94,17 @@ class _FakeShim:
             return
         write_message(
             self._file,
-            {"type": "hello", "proto": 1, "ext_version": "0.5.0",
-             "browser": "chrome", "supported_ops": []},
+            {
+                "type": "hello",
+                "proto": 1,
+                "ext_version": "0.5.0",
+                "browser": "chrome",
+                "supported_ops": [],
+            },
         )
         write_message(
             self._file,
-            {"type": "result", "id": msg["id"] - 1, "ok": True,
-             "result": {"stale": True}},
+            {"type": "result", "id": msg["id"] - 1, "ok": True, "result": {"stale": True}},
         )
         result = self.handler(msg["op"], msg.get("params", {}))
         write_message(
@@ -230,9 +240,7 @@ class TestListener:
             shim.hello(["query"])
             session = _wait_for_session(srv)
 
-            t = threading.Thread(
-                target=shim.serve_one_op_prefixed_with_stray, daemon=True
-            )
+            t = threading.Thread(target=shim.serve_one_op_prefixed_with_stray, daemon=True)
             t.start()
             result = session.request("query", {"selector": "a"})
             t.join(timeout=2)
@@ -240,6 +248,230 @@ class TestListener:
             # The stray hello and the stale-id result are dropped; only the
             # id-matched reply is returned.
             assert result == {"ok": "real"}
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_cancel_sends_control_message_and_returns_named_error(self, tmp_path):
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["type"])
+            session = _wait_for_session(srv)
+            cancelled = threading.Event()
+            seen = {}
+
+            def receive():
+                seen["op"] = read_message(shim._file)
+                seen["cancel"] = read_message(shim._file)
+                write_message(
+                    shim._file,
+                    {
+                        "type": "result",
+                        "id": seen["op"]["id"],
+                        "ok": False,
+                        "error": {
+                            "code": "typing_cancelled",
+                            "message": "typing_cancelled: 1 complete units",
+                        },
+                    },
+                )
+
+            receiver = threading.Thread(target=receive, daemon=True)
+            receiver.start()
+            result = {}
+
+            def request():
+                try:
+                    session.request("type", {"human": True}, cancelled=cancelled.is_set)
+                except BrowserError as error:
+                    result["error"] = error
+
+            caller = threading.Thread(target=request, daemon=True)
+            caller.start()
+            while "op" not in seen:
+                time.sleep(0.005)
+            cancelled.set()
+            caller.join(timeout=2)
+            receiver.join(timeout=2)
+            assert result["error"].code == BrowserErrorCode.TYPING_CANCELLED
+            assert "1 complete units" in result["error"].message
+            assert seen["cancel"]["op"] == "_cancel"
+            assert seen["cancel"]["params"]["request_id"] == seen["op"]["id"]
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_typing_chunk_inactivity_is_state_uncertain_and_not_replayed(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 0.03)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["type"])
+            session = _wait_for_session(srv)
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {
+                        "human": True,
+                        "typing_stream": {
+                            "action": "chunk",
+                            "stream_id": "test-stream",
+                        },
+                    },
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_STATE_UNCERTAIN
+            assert "progress backstop" in captured.value.message
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_typing_timeout_returns_truthful_reply_received_during_grace(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 0.03)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.1)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+
+            def reply_after_cancel():
+                request = read_message(shim._file)
+                cancel = read_message(shim._file)
+                assert cancel["op"] == "_cancel"
+                write_message(
+                    shim._file,
+                    {
+                        "type": "result",
+                        "id": request["id"],
+                        "ok": False,
+                        "error": {
+                            "code": "typing_cancelled",
+                            "message": "typing_cancelled: 3 complete units",
+                        },
+                    },
+                )
+
+            receiver = threading.Thread(target=reply_after_cancel, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {"typing_stream": {"action": "chunk", "stream_id": "s"}},
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_CANCELLED
+            assert captured.value.message == "typing_cancelled: 3 complete units"
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_user_cancellation_starts_grace_without_waiting_for_op_timeout(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 1.0)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+            cancelled = threading.Event()
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            started = time.monotonic()
+            cancelled.set()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {"typing_stream": {"action": "chunk", "stream_id": "s"}},
+                    cancelled=cancelled.is_set,
+                )
+            elapsed = time.monotonic() - started
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_STATE_UNCERTAIN
+            assert elapsed < 0.3
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
+            shim.close()
+        finally:
+            srv.stop()
+
+    def test_begin_explicit_deadline_returns_zero_progress_and_cancels(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(S.TcpBrowserSession, "_OP_TIMEOUT_S", 1.0)
+        monkeypatch.setattr(S.TcpBrowserSession, "_CANCEL_GRACE_S", 0.03)
+        srv = S.BrowserServer(discovery_path=tmp_path / "browser.port")
+        srv.start()
+        try:
+            port, token = S.read_discovery(path=tmp_path / "browser.port")
+            shim = _FakeShim(port, token)
+            shim.auth()
+            shim.hello(["human_type_stream"])
+            session = _wait_for_session(srv)
+            seen = []
+
+            def receive_without_reply():
+                seen.append(read_message(shim._file))
+                seen.append(read_message(shim._file))
+
+            receiver = threading.Thread(target=receive_without_reply, daemon=True)
+            receiver.start()
+            with pytest.raises(BrowserError) as captured:
+                session.request(
+                    "human_type_stream",
+                    {
+                        "typing_stream": {
+                            "action": "begin",
+                            "stream_id": "s",
+                            "remaining_ms": 0,
+                        }
+                    },
+                )
+            receiver.join(timeout=1)
+            assert captured.value.code == BrowserErrorCode.TYPING_DEADLINE
+            assert captured.value.message == "typing_deadline_exceeded: 0 complete units"
+            assert [message["op"] for message in seen] == [
+                "human_type_stream",
+                "_cancel",
+            ]
             shim.close()
         finally:
             srv.stop()
@@ -285,14 +517,22 @@ class TestListener:
             port, token = S.read_discovery(path=tmp_path / "browser.port")
             work = _FakeShim(port, token)
             work.auth()
-            work.hello(["navigate", "profiles"], profile_id="work-uuid",
-                       profile={"window_count": 1, "tab_count": 2,
-                                "sample_tab_titles": ["Work Gmail"]})
+            work.hello(
+                ["navigate", "profiles"],
+                profile_id="work-uuid",
+                profile={"window_count": 1, "tab_count": 2, "sample_tab_titles": ["Work Gmail"]},
+            )
             home = _FakeShim(port, token)
             home.auth()
-            home.hello(["navigate", "profiles"], profile_id="home-uuid",
-                       profile={"window_count": 1, "tab_count": 1,
-                                "sample_tab_titles": ["Personal Gmail"]})
+            home.hello(
+                ["navigate", "profiles"],
+                profile_id="home-uuid",
+                profile={
+                    "window_count": 1,
+                    "tab_count": 1,
+                    "sample_tab_titles": ["Personal Gmail"],
+                },
+            )
             _wait_for_count(srv, 2)
             keys = set(srv.bridge._sessions.keys())
             assert ("chrome", "work-uuid") in keys
@@ -318,6 +558,7 @@ class TestListener:
 
 
 # --- helpers ---
+
 
 def _active(srv):
     return srv.bridge._active_session() if srv.bridge else None

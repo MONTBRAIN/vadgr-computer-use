@@ -14,6 +14,11 @@ import { OpFailed } from "./errors";
 // the box / hit-test checks apply; otherwise they're skipped so the op logic stays
 // unit-testable on a no-layout DOM.
 function layoutIsLive(doc: Document): boolean {
+  // A content script always runs inside a real Chromium document. Hidden or
+  // throttled targets can transiently report a zero root box between requests;
+  // treating that as a no-layout test DOM would bypass the covered-element
+  // gate. Keep the geometry checks mandatory in the extension context.
+  if (typeof chrome !== "undefined" && Boolean(chrome.runtime?.id)) return true;
   try {
     return doc.documentElement.getBoundingClientRect().height > 0;
   } catch {
@@ -40,12 +45,89 @@ export function isDisabled(el: Element): boolean {
   return el.getAttribute("aria-disabled") === "true";
 }
 
+const MAX_COMPOSED_DEPTH = 64;
+
+/** Hit-test through nested open shadow roots at one viewport point. */
+export function deepElementFromPoint(
+  doc: Document,
+  x: number,
+  y: number,
+): Element | null {
+  let hit = doc.elementFromPoint(x, y);
+  for (let depth = 0; hit && depth < MAX_COMPOSED_DEPTH; depth += 1) {
+    const root = hit.shadowRoot;
+    if (!root || root.mode !== "open" || !root.elementFromPoint) return hit;
+    const nested = root.elementFromPoint(x, y);
+    if (!nested || nested === hit) return hit;
+    hit = nested;
+  }
+  return hit;
+}
+
+/** Test containment across regular parents and open-shadow hosts. */
+export function composedContains(ancestor: Element, node: Element): boolean {
+  let current: Node | null = node;
+  for (let depth = 0; current && depth < MAX_COMPOSED_DEPTH; depth += 1) {
+    if (current === ancestor) return true;
+    if (current.parentNode) {
+      current = current.parentNode;
+      continue;
+    }
+    const root = current.getRootNode?.();
+    current = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
+}
+
+function positiveStackingCoverAtPoint(
+  target: HTMLElement,
+  x: number,
+  y: number,
+): boolean {
+  const view = target.ownerDocument.defaultView || window;
+  const targetZ = Number.parseInt(view.getComputedStyle(target).zIndex, 10) || 0;
+  const roots: (Document | ShadowRoot)[] = [target.ownerDocument];
+  for (let index = 0; index < roots.length; index += 1) {
+    for (const candidate of Array.from(roots[index].querySelectorAll("*"))) {
+      const element = candidate as HTMLElement;
+      if (element.shadowRoot?.mode === "open") roots.push(element.shadowRoot);
+      if (
+        element === target ||
+        composedContains(target, element) ||
+        composedContains(element, target)
+      ) continue;
+      const style = view.getComputedStyle(element);
+      if (
+        style.pointerEvents === "none" ||
+        style.display === "none" ||
+        style.visibility === "hidden"
+      ) continue;
+      const candidateZ = Number.parseInt(style.zIndex, 10);
+      if (!Number.isFinite(candidateZ) || candidateZ <= targetZ) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      ) return true;
+    }
+  }
+  return false;
+}
+
 // Receives events = the element is the hit target at its own centre, not behind an
 // overlay. Skipped without live layout (can't hit-test a no-layout DOM).
 export function receivesEvents(el: HTMLElement): boolean {
   if (!layoutIsLive(el.ownerDocument)) return true;
   const r = el.getBoundingClientRect();
-  const hit = el.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  const hit = deepElementFromPoint(
+    el.ownerDocument,
+    r.left + r.width / 2,
+    r.top + r.height / 2,
+  );
   // A null hit means the hit-test couldn't resolve, NOT that a DOM element covers
   // the target. A fully-occluded / throttled window (e.g. the agent-owned window,
   // opened unfocused, while the user works elsewhere) is not composited, so
@@ -53,8 +135,14 @@ export function receivesEvents(el: HTMLElement): boolean {
   // DOM overlay is blocking it. Only a DIFFERENT, unrelated element at the centre
   // (the hollow-mirror trap) is a real block; that always returns that element,
   // never null. So don't gate on a null hit.
-  if (hit === null) return true;
-  return hit === el || el.contains(hit) || hit.contains(el);
+  if (hit === null) {
+    return !positiveStackingCoverAtPoint(
+      el,
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+  }
+  return composedContains(el, hit) || composedContains(hit, el);
 }
 
 // Gate a mutating op. Throws OpFailed (so the agent RETARGETS - it must not

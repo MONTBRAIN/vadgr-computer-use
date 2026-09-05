@@ -1,0 +1,197 @@
+{
+  "archive_sha256": "7f229f3da9a0516c4d5b408e850b7682922d206c5de83dc8855842b1f34c97d2",
+  "archive_size": 9191829,
+  "builder": {
+    "pyinstaller": "6.22.2",
+    "uv": "0.12.6"
+  },
+  "files": [
+    {
+      "path": "_internal/_asyncio.pyd",
+      "sha256": "02c681521aa0eaa4822b206e2ed0cb51de969af86045846a52a321908e041f14",
+      "size": 59392
+    },
+    {
+      "path": "_internal/_bz2.pyd",
+      "sha256": "1cedba5927c6f00b4278c2b60b5696506ccc73af4859384a26160e1cf4945d01",
+      "size": 73216
+    },
+    {
+      "path": "_internal/_ctypes.pyd",
+      "sha256": "78edcd2a863472cded0f311eac31c778bc30fb9754fa815bb32c4e286eb7f155",
+      "size": 116224
+    },
+    {
+      "path": "_internal/_decimal.pyd",
+      "sha256": "14ec08311a3ee2248eaa332cec544bfda6a777bf649029303ee5675bb8ffa939",
+      "size": 248320
+    },
+    {
+      "path": "_internal/_hashlib.pyd",
+      "sha256": "0f234dd56319a354cbc103063e58ea25f57b05c0e3825bca0d608518e9c16583",
+      "size": 54784
+    },
+    {
+      "path": "_internal/_lzma.pyd",
+      "sha256": "31cfc6fd91059f0e4fd819a3381615db6639faaca7d5428c07c37fb64385b3da",
+      "size": 152576
+    },
+    {
+      "path": "_internal/_multiprocessing.pyd",
+      "sha256": "95303df7e7be0b75e67d64127b69704392267e50b2306f5ad45a9e64e7764aa2",
+      "size": 24064
+    },
+    {
+      "path": "_internal/_overlapped.pyd",
+      "sha256": "6a36b0102c76e6a931523725380ad8b9d4d559578c528f98110f7b42445feef3",
+      "size": 44032
+    },
+    {
+      "path": "_internal/_queue.pyd",
+      "sha256": "6f8dd84f376f5312b206acbe56d2a80eaea53cfadcf81f1c14fb97e75f82fc32",
+      "size": 20480
+    },
+    {
+      "path": "_internal/_socket.pyd",
+      "sha256": "df165b012ac7c7dbdd240bfec0237c215dea88ebcd988719658ca8afa4ec7692",
+      "size": 71680
+    },
+    {
+      "path": "_internal/_ssl.pyd",
+      "sha256": "480cce65c9b8fd755c5fafab5ba89b04dffd43ce64a1220b30c483e83f28fe6a",
+      "size": 164864
+    },
+    {
+      "path": "_internal/_uuid.pyd",
+      "sha256": "89b9c2751660b7821c4107f75821b3b705a6004e9a70517956c7cfb5edae7b42",
+      "size": 13824
+    },
+    {
+      "path": "_internal/_wmi.pyd",
+      "sha256": "01e899f2e92bb73c25edfe2d69a7bb55bd2814a1c3f9eeb115377c19b388ed7a",
+      "size": 25600
+    },
+    {
+      "path": "_internal/base_library.zip",
+      "sha256": "34c48547846665387cc7117a44a8526d3286a8554c917b4ba862f12bfb190023",
+      "size": 1333490
+    },
+    {
+      "path": "_internal/libcrypto-3-x64.dll",
+      "sha256": "7404fb0dc38e868aea1551ff8ceb3fce635ba6173439f882715a6e87e5237370",
+      "size": 7987712
+    },
+    {
+      "path": "_internal/libffi-8.dll",
+      "sha256": "634bca492b28c5d530f1bc321dd6d240b92c5013f3815f59653ec483890db27b",
+      "size": 28160
+    },
+    {
+      "path": "_internal/libssl-3-x64.dll",
+      "sha256": "48d349578f5584f15fd3501501e75e87c80369c6ed35f39de55fbb92bee02df5",
+      "size": 1583616
+    },
+    {
+      "path": "_internal/pyexpat.pyd",
+      "sha256": "7c7197db94612b3904ef0ada2a4940bcc6853136cc70f3523a4f26fffccbf37e",
+      "size": 210432
+    },
+    {
+      "path": "_internal/python312.dll",
+      "sha256": "53d38ecd2d9f4e19ac9328a715d1155e3e183473845e15d0044342909fc718a0",
+      "size": 6969856
+    },
+    {
+      "path": "_internal/select.pyd",
+      "sha256": "de108cd0108e8cdfb1f1e95e9fe6b3ede886aaa80a9fe86deb2619ec17d4e625",
+      "size": 18944
+    },
+    {
+      "path": "_internal/unicodedata.pyd",
+      "sha256": "f7cd7dfbc3c82be5f17fc61424ca316fa43b50193f3e633c5c042d62a47d0dd7",
+      "size": 1127936
+    },
+    {
+      "path": "_internal/VCRUNTIME140.dll",
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "size": 124544
+    },
+    {
+      "path": "_internal/VCRUNTIME140_1.dll",
+      "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
+      "size": 49792
+    },
+    {
+      "path": "PYINSTALLER-COPYING.txt",
+      "sha256": "dcf75fdb959db1e3b41c0f8505069d2ece781b5ec6b3d0a4d30975cfc6580245",
+      "size": 32138
+    },
+    {
+      "path": "PYTHON-LICENSE.txt",
+      "sha256": "886a0ead2d89030ee62dbff52b04e47ab91998341295bb9c56fb952b4e081c7a",
+      "size": 25066
+    },
+    {
+      "path": "vadgr-cua-browser-broker.exe",
+      "sha256": "87f659daf73950d4c700728140458cc733409d5449ba363e4b3e55c0753da252",
+      "size": 2764131
+    },
+    {
+      "path": "VADGR-CUA-LICENSE.txt",
+      "sha256": "68bc5331a19f6dfbbfd5a2751f73294a8a96f54ca677f675524b52253e1803cf",
+      "size": 10780
+    }
+  ],
+  "name": "vadgr-cua-browser-broker",
+  "python": {
+    "build": "20260825",
+    "distribution": "python-build-standalone",
+    "version": "3.12.14"
+  },
+  "schema": 1,
+  "source_commit": "dad2d5a81365b8cd76c09e4acbef6937ba116e35",
+  "source_files": [
+    {
+      "path": "computer_use/__init__.py",
+      "sha256": "27f53769f929f8437a873de948cd34c6912e0160bab71e5c50de5ac3fb8f5dd4"
+    },
+    {
+      "path": "computer_use/browser/bridge.py",
+      "sha256": "a53fd436756cdc7b14fdfce17680cbfd5398735dfc3e347b22df54f21420f02a"
+    },
+    {
+      "path": "computer_use/browser/broker.py",
+      "sha256": "9d85f41afbbb16afc2dd8aa1f53ec3f17ef13f9ed584755682d956dfab13d579"
+    },
+    {
+      "path": "computer_use/browser/native_host.py",
+      "sha256": "a1d2dc2e53df1c12ed4d990758bbc00e96d138b35430f86541d97e5c254e50bf"
+    },
+    {
+      "path": "computer_use/browser/ownership.py",
+      "sha256": "b905ad65e1895677e9d3afd8ca0a8684f1424bce8d151797c2f60819f0255077"
+    },
+    {
+      "path": "computer_use/browser/protocol.py",
+      "sha256": "68461563fd0eff3f9afd28dfa517e64b18d3e28fd914f000a2d7139889eab7bb"
+    },
+    {
+      "path": "computer_use/browser/server.py",
+      "sha256": "8b3ed3b4a9a003c24f9cedfca4b59552fac2b05910425c73d5de233d10c06f35"
+    },
+    {
+      "path": "computer_use/browser/windows_acl.py",
+      "sha256": "b8143ec70f9bbc983cebc07724bef7066b641be28c313eca733847a36837789d"
+    },
+    {
+      "path": "computer_use/browser/windows_broker_entry.py",
+      "sha256": "a51979d4197da19ab94dcff935980beef8b946c532ebd31b4fafa2d3ea6bb3ed"
+    },
+    {
+      "path": "computer_use/setup/extension_setup.py",
+      "sha256": "2ba554ceab02afdda30996264d65245bd3169b3b22b9f6abd6cc94ce230cb61d"
+    }
+  ],
+  "target": "x86_64-pc-windows-msvc",
+  "version": "0.7.6"
+}

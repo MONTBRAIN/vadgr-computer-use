@@ -46,6 +46,7 @@ SUPPORTED_OPS: tuple[str, ...] = (
     "get_attribute",
     "click",
     "type",
+    "human_type_stream",
     "fill",
     "select",
     "scroll",
@@ -81,14 +82,26 @@ class BrowserErrorCode(str, Enum):
     look transient, or the agent loop-retries and burns turns.
     """
 
-    NOT_SET_UP = "not_set_up"          # no native-host manifest registered
-    NOT_CONNECTED = "not_connected"    # manifest on disk, no live session
+    NOT_SET_UP = "not_set_up"  # no native-host manifest registered
+    NOT_CONNECTED = "not_connected"  # manifest on disk, no live session
     OP_UNSUPPORTED = "op_unsupported"  # connected extension too old for this op
     PROTO_MISMATCH = "proto_mismatch"  # envelope versions incompatible
-    WAKING = "waking"                  # session existed; SW asleep (retryable)
-    OP_FAILED = "op_failed"            # op ran in-page but failed
-    TARGET_LOST = "target_lost"        # pinned tab/window closed (terminal)
+    WAKING = "waking"  # session existed; SW asleep (retryable)
+    OP_FAILED = "op_failed"  # op ran in-page but failed
+    TARGET_LOST = "target_lost"  # pinned tab/window closed (terminal)
     PROFILE_AMBIGUOUS = "profile_ambiguous"  # >1 profile connected, none chosen (terminal)
+    TARGET_OWNED = "target_owned_by_another_client"
+    RECOVERY_TIMEOUT = "recovery_timed_out"
+    EXTENSION_DISABLED = "extension_disabled"
+    EXTENSION_MISSING = "extension_missing"
+    TYPING_MISMATCH = "typing_mismatch"
+    TYPING_DEADLINE = "typing_deadline_exceeded"
+    TYPING_CANCELLED = "typing_cancelled"
+    TYPING_STATE_UNCERTAIN = "typing_state_uncertain"
+    INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED = "inactive_tab_trusted_keyboard_unsupported"
+    TARGET_DISCARDED = "target_discarded"
+    TARGET_FROZEN = "target_frozen"
+    TARGET_RESTRICTED = "target_restricted"
 
 
 # Codes that are transient and worth an automatic retry. Everything else is
@@ -183,6 +196,17 @@ def op_message(msg_id: int, op: str, params: dict[str, Any]) -> dict[str, Any]:
 _WIRE_CODES: dict[str, BrowserErrorCode] = {
     "target_lost": BrowserErrorCode.TARGET_LOST,
     "op_unsupported": BrowserErrorCode.OP_UNSUPPORTED,
+    "target_owned_by_another_client": BrowserErrorCode.TARGET_OWNED,
+    "typing_mismatch": BrowserErrorCode.TYPING_MISMATCH,
+    "typing_cancelled": BrowserErrorCode.TYPING_CANCELLED,
+    "typing_deadline_exceeded": BrowserErrorCode.TYPING_DEADLINE,
+    "typing_state_uncertain": BrowserErrorCode.TYPING_STATE_UNCERTAIN,
+    "inactive_tab_trusted_keyboard_unsupported": (
+        BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED
+    ),
+    "target_discarded": BrowserErrorCode.TARGET_DISCARDED,
+    "target_frozen": BrowserErrorCode.TARGET_FROZEN,
+    "target_restricted": BrowserErrorCode.TARGET_RESTRICTED,
 }
 
 # Per-code remediation for terminal errors surfaced from the extension.
@@ -191,6 +215,21 @@ _WIRE_REMEDIATION: dict[BrowserErrorCode, str] = {
         "run `tabs(op='list')` to see the open windows/tabs, then "
         "`use_target(window_id, tab_id)` to re-pin the real tab; or "
         "`use_target(mode='owned')` to open a fresh owned window"
+    ),
+    BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED: (
+        "use a selector-based browser operation such as type/fill when it is "
+        "equivalent; a trusted key command requires the target tab and window "
+        "to be active, and Vadgr will not activate them implicitly"
+    ),
+    BrowserErrorCode.TARGET_DISCARDED: (
+        "reload or explicitly activate the discarded tab before using page operations"
+    ),
+    BrowserErrorCode.TARGET_FROZEN: (
+        "explicitly activate the frozen tab before using page operations"
+    ),
+    BrowserErrorCode.TARGET_RESTRICTED: ("choose a normal web page where the extension has access"),
+    BrowserErrorCode.TYPING_STATE_UNCERTAIN: (
+        "inspect the target state before deciding whether to retry"
     ),
 }
 

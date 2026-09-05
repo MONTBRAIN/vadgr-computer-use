@@ -1,12 +1,17 @@
 """Tests for the MCP server tool wrappers."""
 
+import asyncio
 import io
+import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
 from PIL import Image as PILImage
 
 from computer_use.core.types import Platform, ScreenState
+
+pytestmark = pytest.mark.usefixtures("schema_six_typing_runtime")
 
 
 def _make_png(width: int, height: int) -> bytes:
@@ -124,6 +129,7 @@ class TestCoordinateScaling:
 
     def _set_scale(self, sx, sy, ox=0, oy=0):
         import computer_use.mcp_server as mod
+
         mod._scale_x = sx
         mod._scale_y = sy
         mod._offset_x = ox
@@ -214,19 +220,91 @@ class TestMouseTools:
 
 
 class TestKeyboardTools:
-    def test_type_text(self, mock_engine):
+    @pytest.mark.asyncio
+    async def test_type_text(self, mock_engine):
         from computer_use.mcp_server import type_text
 
-        result = type_text("hello world")
-        assert "hello world" in result
+        result = await type_text("hello world")
+        assert result["human"] is False
+        assert result["units"] == 11
+        assert "hello world" not in str(result)
         mock_engine.type_text.assert_called_once_with("hello world")
 
-    def test_type_text_long_truncates_preview(self, mock_engine):
+    @pytest.mark.asyncio
+    async def test_type_text_does_not_return_input_text(self, mock_engine):
         from computer_use.mcp_server import type_text
 
         long_text = "a" * 100
-        result = type_text(long_text)
-        assert "..." in result
+        result = await type_text(long_text)
+        assert result["units"] == 100
+        assert long_text not in str(result)
+
+    @pytest.mark.asyncio
+    async def test_human_type_cancellation_returns_truthful_completed_units(self, mock_engine):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from computer_use.core.typing import TypingCancelled
+        from computer_use.mcp_server import type_text
+
+        def cancellable(_text, _plan, *, cancelled):
+            while not cancelled():
+                time.sleep(0.005)
+            raise TypingCancelled(2)
+
+        mock_engine.type_text.side_effect = cancellable
+        task = asyncio.create_task(type_text("hello", human=True))
+        await asyncio.sleep(0.03)
+        task.cancel()
+
+        with pytest.raises(ToolError, match="typing_cancelled: 2 complete units"):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_cooperative_worker_success_does_not_swallow_task_cancellation(self):
+        import computer_use.mcp_server as mod
+
+        cancelled = threading.Event()
+
+        def return_after_cancel():
+            while not cancelled.is_set():
+                time.sleep(0.005)
+            return "late success"
+
+        task = asyncio.create_task(mod._run_cooperative_thread(return_after_cancel, cancelled))
+        await asyncio.sleep(0.03)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_human_type_has_no_implicit_total_deadline(self, mock_engine):
+        from computer_use.mcp_server import type_text
+
+        mock_engine.type_text.return_value = 0
+        result = await type_text("a" * 400, human=True, wpm=10, iki_cv=0)
+        assert result["predicted_ms"] > 60_000
+        assert result["units"] == 400
+
+    @pytest.mark.asyncio
+    async def test_human_type_explicit_deadline_refuses_before_input(self, mock_engine):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from computer_use.mcp_server import type_text
+
+        with pytest.raises(ToolError, match="typing_deadline_exceeded: 0 complete units"):
+            await type_text("abcdef", human=True, wpm=10, iki_cv=0, timeout=100)
+        mock_engine.type_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_human_type_runtime_deadline_is_a_named_tool_error(self, mock_engine):
+        from mcp.server.mcpserver.exceptions import ToolError
+
+        from computer_use.core.typing import TypingDeadlineExceeded
+        from computer_use.mcp_server import type_text
+
+        mock_engine.type_text.side_effect = TypingDeadlineExceeded(3)
+        with pytest.raises(ToolError, match="typing_deadline_exceeded: 3 complete units"):
+            await type_text("abcdef", human=True, wpm=200, iki_cv=0, timeout=10_000)
 
     def test_key_press_single(self, mock_engine):
         from computer_use.mcp_server import key_press
@@ -246,6 +324,32 @@ class TestKeyboardTools:
 
         key_press("ctrl+shift+s")
         mock_engine.key_press.assert_called_once_with("ctrl", "shift", "s")
+
+
+class TestBrowserCancellation:
+    @pytest.mark.asyncio
+    async def test_human_browser_cancel_returns_named_progress(self, monkeypatch):
+        from computer_use.browser.protocol import BrowserError, BrowserErrorCode
+        from computer_use.mcp_server import browser
+
+        def cancellable(*, op, **params):
+            assert op == "type"
+            while not params["_cancelled"]():
+                time.sleep(0.005)
+            raise BrowserError(
+                BrowserErrorCode.TYPING_CANCELLED,
+                "typing_cancelled: 3 complete units",
+            )
+
+        monkeypatch.setattr("computer_use.mcp_server._browser_impl.browser", cancellable)
+        task = asyncio.create_task(browser(op="type", selector="#field", text="hello", human=True))
+        await asyncio.sleep(0.03)
+        task.cancel()
+
+        with pytest.raises(BrowserError) as captured:
+            await task
+        assert captured.value.code == BrowserErrorCode.TYPING_CANCELLED
+        assert "3 complete units" in captured.value.message
 
 
 class TestInfoTools:
@@ -302,7 +406,6 @@ class TestInfoTools:
         result = get_platform_info()
         assert result["platform"] == "wsl2"
         assert result["backend_available"] is True
-
 
 
 class TestScreenshotRegionScalePreservation:
@@ -444,12 +547,11 @@ class TestImageEncoding:
 
         img = PILImage.new("RGB", (1366, 800), color=(245, 245, 250))  # window bg
         draw = ImageDraw.Draw(img)
-        draw.rectangle([0, 0, 1366, 60], fill=(30, 30, 35))             # title bar
-        draw.rectangle([0, 60, 240, 800], fill=(220, 220, 230))          # sidebar
-        draw.rectangle([260, 80, 1340, 120], fill=(255, 255, 255))      # search bar
-        for i in range(20):                                              # list rows
-            draw.rectangle([260, 140 + i * 30, 1340, 160 + i * 30],
-                           fill=(250, 250, 255))
+        draw.rectangle([0, 0, 1366, 60], fill=(30, 30, 35))  # title bar
+        draw.rectangle([0, 60, 240, 800], fill=(220, 220, 230))  # sidebar
+        draw.rectangle([260, 80, 1340, 120], fill=(255, 255, 255))  # search bar
+        for i in range(20):  # list rows
+            draw.rectangle([260, 140 + i * 30, 1340, 160 + i * 30], fill=(250, 250, 255))
             draw.text((280, 145 + i * 30), f"Item {i}", fill=(40, 40, 50))
         # A small noise band so PNG can't trivially win on flat fills.
         pixels = img.load()
@@ -573,9 +675,7 @@ class TestNativeWindowsImport:
         import sys
 
         for name in list(sys.modules):
-            if name == "computer_use.mcp_server" or name.startswith(
-                "computer_use.bridge"
-            ):
+            if name == "computer_use.mcp_server" or name.startswith("computer_use.bridge"):
                 del sys.modules[name]
 
         importlib.import_module("computer_use.mcp_server")
@@ -594,9 +694,11 @@ class TestNativeWindowsImport:
             return real_import(name, *args, **kwargs)
 
         for mod_name in list(sys.modules):
-            if mod_name == "fcntl" or mod_name.startswith(
-                "computer_use.bridge"
-            ) or mod_name == "computer_use.mcp_server":
+            if (
+                mod_name == "fcntl"
+                or mod_name.startswith("computer_use.bridge")
+                or mod_name == "computer_use.mcp_server"
+            ):
                 sys.modules.pop(mod_name, None)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)

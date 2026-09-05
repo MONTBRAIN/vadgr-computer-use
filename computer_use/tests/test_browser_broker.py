@@ -1,0 +1,510 @@
+import io
+import socket
+import threading
+import time
+from types import SimpleNamespace
+
+import pytest
+
+from computer_use.browser import broker_client
+from computer_use.browser.bridge import BridgeStatus
+from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrokerServer, BrowserBroker
+from computer_use.browser.ownership import OwnershipConflict
+from computer_use.browser.protocol import BrowserError
+
+
+def test_broker_client_eof_cancels_an_active_request():
+    server = object.__new__(BrokerServer)
+    server.broker = type("BlockingBroker", (), {})()
+    entered = threading.Event()
+    observed = {}
+
+    def request(_state, _op, _params, *, cancelled):
+        entered.set()
+        while not cancelled():
+            time.sleep(0.005)
+        observed["cancelled"] = True
+        return {"stopped": True}
+
+    server.broker.request = request
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    peer = socket.create_connection(listener.getsockname())
+    local, _ = listener.accept()
+    listener.close()
+    result = {}
+
+    def run():
+        result["value"] = server._request_while_client_connected(
+            local,
+            object(),
+            {"op": "human_type_stream", "params": {}},
+            threading.Event(),
+        )
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    assert entered.wait(1)
+    peer.close()
+    worker.join(timeout=1)
+    local.close()
+    assert not worker.is_alive()
+    assert observed == {"cancelled": True}
+    assert result == {"value": {"stopped": True}}
+
+
+def test_broker_client_retries_cancel_until_request_registration(monkeypatch):
+    client = broker_client.BrokerClient()
+    client._file = object()
+    attempts = []
+
+    monkeypatch.setattr(client, "_write", lambda _file, _message: None)
+
+    def read_after_cancel_registration(_file):
+        deadline = time.monotonic() + 1
+        while len(attempts) < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        return {"ok": True, "result": {"stopped": True}}
+
+    monkeypatch.setattr(client, "_read", read_after_cancel_registration)
+
+    def cancel_after_registration(request_id):
+        attempts.append(request_id)
+        return len(attempts) >= 2
+
+    monkeypatch.setattr(client, "_send_cancel", cancel_after_registration)
+
+    assert client.send("human_type_stream", _cancelled=lambda: True) == {"stopped": True}
+    assert attempts == [1, 1]
+
+
+def test_broker_client_disconnect_aborts_a_stream_between_requests():
+    server = object.__new__(BrokerServer)
+    server.auth_token = "token"
+    server._stop = threading.Event()
+    server._requests = {}
+    server._requests_lock = threading.Lock()
+    state = SimpleNamespace(client_id="client", secret="secret", active_requests=0, last_seen=0.0)
+    calls = []
+
+    class FakeBroker:
+        epoch = "epoch"
+        _lock = threading.Lock()
+
+        def connect(self, _client_id, _secret):
+            return state
+
+        def request(self, _state, op, params, *, cancelled=None):
+            calls.append((op, dict(params)))
+            return {"ok": True}
+
+        def disconnect(self, _state):
+            calls.append(("disconnect", {}))
+
+    server.broker = FakeBroker()
+    local, peer = socket.socketpair()
+    worker = threading.Thread(target=server._serve_client, args=(local,))
+    worker.start()
+    file = peer.makefile("rwb")
+    BrokerServer._write_line(file, {"token": "token"})
+    assert BrokerServer._read_line(file)["ok"] is True
+    BrokerServer._write_line(
+        file,
+        {
+            "id": 1,
+            "op": "human_type_stream",
+            "params": {
+                "selector": "#n",
+                "typing_stream": {"action": "begin", "stream_id": "stream"},
+            },
+        },
+    )
+    assert BrokerServer._read_line(file)["ok"] is True
+    peer.shutdown(socket.SHUT_RDWR)
+    file.close()
+    peer.close()
+    worker.join(timeout=1)
+    assert not worker.is_alive()
+    assert calls[0][1]["typing_stream"]["action"] == "begin"
+    assert calls[1][1]["typing_stream"] == {"action": "abort", "stream_id": "stream"}
+    assert calls[2] == ("disconnect", {})
+
+
+class ExtensionBridge:
+    def __init__(self):
+        self.calls = []
+        self.windows = [
+            {
+                "window_id": 1,
+                "focused": False,
+                "owned": False,
+                "tabs": [
+                    {"window_id": 1, "tab_id": 10, "url": "https://one.test", "title": "one"},
+                    {"window_id": 1, "tab_id": 11, "url": "https://two.test", "title": "two"},
+                ],
+            }
+        ]
+        self.current = None
+        self.next_window = 2
+        self.next_tab = 100
+
+    def status(self):
+        return BridgeStatus(True, ["chrome"], True, None, [])
+
+    def send(self, op, /, **params):
+        self.calls.append((op, dict(params)))
+        if op == "profiles":
+            return {
+                "profiles": [
+                    {
+                        "profile_id": "profile-one",
+                        "browser": "chrome",
+                        "is_current": True,
+                        "window_count": len(self.windows),
+                        "tab_count": sum(len(window["tabs"]) for window in self.windows),
+                        "sample_tab_titles": ["one"],
+                    }
+                ]
+            }
+        if op == "tabs" and params.get("op") == "list":
+            return {"windows": self.windows}
+        if op == "windows" and params.get("op") == "open":
+            window_id = self.next_window
+            self.next_window += 1
+            tab_id = window_id * 10
+            self.windows.append(
+                {
+                    "window_id": window_id,
+                    "focused": False,
+                    "owned": True,
+                    "tabs": [{"window_id": window_id, "tab_id": tab_id, "url": "", "title": ""}],
+                }
+            )
+            return {"window_id": window_id, "tab_id": tab_id, "created": True}
+        if op == "tabs" and params.get("op") == "open":
+            window_id = int(params["window_id"])
+            window = next(item for item in self.windows if item["window_id"] == window_id)
+            tab_id = self.next_tab
+            self.next_tab += 1
+            window["tabs"].append(
+                {"window_id": window_id, "tab_id": tab_id, "url": "", "title": ""}
+            )
+            return {"window_id": window_id, "tab_id": tab_id, "created": True}
+        if op == "use_target":
+            self.current = (params.get("window_id"), params.get("tab_id"))
+            return {"window_id": self.current[0], "tab_id": self.current[1], "created": False}
+        if op == "read_text":
+            target = params.get("_target")
+            return {"value": f"target-{target['tab_id']}"}
+        raise AssertionError((op, params))
+
+
+def test_two_clients_get_distinct_owned_windows_and_exact_routing():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    one = broker.connect(None, None)
+    two = broker.connect(None, None)
+    target_one = broker.request(one, "use_target", {"mode": "owned"})
+    target_two = broker.request(two, "use_target", {"mode": "owned"})
+    assert target_one["window_id"] != target_two["window_id"]
+    assert broker.request(one, "read_text", {})["value"] == f"target-{target_one['tab_id']}"
+    assert broker.request(two, "read_text", {})["value"] == f"target-{target_two['tab_id']}"
+
+
+def test_use_target_inline_profile_selects_before_ambiguity_check():
+    class TwoProfileBridge(ExtensionBridge):
+        def send(self, op, /, **params):
+            if op == "profiles":
+                self.calls.append((op, dict(params)))
+                return {
+                    "profiles": [
+                        {"profile_id": "profile-one", "browser": "chrome"},
+                        {"profile_id": "profile-two", "browser": "chrome"},
+                    ]
+                }
+            return super().send(op, **params)
+
+    extension = TwoProfileBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+
+    target = broker.request(
+        client,
+        "use_target",
+        {"mode": "owned", "profile_id": "profile-two"},
+    )
+
+    assert client.profile_id == "profile-two"
+    assert target["created"] is True
+    assert any(
+        operation == "windows" and params.get("profile_id") == "profile-two"
+        for operation, params in extension.calls
+    )
+
+
+def test_listings_show_mine_other_and_unowned_without_hiding_targets():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    one = broker.connect(None, None)
+    two = broker.connect(None, None)
+    broker.request(one, "tabs", {"op": "claim", "tab_id": 10})
+    first = broker.request(one, "tabs", {"op": "list"})
+    second = broker.request(two, "tabs", {"op": "list"})
+    one_tabs = first["windows"][0]["tabs"]
+    two_tabs = second["windows"][0]["tabs"]
+    assert [tab["ownership"]["state"] for tab in one_tabs] == ["mine", "unowned"]
+    assert [tab["ownership"]["state"] for tab in two_tabs] == ["other", "unowned"]
+
+
+def test_reconnect_secret_restores_client_state_inside_grace():
+    broker = BrowserBroker(ExtensionBridge())
+    original = broker.connect(None, None)
+    broker.request(original, "tabs", {"op": "claim", "tab_id": 10})
+    broker.disconnect(original)
+    restored = broker.connect(original.client_id, original.secret)
+    assert restored is original
+    assert restored.tab_id == 10
+    assert broker.request(restored, "read_text", {})["value"] == "target-10"
+
+
+def test_worker_recovery_keeps_selected_profile_and_original_target():
+    class RestartingProfileBridge(ExtensionBridge):
+        def __init__(self):
+            super().__init__()
+            self.profile_lists = 0
+
+        def send(self, op, /, **params):
+            if op == "profiles":
+                self.profile_lists += 1
+                if self.profile_lists == 2:
+                    return {"profiles": [{"profile_id": "other-profile", "browser": "chrome"}]}
+            return super().send(op, **params)
+
+    extension = RestartingProfileBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+    extension.calls.clear()
+
+    result = broker.request(client, "read_text", {})
+
+    assert result["value"] == "target-10"
+    assert client.profile_id == "profile-one"
+    assert client.window_id == 1
+    assert client.tab_id == 10
+    assert [operation for operation, _params in extension.calls].count("read_text") == 1
+    assert (
+        next(params for operation, params in extension.calls if operation == "read_text")[
+            "profile_id"
+        ]
+        == "profile-one"
+    )
+
+
+def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
+    broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
+    client = broker.connect(None, None)
+    listed = broker.request(client, "tabs", {"op": "list"})
+    assert listed["windows"][0]["ownership"]["state"] == "orphaned"
+    assert all(tab["ownership"]["state"] == "orphaned" for tab in listed["windows"][0]["tabs"])
+    claimed = broker.request(client, "windows", {"op": "claim", "window_id": 1})
+    assert claimed["ownership"]["state"] == "mine"
+
+
+def test_two_clients_racing_for_one_tab_have_one_atomic_winner():
+    broker = BrowserBroker(ExtensionBridge())
+    clients = [broker.connect(None, None), broker.connect(None, None)]
+    start = threading.Barrier(2)
+    outcomes = []
+
+    def claim(client):
+        start.wait()
+        try:
+            broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+            outcomes.append("won")
+        except OwnershipConflict:
+            outcomes.append("lost")
+
+    threads = [threading.Thread(target=claim, args=(client,)) for client in clients]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+    assert sorted(outcomes) == ["lost", "won"]
+
+
+def test_expired_disconnected_client_becomes_orphaned_and_reclaimable():
+    broker = BrowserBroker(ExtensionBridge())
+    old = broker.connect(None, None)
+    broker.request(old, "tabs", {"op": "claim", "tab_id": 10})
+    broker.disconnect(old)
+    old.lost_at = time.monotonic() - LEASE_GRACE_SECONDS - 1
+    broker.reap()
+    survivor = broker.connect(None, None)
+    listed = broker.request(survivor, "tabs", {"op": "list"})
+    assert listed["windows"][0]["tabs"][0]["ownership"]["state"] == "orphaned"
+    assert (
+        broker.request(survivor, "tabs", {"op": "claim", "tab_id": 10})["ownership"]["state"]
+        == "mine"
+    )
+
+
+def test_paced_request_does_not_hold_a_profile_wide_lock():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class ConcurrentBridge(ExtensionBridge):
+        def send(self, op, /, **params):
+            if op == "slow":
+                entered.set()
+                assert release.wait(2)
+                return {"slow": True}
+            return super().send(op, **params)
+
+    broker = BrowserBroker(ConcurrentBridge())
+    slow_client = broker.connect(None, None)
+    fast_client = broker.connect(None, None)
+    broker.request(slow_client, "tabs", {"op": "claim", "tab_id": 10})
+    broker.request(fast_client, "tabs", {"op": "claim", "tab_id": 11})
+    thread = threading.Thread(target=lambda: broker.request(slow_client, "slow", {}), daemon=True)
+    thread.start()
+    assert entered.wait(1)
+    assert broker.request(fast_client, "read_text", {})["value"] == "target-11"
+    release.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
+def test_wsl_uses_windows_stdio_proxy_for_a_native_windows_broker(monkeypatch):
+    class Proxy:
+        stdin = io.BytesIO()
+        stdout = io.BytesIO()
+
+        @staticmethod
+        def poll():
+            return None
+
+        @staticmethod
+        def terminate():
+            return None
+
+    proxy = Proxy()
+    monkeypatch.setattr(broker_client, "_running_under_wsl", lambda: True)
+    monkeypatch.setattr("computer_use.browser.windows_broker.open_windows_proxy", lambda: proxy)
+    transport, file = broker_client.BrokerClient._open_transport(
+        {"host": "127.0.0.1", "platform": "win32"}
+    )
+    assert transport is proxy
+    assert file._process is proxy
+
+
+def test_wsl_missing_interop_returns_the_named_remedy(monkeypatch):
+    client = broker_client.BrokerClient(connect_timeout=0.01)
+    monkeypatch.setattr(
+        "computer_use.browser.windows_broker.expected_bundle_hash", lambda: "a" * 64
+    )
+    monkeypatch.setattr(
+        client,
+        "_start_broker",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("powershell.exe")),
+    )
+
+    with pytest.raises(BrowserError) as captured:
+        client._connect_through_windows_proxy()
+
+    assert captured.value.code.value == "not_connected"
+    assert captured.value.remediation == (
+        "enable Windows interop and retry; cua never changes WSL networking"
+    )
+
+
+def test_broker_socket_transport_never_maps_loopback_to_the_wsl_gateway():
+    assert broker_client._endpoint_host({"host": "127.0.0.1", "platform": "win32"}) == "127.0.0.1"
+
+
+def test_existing_foreign_target_is_rejected_before_extension_dispatch():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    owner = broker.connect(None, None)
+    other = broker.connect(None, None)
+    broker.request(owner, "tabs", {"op": "claim", "tab_id": 10})
+    extension.calls.clear()
+
+    with pytest.raises(OwnershipConflict):
+        broker.request(other, "use_target", {"mode": "attach", "tab_id": 10})
+
+    assert not any(op == "use_target" for op, _params in extension.calls)
+
+
+def test_owned_mode_does_not_reuse_a_tab_only_lease():
+    broker = BrowserBroker(ExtensionBridge())
+    client = broker.connect(None, None)
+    broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+
+    target = broker.request(client, "use_target", {"mode": "owned"})
+
+    assert target["window_id"] == 2
+    assert target["ownership"]["scope"] == "window"
+
+
+def test_releasing_a_noncurrent_window_preserves_current_target():
+    broker = BrowserBroker(ExtensionBridge())
+    client = broker.connect(None, None)
+    first = broker.request(client, "windows", {"op": "open"})
+    second = broker.request(client, "windows", {"op": "open"})
+
+    broker.request(client, "windows", {"op": "release", "window_id": first["window_id"]})
+
+    assert client.window_id == second["window_id"]
+    assert client.tab_id == second["tab_id"]
+
+
+@pytest.mark.parametrize("scope", ["tab", "window"])
+def test_releasing_current_target_preserves_stale_fence(scope):
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    opened = broker.request(client, "windows", {"op": "open"})
+    old_revision = client.revision
+
+    if scope == "window":
+        broker.request(client, "windows", {"op": "release", "window_id": opened["window_id"]})
+    else:
+        broker.request(client, "windows", {"op": "release", "window_id": opened["window_id"]})
+        broker.request(client, "tabs", {"op": "claim", "tab_id": opened["tab_id"]})
+        old_revision = client.revision
+        broker.request(client, "tabs", {"op": "release", "tab_id": opened["tab_id"]})
+
+    extension.calls.clear()
+    assert client.window_id == opened["window_id"]
+    assert client.tab_id == opened["tab_id"]
+    assert client.revision == old_revision
+    with pytest.raises(OwnershipConflict):
+        broker.request(client, "read_text", {})
+    assert [op for op, _params in extension.calls] == ["profiles"]
+
+
+def test_tab_open_uses_the_explicit_owned_window_not_the_current_window():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    first = broker.request(client, "windows", {"op": "open"})
+    broker.request(client, "windows", {"op": "open"})
+
+    opened = broker.request(
+        client,
+        "tabs",
+        {"op": "open", "window_id": first["window_id"], "background": True},
+    )
+
+    assert opened["window_id"] == first["window_id"]
+    assert opened["ownership"]["scope"] == "window"
+
+
+def test_tab_claim_rejects_a_mismatched_window_id():
+    broker = BrowserBroker(ExtensionBridge())
+    client = broker.connect(None, None)
+
+    with pytest.raises(BrowserError, match="not in window 99"):
+        broker.request(client, "tabs", {"op": "claim", "tab_id": 10, "window_id": 99})

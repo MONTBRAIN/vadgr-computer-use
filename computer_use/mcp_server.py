@@ -4,10 +4,18 @@ Run: python -m computer_use.mcp_server [--transport stdio|sse] [--max-width 1366
 """
 
 import argparse
+import functools
 import io
 import logging
+import math
 import os
+import queue
 import sys
+import threading
+import time as _time_module
+from importlib.metadata import PackageNotFoundError, version
+
+import anyio
 
 _DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
@@ -19,6 +27,37 @@ logging.basicConfig(
 logger = logging.getLogger("computer_use.mcp_server")
 _DEBUG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".debug")
 _debug_counter = 0
+
+
+async def _run_cooperative_thread(call, cancellation: threading.Event):
+    """Cancel between complete units, then return the worker's truthful outcome."""
+    outcome: queue.SimpleQueue = queue.SimpleQueue()
+
+    def run() -> None:
+        try:
+            outcome.put((True, call()))
+        except BaseException as error:
+            outcome.put((False, error))
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    cancellation_error = None
+    try:
+        while worker.is_alive():
+            await anyio.sleep(0.02)
+    except anyio.get_cancelled_exc_class() as error:
+        cancellation_error = error
+        cancellation.set()
+        with anyio.CancelScope(shield=True):
+            while worker.is_alive():
+                await anyio.sleep(0.02)
+    worker.join()
+    ok, value = outcome.get_nowait()
+    if ok:
+        if cancellation_error is not None:
+            raise cancellation_error
+        return value
+    raise value
 
 
 def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
@@ -33,7 +72,9 @@ def _debug_save(data: bytes, prefix: str = "screenshot") -> None:
         f.write(data)
     logger.info("Debug screenshot saved: %s", path)
 
+
 from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as PILImage
 
 from computer_use.core import REGISTRY, Risk, Tier, tool
@@ -106,6 +147,7 @@ def _get_engine():
     global _engine, _MAX_WIDTH
     if _engine is None:
         from computer_use.core.engine import ComputerUseEngine
+
         _engine = ComputerUseEngine()
         logger.info("Engine initialized (platform=%s)", _engine.get_platform().value)
         if _MAX_WIDTH == 0:
@@ -181,7 +223,10 @@ def _downscale(
         data, image_format = _encode_image(img, fmt)
         logger.debug(
             "No resize (%dx%d), encoded as %s, %d bytes",
-            real_w, real_h, fmt, len(data),
+            real_w,
+            real_h,
+            fmt,
+            len(data),
         )
         return data, image_format
 
@@ -197,7 +242,13 @@ def _downscale(
     data, image_format = _encode_image(img, fmt)
     logger.debug(
         "Resized %dx%d -> %dx%d (scale %.2fx) as %s, %d bytes",
-        real_w, real_h, new_w, new_h, _scale_x, fmt, len(data),
+        real_w,
+        real_h,
+        new_w,
+        new_h,
+        _scale_x,
+        fmt,
+        len(data),
     )
     return data, image_format
 
@@ -232,18 +283,14 @@ def screenshot(format: str = "jpeg") -> Image:
     engine = _get_engine()
     state = engine.screenshot()
     fmt = _resolve_format(format)
-    data, image_format = _downscale(
-        state.image_bytes, state.offset_x, state.offset_y, fmt=fmt
-    )
+    data, image_format = _downscale(state.image_bytes, state.offset_x, state.offset_y, fmt=fmt)
     _debug_save(data, "screenshot")
     return Image(data=data, format=image_format)
 
 
 @mcp.tool()
 @tool(name="screenshot_region", tier=Tier.TWO, risk=Risk.READ_ONLY)
-def screenshot_region(
-    x: int, y: int, width: int, height: int, format: str = "jpeg"
-) -> Image:
+def screenshot_region(x: int, y: int, width: int, height: int, format: str = "jpeg") -> Image:
     """Capture a rectangular region of the screen. Coordinates are in display space.
 
     Format options match screenshot(): "jpeg" (default), "png", "thumbnail".
@@ -325,12 +372,79 @@ def drag(start_x: int, start_y: int, end_x: int, end_y: int, duration: float = 0
 
 @mcp.tool()
 @tool(name="type_text", tier=Tier.TWO, risk=Risk.MEDIUM)
-def type_text(text: str) -> str:
-    """Type text into the focused field."""
+async def type_text(
+    text: str,
+    human: bool = False,
+    timing_profile: str | None = None,
+    wpm: int | None = None,
+    iki_cv: float | None = None,
+    timeout: int | None = None,
+) -> dict[str, object]:
+    """Type text into the focused field, optionally with human-paced timing."""
+    from computer_use.core.typing import (
+        TypingCancelled,
+        TypingDeadlineExceeded,
+        TypingOptions,
+        build_typing_plan,
+        require_typing_deadline,
+    )
+
+    started = _time_module.monotonic()
+    if timeout is not None and (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError("timeout must be a positive finite number of milliseconds")
+    deadline = started + timeout / 1000 if timeout is not None else None
+    plan = build_typing_plan(
+        text,
+        TypingOptions(
+            human=human,
+            timing_profile=timing_profile,
+            wpm=wpm,
+            iki_cv=iki_cv,
+        ),
+    )
+    if human and deadline is not None:
+        try:
+            require_typing_deadline(plan, (deadline - _time_module.monotonic()) * 1000)
+        except TypingDeadlineExceeded as error:
+            raise ToolError(str(error)) from error
     engine = _get_engine()
-    engine.type_text(text)
-    preview = text[:50] + "..." if len(text) > 50 else text
-    return f"Typed: {preview}"
+    if human:
+        cancelled = threading.Event()
+        execution = {
+            "cancelled": cancelled.is_set,
+        }
+        if deadline is not None:
+            execution["deadline"] = deadline
+        try:
+            fallback_units = await _run_cooperative_thread(
+                functools.partial(
+                    engine.type_text,
+                    text,
+                    plan,
+                    **execution,
+                ),
+                cancelled,
+            )
+        except (TypingCancelled, TypingDeadlineExceeded) as error:
+            raise ToolError(str(error)) from error
+    else:
+        await anyio.to_thread.run_sync(engine.type_text, text)
+    elapsed_ms = round((_time_module.monotonic() - started) * 1000)
+    if human:
+        result = plan.metadata(elapsed_ms=elapsed_ms)
+        result["fallback_units"] = fallback_units
+        return result
+    return {
+        "human": False,
+        "units": len(text),
+        "fallback_units": 0,
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 @mcp.tool()
@@ -458,9 +572,7 @@ def http(
     - get(url, headers={}, timeout=30) -> {status, headers, body}
     - post(url, body=..., headers={}, timeout=30) -> {status, headers, body}
     """
-    return _http_impl.http(
-        op=op, url=url, body=body, headers=headers, timeout=timeout
-    )
+    return _http_impl.http(op=op, url=url, body=body, headers=headers, timeout=timeout)
 
 
 @mcp.tool()
@@ -533,9 +645,10 @@ def clipboard(op: str, text: str = None):
 # *action* fails with a guided error when no browser is connected, never the
 # registration).
 
+
 @mcp.tool()
 @tool(name="browser", tier=Tier.ONE, risk=Risk.MEDIUM)
-def browser(
+async def browser(
     op: str,
     url: str = None,
     selector: str = None,
@@ -549,7 +662,7 @@ def browser(
     all: bool = False,
     clear: bool = True,
     submit: bool = False,
-    timeout: int = 5000,
+    timeout: int | None = None,
     scroll_by: dict = None,
     key: str = None,
     force: bool = False,
@@ -563,6 +676,10 @@ def browser(
     limit: int = None,
     arm: bool = True,
     profile_id: str = None,
+    human: bool = False,
+    timing_profile: str = None,
+    wpm: int = None,
+    iki_cv: float = None,
 ):
     """Drive the browser by selector, through the MV3 extension (Tier 1).
 
@@ -582,13 +699,16 @@ def browser(
       aria-pressed / aria-selected) unchanged. Pass trusted=True for a
       pointer-driven control that exposes no such state. VERIFY: ok, or a
       read-back op.
-    - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok}
+    - type / fill(selector, text, clear=True, submit=False) -> {typed, value, ok};
+      human type has no implicit total deadline. An optional positive timeout
+      is one explicit caller deadline
     - clear(selector) -> {value:"", ok}
     - select(selector, value) -> {selected, value, ok}
     - focus(selector) / blur(selector) -> {focused}
     - hover(selector, reveals=None) -> {hovered, revealed?}
     - scroll(selector=None | scroll_by={x,y}) -> {ok}
-    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger)
+    - press(key, selector=None) -> {pressed}  (trusted key via chrome.debugger;
+      returns a named limitation instead of activating an inactive target)
     - upload(selector, files=[path,...]) -> {uploaded, files, ok}  (paths are on
       cua's OS; cua rewrites them to the browser's OS automatically)
     - dialog(action="accept"|"dismiss", text=None, arm=True) -> {armed}  (ARM
@@ -639,12 +759,33 @@ def browser(
     degrade to the pixel tools only when it says so.
     """
     params = {
-        "url": url, "selector": selector, "name": name, "text": text,
-        "value": value, "state": state, "wait": wait, "action": action,
-        "all": all, "clear": clear, "submit": submit, "timeout": timeout,
-        "key": key, "force": force, "mode": mode, "window_id": window_id,
-        "tab_id": tab_id, "reveals": reveals, "files": files, "roles": roles,
-        "cursor": cursor, "limit": limit, "profile_id": profile_id,
+        "url": url,
+        "selector": selector,
+        "name": name,
+        "text": text,
+        "value": value,
+        "state": state,
+        "wait": wait,
+        "action": action,
+        "all": all,
+        "clear": clear,
+        "submit": submit,
+        "timeout": timeout,
+        "key": key,
+        "force": force,
+        "mode": mode,
+        "window_id": window_id,
+        "tab_id": tab_id,
+        "reveals": reveals,
+        "files": files,
+        "roles": roles,
+        "cursor": cursor,
+        "limit": limit,
+        "profile_id": profile_id,
+        "human": human,
+        "timing_profile": timing_profile,
+        "wpm": wpm,
+        "iki_cv": iki_cv,
     }
     # `arm` defaults True and is only meaningful for `dialog`; pass it there.
     if op == "dialog":
@@ -658,7 +799,16 @@ def browser(
     else:
         params["by"] = by
     params = {k: v for k, v in params.items() if v is not None}
-    return _browser_impl.browser(op=op, **params)
+    if op == "type" and human:
+        cancelled = threading.Event()
+        params["_cancelled"] = cancelled.is_set
+        return await _run_cooperative_thread(
+            functools.partial(_browser_impl.browser, op=op, **params), cancelled
+        )
+    return await anyio.to_thread.run_sync(
+        functools.partial(_browser_impl.browser, op=op, **params),
+        abandon_on_cancel=True,
+    )
 
 
 @mcp.tool()
@@ -705,8 +855,12 @@ def tabs(
     see which tab you are on.
     """
     return _browser_impl.tabs(
-        op=op, url=url, window_id=window_id, tab_id=tab_id,
-        background=background, force=force,
+        op=op,
+        url=url,
+        window_id=window_id,
+        tab_id=tab_id,
+        background=background,
+        force=force,
     )
 
 
@@ -733,7 +887,11 @@ def windows(
       force=True)
     """
     return _browser_impl.windows(
-        op=op, url=url, window_id=window_id, focused=focused, force=force,
+        op=op,
+        url=url,
+        window_id=window_id,
+        focused=focused,
+        force=force,
     )
 
 
@@ -873,6 +1031,7 @@ def app_open(target: str, timeout_ms: int = 5000) -> dict:
 # Keeping every subcommand as a small function makes them unit-testable
 # without spinning up argparse or touching sys.argv.
 
+
 def _get_supervisor():
     """Build a DaemonSupervisor on demand.
 
@@ -881,6 +1040,7 @@ def _get_supervisor():
     daemon subcommands do, and those run on WSL2/Linux.
     """
     from computer_use.bridge.supervisor import DaemonSupervisor
+
     return DaemonSupervisor()
 
 
@@ -895,9 +1055,7 @@ def _registry_status() -> dict:
     return {
         "registry_loaded": True,
         "tool_count": REGISTRY.count(),
-        "tier_breakdown": {
-            str(tier): count for tier, count in REGISTRY.tier_breakdown().items()
-        },
+        "tier_breakdown": {str(tier): count for tier, count in REGISTRY.tier_breakdown().items()},
     }
 
 
@@ -911,6 +1069,7 @@ def _cmd_doctor(args) -> int:
     status = _get_supervisor().status()
     if sys.platform == "darwin":
         from computer_use.platform.macos import macos_permission_status
+
         status.update(macos_permission_status())
     status.update(_registry_status())
     if sys.platform == "linux":
@@ -964,6 +1123,7 @@ def _cmd_setup(args) -> int:
         macos_permission_status,
         request_permissions,
     )
+
     request_permissions()
     print(_json.dumps(macos_permission_status(), indent=2))
     return 0
@@ -1027,9 +1187,12 @@ _SUBCOMMAND_NAMES: dict = {
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="vadgr-cua", description="Computer Use MCP Server"
-    )
+    parser = argparse.ArgumentParser(prog="vadgr-cua", description="Computer Use MCP Server")
+    try:
+        package_version = version("vadgr-computer-use")
+    except PackageNotFoundError:
+        package_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version}")
     parser.add_argument(
         "--transport",
         choices=["stdio", "sse"],
@@ -1068,7 +1231,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Provision system deps pip can't (wl-clipboard, /dev/uinput udev rule)",
     )
     deps_parser.add_argument(
-        "--yes", action="store_true", help="Execute the plan instead of printing it",
+        "--yes",
+        action="store_true",
+        help="Execute the plan instead of printing it",
     )
     sub.add_parser("stop-daemon", help="Stop the Windows bridge daemon")
     sub.add_parser("restart-daemon", help="Stop then start the daemon")
@@ -1077,7 +1242,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _start_browser_tier() -> None:
-    """Best-effort: self-register the native host and start the TCP listener.
+    """Best-effort: self-register the native host and connect to the broker.
 
     Registering at startup (not only lazily on first browser use) means the
     extension's load order never matters - Chrome can spawn the host shim and
@@ -1092,11 +1257,8 @@ def _start_browser_tier() -> None:
         logger.debug("browser-tier self-registration skipped: %s", e)
     try:
         from computer_use.browser import tool as browser_tool
-        from computer_use.browser.server import ensure_server
 
-        # Share the tool's bridge so the session the listener registers is the
-        # one the `browser` tool routes ops to.
-        ensure_server(bridge=browser_tool._default_bridge())
+        browser_tool._default_bridge().status()
     except Exception as e:
         logger.debug("browser-tier listener not started: %s", e)
 

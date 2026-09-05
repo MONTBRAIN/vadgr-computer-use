@@ -8,12 +8,16 @@
 
 """The browser / browser_eval MCP tools against a FakeBridge (no browser)."""
 
+import time
+
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from computer_use.browser import tool as T
 from computer_use.browser.bridge import BridgeStatus, FakeBridge
 from computer_use.browser.protocol import BrowserError, BrowserErrorCode
+
+pytestmark = pytest.mark.usefixtures("schema_six_typing_runtime")
 
 
 class TestOpRouting:
@@ -32,13 +36,130 @@ class TestOpRouting:
 
     def test_fill_forwards_text_and_flags(self):
         fake = FakeBridge(responses={"fill": {"typed": 5}})
-        out = T.browser(op="fill", bridge=fake, selector="#n", text="hello",
-                        submit=True)
+        out = T.browser(op="fill", bridge=fake, selector="#n", text="hello", submit=True)
         assert out == {"typed": 5}
         params = fake.calls[0][1]
         assert params["selector"] == "#n"
         assert params["text"] == "hello"
         assert params["submit"] is True
+
+    def test_human_type_streams_one_validated_schedule(self):
+        def respond(**params):
+            stream = params["typing_stream"]
+            action = stream["action"]
+            if action == "finish":
+                return {"human": True, "units": 3}
+            if action == "chunk":
+                return {"completed_units": stream["confirmed_units"] + len(stream["units"])}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        result = T.browser(
+            op="type",
+            bridge=fake,
+            selector="#n",
+            text="abc",
+            human=True,
+            wpm=60,
+            iki_cv=0,
+        )
+        assert result == {"human": True, "units": 3}
+        actions = [params["typing_stream"]["action"] for _, params in fake.calls]
+        assert actions == ["begin", "chunk", "finish"]
+        assert callable(fake.calls[0][1]["_cancelled"])
+        begin = fake.calls[0][1]["typing_stream"]
+        assert begin["nominal_wpm"] == 60
+        chunk = fake.calls[1][1]["typing_stream"]
+        delays = [unit["delay_before_ms"] for unit in chunk["units"]]
+        assert delays[0] == 0
+        assert delays[1] == pytest.approx(delays[2])
+        assert delays[1] > 0
+
+    def test_default_human_type_allows_a_plan_longer_than_sixty_seconds(self):
+        def respond(**params):
+            stream = params["typing_stream"]
+            action = stream["action"]
+            if action == "finish":
+                return {"human": True, "units": 80}
+            if action == "chunk":
+                return {"completed_units": stream["confirmed_units"] + len(stream["units"])}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        result = T.browser(
+            op="type",
+            bridge=fake,
+            selector="#n",
+            text="a" * 80,
+            human=True,
+            wpm=10,
+            iki_cv=0,
+        )
+        assert result["units"] == 80
+        assert fake.calls[0][1]["typing_stream"]["predicted_ms"] > 60_000
+
+    def test_explicit_human_deadline_refuses_before_bridge_dispatch(self):
+        fake = FakeBridge()
+        with pytest.raises(ToolError, match="typing_deadline_exceeded"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="abcdef",
+                human=True,
+                wpm=10,
+                iki_cv=0,
+                timeout=100,
+            )
+        assert fake.calls == []
+
+    def test_explicit_deadline_cannot_be_extended_by_finish_transport(self):
+        def respond(**params):
+            action = params["typing_stream"]["action"]
+            if action == "finish":
+                time.sleep(0.02)
+                return {"human": True, "units": 0}
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        with pytest.raises(ToolError, match="typing_deadline_exceeded"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="",
+                human=True,
+                timeout=5,
+            )
+        actions = [params["typing_stream"]["action"] for _, params in fake.calls]
+        assert actions == ["begin", "finish", "abort"]
+
+    def test_human_stream_aborts_after_a_dispatched_chunk_fails(self):
+        actions = []
+
+        def respond(**params):
+            action = params["typing_stream"]["action"]
+            actions.append(action)
+            if action == "chunk":
+                raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "lost after dispatch")
+            return {"completed_units": 0}
+
+        fake = FakeBridge(responses={"human_type_stream": respond})
+        with pytest.raises(ToolError, match="typing_state_uncertain"):
+            T.browser(
+                op="type",
+                bridge=fake,
+                selector="#n",
+                text="abc",
+                human=True,
+            )
+        assert actions == ["begin", "chunk", "abort"]
+
+    def test_invalid_human_options_fail_before_bridge_dispatch(self):
+        fake = FakeBridge()
+        with pytest.raises(ToolError):
+            T.browser(op="type", bridge=fake, selector="#n", text="abc", wpm=60)
+        assert fake.calls == []
 
     def test_query_defaults(self):
         fake = FakeBridge(responses={"query": []})
@@ -75,18 +196,31 @@ class TestOpRouting:
 
 class TestStatusOp:
     def test_status_returns_dict(self):
-        st = BridgeStatus(connected=True, browsers=["chrome"], setup=True,
-                          reason=None)
+        st = BridgeStatus(connected=True, browsers=["chrome"], setup=True, reason=None)
         fake = FakeBridge(status=st)
         out = T.browser(op="status", bridge=fake)
-        assert out == {"connected": True, "browsers": ["chrome"],
-                       "setup": True, "reason": None, "profiles": []}
+        assert out == {
+            "connected": True,
+            "browsers": ["chrome"],
+            "setup": True,
+            "reason": None,
+            "profiles": [],
+        }
 
     def test_status_carries_profiles(self):
         st = BridgeStatus(
-            connected=True, browsers=["chrome"], setup=True, reason=None,
-            profiles=[{"profile_id": "work", "browser": "chrome",
-                       "is_current": True, "sample_tab_titles": ["Gmail"]}],
+            connected=True,
+            browsers=["chrome"],
+            setup=True,
+            reason=None,
+            profiles=[
+                {
+                    "profile_id": "work",
+                    "browser": "chrome",
+                    "is_current": True,
+                    "sample_tab_titles": ["Gmail"],
+                }
+            ],
         )
         fake = FakeBridge(status=st)
         out = T.browser(op="status", bridge=fake)
@@ -103,8 +237,10 @@ class TestStatusOp:
 class TestErrorMapping:
     def test_browser_error_becomes_tool_error_with_remediation(self):
         err = BrowserError(
-            BrowserErrorCode.NOT_CONNECTED, "no session",
-            remediation="open Chrome", fallback="use screenshot fallback",
+            BrowserErrorCode.NOT_CONNECTED,
+            "no session",
+            remediation="open Chrome",
+            fallback="use screenshot fallback",
         )
         fake = FakeBridge(responses={"click": err})
         with pytest.raises(ToolError) as ei:
@@ -125,8 +261,9 @@ class TestErrorMapping:
 class TestTargetingOps:
     def test_use_target_owned_default(self):
         fake = FakeBridge(
-            responses={"use_target": {"browser": "chrome", "window_id": 42,
-                                      "tab_id": 137, "created": True}}
+            responses={
+                "use_target": {"browser": "chrome", "window_id": 42, "tab_id": 137, "created": True}
+            }
         )
         out = T.browser(op="use_target", bridge=fake)
         assert out["created"] is True
@@ -135,8 +272,7 @@ class TestTargetingOps:
 
     def test_use_target_by_id(self):
         fake = FakeBridge(responses={"use_target": {"window_id": 3, "tab_id": 9}})
-        T.browser(op="use_target", bridge=fake, window_id=3, tab_id=9,
-                  mode="attach")
+        T.browser(op="use_target", bridge=fake, window_id=3, tab_id=9, mode="attach")
         params = fake.calls[0][1]
         assert params["window_id"] == 3
         assert params["tab_id"] == 9
@@ -158,8 +294,16 @@ class TestTargetingOps:
 
 class TestProfilesOpGroup:
     def test_list_sends_only_the_sub_op(self):
-        payload = {"profiles": [{"profile_id": "work", "browser": "chrome",
-                                 "is_current": True, "sample_tab_titles": ["Gmail"]}]}
+        payload = {
+            "profiles": [
+                {
+                    "profile_id": "work",
+                    "browser": "chrome",
+                    "is_current": True,
+                    "sample_tab_titles": ["Gmail"],
+                }
+            ]
+        }
         fake = FakeBridge(responses={"profiles": payload})
         out = T.profiles(op="list", bridge=fake)
         assert out is payload
@@ -167,8 +311,7 @@ class TestProfilesOpGroup:
 
     def test_use_forwards_profile_id(self):
         fake = FakeBridge(
-            responses={"profiles": {"profile_id": "work", "browser": "chrome",
-                                    "is_current": True}}
+            responses={"profiles": {"profile_id": "work", "browser": "chrome", "is_current": True}}
         )
         out = T.profiles(op="use", bridge=fake, profile_id="work")
         assert out["is_current"] is True
@@ -209,8 +352,7 @@ class TestUseTargetProfile:
 class TestInteractionOps:
     def test_hover_forwards_reveals(self):
         fake = FakeBridge(responses={"hover": {"hovered": True, "revealed": True}})
-        out = T.browser(op="hover", bridge=fake, selector=".menu",
-                        reveals=".submenu")
+        out = T.browser(op="hover", bridge=fake, selector=".menu", reveals=".submenu")
         assert out == {"hovered": True, "revealed": True}
         params = fake.calls[0][1]
         assert params["selector"] == ".menu"
@@ -229,8 +371,7 @@ class TestInteractionOps:
         assert fake.calls[0][0] == "element_state"
 
     def test_focus_and_blur(self):
-        fake = FakeBridge(responses={"focus": {"focused": True},
-                                     "blur": {"focused": False}})
+        fake = FakeBridge(responses={"focus": {"focused": True}, "blur": {"focused": False}})
         assert T.browser(op="focus", bridge=fake, selector="#x")["focused"] is True
         assert T.browser(op="blur", bridge=fake, selector="#x")["focused"] is False
 
@@ -245,9 +386,7 @@ class TestInteractionOps:
         assert out == {"value": "hello"}
 
     def test_snapshot_paginates(self):
-        fake = FakeBridge(
-            responses={"snapshot": {"nodes": [], "next_cursor": 50}}
-        )
+        fake = FakeBridge(responses={"snapshot": {"nodes": [], "next_cursor": 50}})
         T.browser(op="snapshot", bridge=fake, roles=["button"], limit=50)
         params = fake.calls[0][1]
         assert params["roles"] == ["button"]
@@ -265,8 +404,7 @@ class TestUploadPathTranslation:
     def test_native_paths_pass_through(self, monkeypatch):
         monkeypatch.setattr(T, "_upload_platform", lambda: "linux")
         fake = FakeBridge(responses={"upload": {"uploaded": 1, "ok": True}})
-        T.browser(op="upload", bridge=fake, selector="input",
-                  files=["/home/u/cv.pdf"])
+        T.browser(op="upload", bridge=fake, selector="input", files=["/home/u/cv.pdf"])
         assert fake.calls[0][1]["files"] == ["/home/u/cv.pdf"]
 
     def test_wsl_paths_rewritten_to_windows_before_the_wire(self, monkeypatch):
@@ -274,8 +412,12 @@ class TestUploadPathTranslation:
         monkeypatch.setattr(T, "_upload_platform", lambda: "wsl")
         monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
         fake = FakeBridge(responses={"upload": {"uploaded": 2, "ok": True}})
-        T.browser(op="upload", bridge=fake, selector="input",
-                  files=["/mnt/c/Users/me/cv.pdf", "/home/u/photo.png"])
+        T.browser(
+            op="upload",
+            bridge=fake,
+            selector="input",
+            files=["/mnt/c/Users/me/cv.pdf", "/home/u/photo.png"],
+        )
         assert fake.calls[0][1]["files"] == [
             "C:\\Users\\me\\cv.pdf",
             "\\\\wsl.localhost\\Ubuntu\\home\\u\\photo.png",
@@ -303,7 +445,10 @@ class TestTabsOpGroup:
 
     def test_open_maps_params_and_returns_target(self):
         result = {
-            "window_id": 42, "tab_id": 200, "url": "https://x", "created": True,
+            "window_id": 42,
+            "tab_id": 200,
+            "url": "https://x",
+            "created": True,
             "target": {"window_id": 42, "tab_id": 200, "url": "https://x"},
         }
         fake = FakeBridge(responses={"tabs": result})
@@ -326,8 +471,9 @@ class TestTabsOpGroup:
         assert fake.calls[0][1] == {"op": "close", "tab_id": 88, "force": False}
 
     def test_close_user_tab_refusal_surfaces_as_tool_error(self):
-        err = BrowserError(BrowserErrorCode.OP_FAILED,
-                           "refusing to close user tab 88 without force=true")
+        err = BrowserError(
+            BrowserErrorCode.OP_FAILED, "refusing to close user tab 88 without force=true"
+        )
         fake = FakeBridge(responses={"tabs": err})
         with pytest.raises(ToolError) as ei:
             T.tabs(op="close", bridge=fake, tab_id=88)
@@ -335,7 +481,8 @@ class TestTabsOpGroup:
 
     def test_target_lost_from_a_tabs_op_is_terminal(self):
         err = BrowserError(
-            BrowserErrorCode.TARGET_LOST, "the pinned tab was closed",
+            BrowserErrorCode.TARGET_LOST,
+            "the pinned tab was closed",
             remediation="run tabs(op='list') then use_target",
         )
         assert err.retryable is False
@@ -373,13 +520,17 @@ class TestPerOpTargetContext:
         # The extension adds `target` to every result; cua passes it through so
         # the agent sees which tab it just acted on.
         result = {
-            "typed": 4, "value": "lofi", "ok": True,
+            "typed": 4,
+            "value": "lofi",
+            "ok": True,
             "target": {"window_id": 42, "tab_id": 137, "url": "https://www.youtube.com/"},
         }
         fake = FakeBridge(responses={"fill": result})
         out = T.browser(op="fill", bridge=fake, selector="#q", text="lofi")
         assert out["target"] == {
-            "window_id": 42, "tab_id": 137, "url": "https://www.youtube.com/",
+            "window_id": 42,
+            "tab_id": 137,
+            "url": "https://www.youtube.com/",
         }
 
 
@@ -393,8 +544,9 @@ class TestOpUnsupportedForOldExtension:
 
         bridge = NativeMessagingBridge(auto_register=False)
         bridge.register_session(
-            BrowserSession(browser="chrome", ext_version="0.5.0",
-                           supported_ops=["navigate", "click"])
+            BrowserSession(
+                browser="chrome", ext_version="0.5.0", supported_ops=["navigate", "click"]
+            )
         )
         with pytest.raises(BrowserError) as ei:
             bridge.send("tabs", op="list")

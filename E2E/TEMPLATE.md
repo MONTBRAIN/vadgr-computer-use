@@ -151,6 +151,11 @@ present in a given runbook, the entry is all there is.
     daemon.** Two drivers sharing one daemon read each other's work and neither
     verdict means anything. [Repeatability] [../README.md]
 
+21. **This runbook gates only the minor that contains it.** A sibling minor in
+    the same iteration is never a prerequisite, cell, blocker or overall-gate
+    input here. Put an integration proof in the runbook for the minor that
+    builds the integrated artifact. [Paired surfaces this pass depends on]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -255,6 +260,11 @@ it.
 > write a part whose surface arrives later into that release's runbook instead,
 > stating its absence rather than leaving it silent.
 >
+> **A same-iteration sibling minor never becomes a dependency merely because it
+> packages, launches or consumes this runtime.** Its runbook owns that combined
+> proof. Do not add the sibling's future artifact as a cell here, and never let
+> its absence block this minor's part or overall result.
+>
 > | repository | released version | what this pass relies on |
 > |---|---|---|
 > | none | not applicable | this runtime is driven by its clients, and calls none of them |
@@ -320,6 +330,16 @@ never appears in.
 > requires image input for the selected endpoint and image-bearing tool-result
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
+
+> Pixel and screenshot-driven cells use GPT-5.6 Sol at medium reasoning when
+> driven by Codex, or the current Claude Opus at medium reasoning when driven by
+> Claude Code. Before selection, recheck the candidates' current official
+> capability and pricing pages and the authenticated account catalog; record
+> the source date, exact model id, reasoning level, projected cost and hard
+> ceiling. Choose between those two qualified paths using availability, task
+> fit and projected total cost. Do not substitute Terra, Sonnet or Gemini for a
+> visual cell. A higher reasoning level or cost tier requires a recorded
+> capability failure at medium and explicit owner approval.
 
 ## Prerequisites (per OS)
 
@@ -410,6 +430,14 @@ system discovering a blocker four groups in.
 > Cancel the live MCP request while that child is active. Prove the request has
 > no later successful result and the entire owned process tree exits within the
 > written bound. Test this on every OS the subprocess path supports.
+
+> A release that changes pixel text input includes a real stock-editor cell on
+> every affected OS, not only an instrumented fixture. Open a fresh unsaved
+> document through the public tools, establish the exact foreground window,
+> type a fixed sensitive-file value through pixel `type_text`, save it through
+> the editor UI into the isolated test root, and independently compare the file
+> bytes by hash. Record only redacted input, timing metadata, foreground identity
+> and hashes. Delete only that test file and close the test document.
 
 ## Part &lt;X&gt;: &lt;what it proves&gt;
 

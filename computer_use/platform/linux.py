@@ -24,7 +24,7 @@ import tempfile
 import time
 from typing import Optional
 
-from computer_use.core.actions import ActionExecutor
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError, PlatformNotSupportedError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
@@ -41,6 +41,7 @@ from computer_use.core.smooth_move import (
     windmouse_path,
 )
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
+from computer_use.core.typing import TypingPlan
 from computer_use.platform.backends.portal import PortalScreenshotCapture, portal_available
 from computer_use.platform.backends.uinput import UinputDevice
 from computer_use.platform.backends.xtest import XTestExecutor
@@ -98,7 +99,9 @@ if _xkb is not None:
     _xkb.xkb_context_unref.argtypes = [ctypes.c_void_p]
     _xkb.xkb_context_unref.restype = None
     _xkb.xkb_keymap_new_from_names.argtypes = [
-        ctypes.c_void_p, ctypes.POINTER(_XkbRuleNames), ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.POINTER(_XkbRuleNames),
+        ctypes.c_int,
     ]
     _xkb.xkb_keymap_new_from_names.restype = ctypes.c_void_p
     _xkb.xkb_keymap_unref.argtypes = [ctypes.c_void_p]
@@ -109,8 +112,12 @@ if _xkb is not None:
     _xkb.xkb_state_unref.restype = None
     _xkb.xkb_state_update_mask.argtypes = [
         ctypes.c_void_p,
-        ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,  # mods: depressed, latched, locked
-        ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32,  # layouts: depressed, latched, locked
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,  # mods: depressed, latched, locked
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_uint32,  # layouts: depressed, latched, locked
     ]
     _xkb.xkb_state_update_mask.restype = ctypes.c_int
     _xkb.xkb_state_key_get_utf32.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
@@ -232,9 +239,7 @@ class GnomeScreenCapture(_CliScreenCapture):
     def _run_capture(self, args: list[str], output_path: str) -> None:
         result = subprocess.run(args, capture_output=True, timeout=10.0)
         if result.returncode != 0:
-            raise ScreenCaptureError(
-                f"gnome-screenshot failed: {result.stderr.decode().strip()}"
-            )
+            raise ScreenCaptureError(f"gnome-screenshot failed: {result.stderr.decode().strip()}")
 
 
 class MssScreenCapture(ScreenCapture):
@@ -392,7 +397,6 @@ def _run_xdotool(*args: str) -> str:
 
 
 class LinuxActionExecutor(ActionExecutor):
-
     def __init__(self):
         self._tracker = CursorTracker()
 
@@ -441,8 +445,15 @@ class LinuxActionExecutor(ActionExecutor):
         self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         _run_xdotool("mousedown", "1")
-        path = windmouse_path(start_x, start_y, end_x, end_y,
-                              gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
+        path = windmouse_path(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
+        )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
             self._raw_move(px, py)
@@ -457,20 +468,89 @@ class LinuxActionExecutor(ActionExecutor):
 
 # Hardcoded evdev keycodes (input-event-codes.h). Fallback when python-evdev not installed.
 _FALLBACK_EVDEV_KEYCODES: dict[str, int] = {
-    "enter": 28, "return": 28, "tab": 15, "escape": 1, "esc": 1,
-    "backspace": 14, "delete": 111, "del": 111,
-    "up": 103, "down": 108, "left": 105, "right": 106,
-    "home": 102, "end": 107, "pageup": 104, "pagedown": 109,
-    "space": 57, " ": 57, "ctrl": 29, "control": 29, "alt": 56, "rightalt": 100,
-    "shift": 42, "super": 125,
-    "f1": 59, "f2": 60, "f3": 61, "f4": 62, "f5": 63, "f6": 64,
-    "f7": 65, "f8": 66, "f9": 67, "f10": 68, "f11": 87, "f12": 88,
-    "q": 16, "w": 17, "e": 18, "r": 19, "t": 20, "y": 21, "u": 22, "i": 23, "o": 24, "p": 25,
-    "a": 30, "s": 31, "d": 32, "f": 33, "g": 34, "h": 35, "j": 36, "k": 37, "l": 38,
-    "z": 44, "x": 45, "c": 46, "v": 47, "b": 48, "n": 49, "m": 50,
-    "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11,
-    "-": 12, "=": 13, "[": 26, "]": 27, ";": 39, "'": 40,
-    ",": 51, ".": 52, "/": 53, "\\": 43, "`": 41,
+    "enter": 28,
+    "return": 28,
+    "tab": 15,
+    "escape": 1,
+    "esc": 1,
+    "backspace": 14,
+    "delete": 111,
+    "del": 111,
+    "up": 103,
+    "down": 108,
+    "left": 105,
+    "right": 106,
+    "home": 102,
+    "end": 107,
+    "pageup": 104,
+    "pagedown": 109,
+    "space": 57,
+    " ": 57,
+    "ctrl": 29,
+    "control": 29,
+    "alt": 56,
+    "rightalt": 100,
+    "shift": 42,
+    "super": 125,
+    "f1": 59,
+    "f2": 60,
+    "f3": 61,
+    "f4": 62,
+    "f5": 63,
+    "f6": 64,
+    "f7": 65,
+    "f8": 66,
+    "f9": 67,
+    "f10": 68,
+    "f11": 87,
+    "f12": 88,
+    "q": 16,
+    "w": 17,
+    "e": 18,
+    "r": 19,
+    "t": 20,
+    "y": 21,
+    "u": 22,
+    "i": 23,
+    "o": 24,
+    "p": 25,
+    "a": 30,
+    "s": 31,
+    "d": 32,
+    "f": 33,
+    "g": 34,
+    "h": 35,
+    "j": 36,
+    "k": 37,
+    "l": 38,
+    "z": 44,
+    "x": 45,
+    "c": 46,
+    "v": 47,
+    "b": 48,
+    "n": 49,
+    "m": 50,
+    "1": 2,
+    "2": 3,
+    "3": 4,
+    "4": 5,
+    "5": 6,
+    "6": 7,
+    "7": 8,
+    "8": 9,
+    "9": 10,
+    "0": 11,
+    "-": 12,
+    "=": 13,
+    "[": 26,
+    "]": 27,
+    ";": 39,
+    "'": 40,
+    ",": 51,
+    ".": 52,
+    "/": 53,
+    "\\": 43,
+    "`": 41,
 }
 
 _FALLBACK_BUTTON_CODES: dict[str, int] = {"left": 272, "right": 273, "middle": 274}
@@ -479,10 +559,27 @@ _FALLBACK_BUTTON_CODES: dict[str, int] = {"left": 272, "right": 273, "middle": 2
 # type_text looks up ch.lower() in the keymap, but shifted symbols like _ ( ) don't
 # lowercase to their base key. This table bridges the gap.
 _SHIFT_TO_BASE: dict[str, str] = {
-    "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
-    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0", "_": "-",
-    "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'",
-    "<": ",", ">": ".", "?": "/",
+    "~": "`",
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    "$": "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
+    "_": "-",
+    "+": "=",
+    "{": "[",
+    "}": "]",
+    "|": "\\",
+    ":": ";",
+    '"': "'",
+    "<": ",",
+    ">": ".",
+    "?": "/",
 }
 
 
@@ -494,8 +591,11 @@ def _clipboard_paste(text: str, key_press_fn) -> None:
     try:
         # -o makes wl-copy exit after the first paste instead of blocking forever.
         subprocess.run(
-            ["wl-copy", "-o"], input=text.encode("utf-8"),
-            check=True, timeout=5, capture_output=True,
+            ["wl-copy", "-o"],
+            input=text.encode("utf-8"),
+            check=True,
+            timeout=5,
+            capture_output=True,
         )
         time.sleep(0.1)
         key_press_fn(["ctrl", "v"])
@@ -521,6 +621,7 @@ def _get_system_keyboard_layout() -> str:
 
 class _CharEntry:
     """How to produce a character: keycode + which modifiers to hold."""
+
     __slots__ = ("altgr", "keycode", "shift")
 
     def __init__(self, keycode: int, shift: bool = False, altgr: bool = False):
@@ -556,9 +657,11 @@ def _build_xkb_char_map(layout: str | None = None) -> dict[str, _CharEntry] | No
         return None
 
     names = _XkbRuleNames(
-        rules=b"evdev", model=b"pc105",
+        rules=b"evdev",
+        model=b"pc105",
         layout=layout.encode(),
-        variant=None, options=None,
+        variant=None,
+        options=None,
     )
     keymap = _xkb.xkb_keymap_new_from_names(ctx, ctypes.byref(names), 0)
     if not keymap:
@@ -574,10 +677,10 @@ def _build_xkb_char_map(layout: str | None = None) -> dict[str, _CharEntry] | No
     # Check modifier combos in order of simplicity (fewest mods first).
     # First match wins, so plain keys beat shifted, shifted beats altgr, etc.
     _MOD_COMBOS = [
-        (0,                          False, False),  # plain
-        (_SHIFT_MASK,                True,  False),  # shift
-        (_ALTGR_MASK,                False, True),   # altgr
-        (_SHIFT_MASK | _ALTGR_MASK,  True,  True),   # shift+altgr
+        (0, False, False),  # plain
+        (_SHIFT_MASK, True, False),  # shift
+        (_ALTGR_MASK, False, True),  # altgr
+        (_SHIFT_MASK | _ALTGR_MASK, True, True),  # shift+altgr
     ]
 
     try:
@@ -606,28 +709,55 @@ def _build_evdev_key_map() -> dict[str, int]:
     if ecodes is None:
         return dict(_FALLBACK_EVDEV_KEYCODES)
     return {
-        "enter": ecodes.KEY_ENTER, "return": ecodes.KEY_ENTER,
-        "tab": ecodes.KEY_TAB, "escape": ecodes.KEY_ESC, "esc": ecodes.KEY_ESC,
-        "backspace": ecodes.KEY_BACKSPACE, "delete": ecodes.KEY_DELETE, "del": ecodes.KEY_DELETE,
-        "up": ecodes.KEY_UP, "down": ecodes.KEY_DOWN,
-        "left": ecodes.KEY_LEFT, "right": ecodes.KEY_RIGHT,
-        "home": ecodes.KEY_HOME, "end": ecodes.KEY_END,
-        "pageup": ecodes.KEY_PAGEUP, "pagedown": ecodes.KEY_PAGEDOWN,
-        "space": ecodes.KEY_SPACE, " ": ecodes.KEY_SPACE,
-        "ctrl": ecodes.KEY_LEFTCTRL, "control": ecodes.KEY_LEFTCTRL,
-        "alt": ecodes.KEY_LEFTALT, "rightalt": ecodes.KEY_RIGHTALT,
-        "shift": ecodes.KEY_LEFTSHIFT, "super": ecodes.KEY_LEFTMETA,
-        "f1": ecodes.KEY_F1, "f2": ecodes.KEY_F2, "f3": ecodes.KEY_F3,
-        "f4": ecodes.KEY_F4, "f5": ecodes.KEY_F5, "f6": ecodes.KEY_F6,
-        "f7": ecodes.KEY_F7, "f8": ecodes.KEY_F8, "f9": ecodes.KEY_F9,
-        "f10": ecodes.KEY_F10, "f11": ecodes.KEY_F11, "f12": ecodes.KEY_F12,
-        **{chr(c): getattr(ecodes, f"KEY_{chr(c).upper()}") for c in range(ord('a'), ord('z') + 1)},
+        "enter": ecodes.KEY_ENTER,
+        "return": ecodes.KEY_ENTER,
+        "tab": ecodes.KEY_TAB,
+        "escape": ecodes.KEY_ESC,
+        "esc": ecodes.KEY_ESC,
+        "backspace": ecodes.KEY_BACKSPACE,
+        "delete": ecodes.KEY_DELETE,
+        "del": ecodes.KEY_DELETE,
+        "up": ecodes.KEY_UP,
+        "down": ecodes.KEY_DOWN,
+        "left": ecodes.KEY_LEFT,
+        "right": ecodes.KEY_RIGHT,
+        "home": ecodes.KEY_HOME,
+        "end": ecodes.KEY_END,
+        "pageup": ecodes.KEY_PAGEUP,
+        "pagedown": ecodes.KEY_PAGEDOWN,
+        "space": ecodes.KEY_SPACE,
+        " ": ecodes.KEY_SPACE,
+        "ctrl": ecodes.KEY_LEFTCTRL,
+        "control": ecodes.KEY_LEFTCTRL,
+        "alt": ecodes.KEY_LEFTALT,
+        "rightalt": ecodes.KEY_RIGHTALT,
+        "shift": ecodes.KEY_LEFTSHIFT,
+        "super": ecodes.KEY_LEFTMETA,
+        "f1": ecodes.KEY_F1,
+        "f2": ecodes.KEY_F2,
+        "f3": ecodes.KEY_F3,
+        "f4": ecodes.KEY_F4,
+        "f5": ecodes.KEY_F5,
+        "f6": ecodes.KEY_F6,
+        "f7": ecodes.KEY_F7,
+        "f8": ecodes.KEY_F8,
+        "f9": ecodes.KEY_F9,
+        "f10": ecodes.KEY_F10,
+        "f11": ecodes.KEY_F11,
+        "f12": ecodes.KEY_F12,
+        **{chr(c): getattr(ecodes, f"KEY_{chr(c).upper()}") for c in range(ord("a"), ord("z") + 1)},
         **{str(i): getattr(ecodes, f"KEY_{i}") for i in range(10)},
-        "-": ecodes.KEY_MINUS, "=": ecodes.KEY_EQUAL,
-        "[": ecodes.KEY_LEFTBRACE, "]": ecodes.KEY_RIGHTBRACE,
-        ";": ecodes.KEY_SEMICOLON, "'": ecodes.KEY_APOSTROPHE,
-        ",": ecodes.KEY_COMMA, ".": ecodes.KEY_DOT, "/": ecodes.KEY_SLASH,
-        "\\": ecodes.KEY_BACKSLASH, "`": ecodes.KEY_GRAVE,
+        "-": ecodes.KEY_MINUS,
+        "=": ecodes.KEY_EQUAL,
+        "[": ecodes.KEY_LEFTBRACE,
+        "]": ecodes.KEY_RIGHTBRACE,
+        ";": ecodes.KEY_SEMICOLON,
+        "'": ecodes.KEY_APOSTROPHE,
+        ",": ecodes.KEY_COMMA,
+        ".": ecodes.KEY_DOT,
+        "/": ecodes.KEY_SLASH,
+        "\\": ecodes.KEY_BACKSLASH,
+        "`": ecodes.KEY_GRAVE,
     }
 
 
@@ -661,49 +791,63 @@ class _WaylandActionExecutor(ActionExecutor):
         # Clipboard paste (wl-copy + Ctrl+V) breaks in terminals and other apps
         # that expect Ctrl+Shift+V or handle paste differently.
         # 50ms between events avoids key repeat from Mutter's DBus processing.
-        delay = 0.05
+        for char in text:
+            self._type_char(char, delay=0.05)
+
+    def _type_char(self, ch: str, *, delay: float) -> bool:
         shift_code = self._key_map.get("shift", 42)
         altgr_code = self._key_map.get("rightalt", 100)
         special = {"\n": "enter", "\t": "tab"}
-        for ch in text:
-            if ch in special:
-                code = self._key_map.get(special[ch], 28)
-                self._key_event(code, True)
-                time.sleep(delay)
-                self._key_event(code, False)
-                time.sleep(delay)
-                continue
+        if ch in special:
+            code = self._key_map.get(special[ch], 28)
+            self._key_event(code, True)
+            time.sleep(delay)
+            self._key_event(code, False)
+            time.sleep(delay)
+            return False
 
-            # Try layout-aware xkb map first, fall back to hardcoded US QWERTY.
-            entry = self._char_map.get(ch) if self._char_map else None
-            if entry:
-                keycode = entry.keycode
-                needs_shift = entry.shift
-                needs_altgr = entry.altgr
-            else:
-                needs_shift = ch.isupper() or ch in _SHIFT_TO_BASE
-                needs_altgr = False
-                base_ch = _SHIFT_TO_BASE.get(ch, ch.lower())
-                keycode = self._key_map.get(base_ch)
-                if keycode is None:
-                    continue
+        # Try layout-aware xkb map first, fall back to hardcoded US QWERTY.
+        entry = self._char_map.get(ch) if self._char_map else None
+        if entry:
+            keycode = entry.keycode
+            needs_shift = entry.shift
+            needs_altgr = entry.altgr
+        else:
+            needs_shift = ch.isupper() or ch in _SHIFT_TO_BASE
+            needs_altgr = False
+            base_ch = _SHIFT_TO_BASE.get(ch, ch.lower())
+            keycode = self._key_map.get(base_ch)
+            if keycode is None:
+                _clipboard_paste(ch, self.key_press)
+                return True
 
-            if needs_shift:
-                self._key_event(shift_code, True)
-                time.sleep(delay)
-            if needs_altgr:
-                self._key_event(altgr_code, True)
-                time.sleep(delay)
+        if needs_shift:
+            self._key_event(shift_code, True)
+            time.sleep(delay)
+        if needs_altgr:
+            self._key_event(altgr_code, True)
+            time.sleep(delay)
+        try:
             self._key_event(keycode, True)
             time.sleep(delay)
             self._key_event(keycode, False)
+        finally:
             if needs_altgr:
                 time.sleep(delay)
                 self._key_event(altgr_code, False)
             if needs_shift:
                 time.sleep(delay)
                 self._key_event(shift_code, False)
-            time.sleep(delay)
+        time.sleep(delay)
+        return entry is None and ord(ch) > 0x7F
+
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
+        return consume_typing_plan(
+            plan,
+            lambda text: self._type_char(text, delay=0.0),
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:
@@ -815,10 +959,7 @@ class EvdevActionExecutor(_WaylandActionExecutor):
         # Check if mouse supports absolute positioning
         caps = mouse_dev.capabilities()
         abs_caps = caps.get(ecodes.EV_ABS, [])
-        self._has_abs = any(
-            (c[0] if isinstance(c, tuple) else c) == ecodes.ABS_X
-            for c in abs_caps
-        )
+        self._has_abs = any((c[0] if isinstance(c, tuple) else c) == ecodes.ABS_X for c in abs_caps)
 
         if self._has_abs:
             # Read the device's coordinate range
@@ -919,8 +1060,15 @@ class EvdevActionExecutor(_WaylandActionExecutor):
         self._mouse.write(ecodes.EV_KEY, btn, 1)
         self._mouse.write(ecodes.EV_SYN, ecodes.SYN_REPORT, 0)
 
-        path = windmouse_path(start_x, start_y, end_x, end_y,
-                              gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
+        path = windmouse_path(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
+        )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
             self._raw_move(px, py)
@@ -986,8 +1134,15 @@ class UinputActionExecutor(_WaylandActionExecutor):
         self.move_mouse(start_x, start_y)
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._dev.button(self._btn_code("left"), True)
-        path = windmouse_path(start_x, start_y, end_x, end_y,
-                              gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
+        path = windmouse_path(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
+        )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
             self._raw_move(px, py)
@@ -1001,15 +1156,15 @@ class UinputActionExecutor(_WaylandActionExecutor):
 # ---------------------------------------------------------------------------
 
 
-_MUTTER_RD_BUS = 'org.gnome.Mutter.RemoteDesktop'
-_MUTTER_RD_PATH = '/org/gnome/Mutter/RemoteDesktop'
-_MUTTER_RD_IFACE = 'org.gnome.Mutter.RemoteDesktop'
-_MUTTER_RD_SESSION_IFACE = 'org.gnome.Mutter.RemoteDesktop.Session'
-_MUTTER_SC_BUS = 'org.gnome.Mutter.ScreenCast'
-_MUTTER_SC_PATH = '/org/gnome/Mutter/ScreenCast'
-_MUTTER_SC_IFACE = 'org.gnome.Mutter.ScreenCast'
-_MUTTER_SC_SESSION_IFACE = 'org.gnome.Mutter.ScreenCast.Session'
-_DBUS_PROPERTIES_IFACE = 'org.freedesktop.DBus.Properties'
+_MUTTER_RD_BUS = "org.gnome.Mutter.RemoteDesktop"
+_MUTTER_RD_PATH = "/org/gnome/Mutter/RemoteDesktop"
+_MUTTER_RD_IFACE = "org.gnome.Mutter.RemoteDesktop"
+_MUTTER_RD_SESSION_IFACE = "org.gnome.Mutter.RemoteDesktop.Session"
+_MUTTER_SC_BUS = "org.gnome.Mutter.ScreenCast"
+_MUTTER_SC_PATH = "/org/gnome/Mutter/ScreenCast"
+_MUTTER_SC_IFACE = "org.gnome.Mutter.ScreenCast"
+_MUTTER_SC_SESSION_IFACE = "org.gnome.Mutter.ScreenCast.Session"
+_DBUS_PROPERTIES_IFACE = "org.freedesktop.DBus.Properties"
 
 
 def _is_mutter_available() -> bool:
@@ -1019,11 +1174,12 @@ def _is_mutter_available() -> bool:
     conn = None
     try:
         addr = jeepney_import.DBusAddress(
-            object_path=_MUTTER_RD_PATH, bus_name=_MUTTER_RD_BUS,
+            object_path=_MUTTER_RD_PATH,
+            bus_name=_MUTTER_RD_BUS,
             interface=_DBUS_PROPERTIES_IFACE,
         )
-        conn = _open_dbus_connection(bus='SESSION')
-        msg = jeepney_import.new_method_call(addr, 'GetAll', 's', (_MUTTER_RD_IFACE,))
+        conn = _open_dbus_connection(bus="SESSION")
+        msg = jeepney_import.new_method_call(addr, "GetAll", "s", (_MUTTER_RD_IFACE,))
         reply = conn.send_and_get_reply(msg, timeout=2.0)
         return reply.header.message_type == jeepney_import.MessageType.method_return
     except Exception:
@@ -1038,35 +1194,40 @@ def _is_mutter_available() -> bool:
 
 def _mutter_rd_addr() -> "jeepney_import.DBusAddress":
     return jeepney_import.DBusAddress(
-        object_path=_MUTTER_RD_PATH, bus_name=_MUTTER_RD_BUS,
+        object_path=_MUTTER_RD_PATH,
+        bus_name=_MUTTER_RD_BUS,
         interface=_MUTTER_RD_IFACE,
     )
 
 
 def _mutter_rd_session_addr(session_path: str) -> "jeepney_import.DBusAddress":
     return jeepney_import.DBusAddress(
-        object_path=session_path, bus_name=_MUTTER_RD_BUS,
+        object_path=session_path,
+        bus_name=_MUTTER_RD_BUS,
         interface=_MUTTER_RD_SESSION_IFACE,
     )
 
 
 def _mutter_rd_session_props_addr(session_path: str) -> "jeepney_import.DBusAddress":
     return jeepney_import.DBusAddress(
-        object_path=session_path, bus_name=_MUTTER_RD_BUS,
+        object_path=session_path,
+        bus_name=_MUTTER_RD_BUS,
         interface=_DBUS_PROPERTIES_IFACE,
     )
 
 
 def _mutter_sc_addr() -> "jeepney_import.DBusAddress":
     return jeepney_import.DBusAddress(
-        object_path=_MUTTER_SC_PATH, bus_name=_MUTTER_SC_BUS,
+        object_path=_MUTTER_SC_PATH,
+        bus_name=_MUTTER_SC_BUS,
         interface=_MUTTER_SC_IFACE,
     )
 
 
 def _mutter_sc_session_addr(session_path: str) -> "jeepney_import.DBusAddress":
     return jeepney_import.DBusAddress(
-        object_path=session_path, bus_name=_MUTTER_SC_BUS,
+        object_path=session_path,
+        bus_name=_MUTTER_SC_BUS,
         interface=_MUTTER_SC_SESSION_IFACE,
     )
 
@@ -1103,30 +1264,36 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
                 "Install with: pip install vadgr-computer-use"
             )
 
-        self._conn = _open_dbus_connection(bus='SESSION')
+        self._conn = _open_dbus_connection(bus="SESSION")
 
-        body = self._call(_mutter_rd_addr(), 'CreateSession')
+        body = self._call(_mutter_rd_addr(), "CreateSession")
         self._session_path = body[0]
 
         sid_body = self._call(
             _mutter_rd_session_props_addr(self._session_path),
-            'Get', 'ss', (_MUTTER_RD_SESSION_IFACE, 'SessionId'),
+            "Get",
+            "ss",
+            (_MUTTER_RD_SESSION_IFACE, "SessionId"),
         )
         session_id = _unwrap_variant(sid_body[0])
 
         sc_body = self._call(
-            _mutter_sc_addr(), 'CreateSession', 'a{sv}',
-            ([('remote-desktop-session-id', ('s', session_id))],),
+            _mutter_sc_addr(),
+            "CreateSession",
+            "a{sv}",
+            ([("remote-desktop-session-id", ("s", session_id))],),
         )
         sc_session_path = sc_body[0]
 
         stream_body = self._call(
             _mutter_sc_session_addr(sc_session_path),
-            'RecordMonitor', 'sa{sv}', ('', []),
+            "RecordMonitor",
+            "sa{sv}",
+            ("", []),
         )
         self._stream_path = stream_body[0]
 
-        self._call(_mutter_rd_session_addr(self._session_path), 'Start')
+        self._call(_mutter_rd_session_addr(self._session_path), "Start")
         logger.info("Mutter RemoteDesktop session started (jeepney)")
 
     def _ensure_session(self) -> None:
@@ -1139,7 +1306,8 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
 
     def _raw_move(self, x: int, y: int) -> None:
         self._session_call(
-            'NotifyPointerMotionAbsolute', 'sdd',
+            "NotifyPointerMotionAbsolute",
+            "sdd",
             (self._stream_path, float(x), float(y)),
         )
         self._tracker.update(x, y)
@@ -1148,7 +1316,7 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         smooth_move(x, y, self._tracker.get_pos, self._raw_move)
 
     def _button(self, btn: int, pressed: bool) -> None:
-        self._session_call('NotifyPointerButton', 'ib', (int(btn), bool(pressed)))
+        self._session_call("NotifyPointerButton", "ib", (int(btn), bool(pressed)))
 
     def click(self, x: int, y: int, button: str = "left") -> None:
         btn = self._btn_code(button)
@@ -1169,10 +1337,10 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
             time.sleep(0.08)
 
     def _key_event(self, keycode: int, down: bool) -> None:
-        self._session_call('NotifyKeyboardKeycode', 'ub', (int(keycode), bool(down)))
+        self._session_call("NotifyKeyboardKeycode", "ub", (int(keycode), bool(down)))
 
     def _keysym_event(self, keysym: int, down: bool) -> None:
-        self._session_call('NotifyKeyboardKeysym', 'ub', (int(keysym), bool(down)))
+        self._session_call("NotifyKeyboardKeysym", "ub", (int(keysym), bool(down)))
 
     def type_text(self, text: str) -> None:
         # Use keycodes from xkb char map (layout-aware). Characters not in the
@@ -1267,12 +1435,14 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         step_discrete = -1 if amount > 0 else 1
         step_pixels = -15.0 if amount > 0 else 15.0
         for _ in range(abs(amount)):
-            self._session_call('NotifyPointerAxisDiscrete', 'ui', (0, int(step_discrete)))
+            self._session_call("NotifyPointerAxisDiscrete", "ui", (0, int(step_discrete)))
             self._session_call(
-                'NotifyPointerAxis', 'ddu', (0.0, float(step_pixels), 0),
+                "NotifyPointerAxis",
+                "ddu",
+                (0.0, float(step_pixels), 0),
             )
             time.sleep(0.03)
-        self._session_call('NotifyPointerAxis', 'ddu', (0.0, 0.0, 1))
+        self._session_call("NotifyPointerAxis", "ddu", (0.0, 0.0, 1))
 
     def drag(
         self,
@@ -1287,8 +1457,15 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
         time.sleep(PRE_DRAG_BASE + random.random() * PRE_DRAG_RAND)
         self._button(btn, True)
 
-        path = windmouse_path(start_x, start_y, end_x, end_y,
-                              gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL)
+        path = windmouse_path(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
+        )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
             self._raw_move(px, py)
@@ -1300,7 +1477,7 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
     def close(self) -> None:
         if self._session_path is not None and self._conn is not None:
             try:
-                self._call(_mutter_rd_session_addr(self._session_path), 'Stop')
+                self._call(_mutter_rd_session_addr(self._session_path), "Stop")
             except Exception:
                 pass
         self._session_path = None
@@ -1411,10 +1588,19 @@ def _query_foreground_window_xdotool() -> ForegroundWindow | None:
     """Get the focused window on X11 via xdotool."""
     try:
         result = subprocess.run(
-            ["xdotool", "getactivewindow", "getwindowname",
-             "getactivewindow", "getwindowgeometry", "--shell",
-             "getactivewindow", "getwindowpid"],
-            capture_output=True, text=True, timeout=2.0,
+            [
+                "xdotool",
+                "getactivewindow",
+                "getwindowname",
+                "getactivewindow",
+                "getwindowgeometry",
+                "--shell",
+                "getactivewindow",
+                "getwindowpid",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
         if result.returncode != 0:
             return None
@@ -1447,8 +1633,13 @@ def _query_foreground_window_xdotool() -> ForegroundWindow | None:
                 pass
 
         return ForegroundWindow(
-            app_name=app_name, title=title,
-            x=x, y=y, width=width, height=height, pid=pid,
+            app_name=app_name,
+            title=title,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            pid=pid,
         )
     except Exception:
         return None
@@ -1473,7 +1664,6 @@ def _wayland_screenshot_tool_available() -> bool:
 
 
 class LinuxBackend(PlatformBackend):
-
     def __init__(self):
         self._capture: ScreenCapture | None = None
         self._executor: ActionExecutor | None = None
@@ -1556,4 +1746,3 @@ class LinuxBackend(PlatformBackend):
         from computer_use.tools.ui.backend import structured_capability
 
         return structured_capability()
-

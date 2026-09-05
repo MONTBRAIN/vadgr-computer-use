@@ -131,6 +131,31 @@ class TestOpMessages:
         assert ei.value.code == P.BrowserErrorCode.OP_FAILED
         assert "no element matches" in str(ei.value)
 
+    @pytest.mark.parametrize(
+        ("wire", "expected"),
+        [
+            (
+                "inactive_tab_trusted_keyboard_unsupported",
+                P.BrowserErrorCode.INACTIVE_TAB_TRUSTED_KEYBOARD_UNSUPPORTED,
+            ),
+            ("target_discarded", P.BrowserErrorCode.TARGET_DISCARDED),
+            ("target_frozen", P.BrowserErrorCode.TARGET_FROZEN),
+            ("target_restricted", P.BrowserErrorCode.TARGET_RESTRICTED),
+        ],
+    )
+    def test_parse_named_inactive_target_limitations(self, wire, expected):
+        with pytest.raises(P.BrowserError) as caught:
+            P.parse_result(
+                {
+                    "type": "result",
+                    "id": 8,
+                    "ok": False,
+                    "error": {"code": wire, "message": "named limitation"},
+                }
+            )
+        assert caught.value.code == expected
+        assert caught.value.remediation
+
 
 class TestBrowserError:
     def test_terminal_codes_are_not_retryable(self):

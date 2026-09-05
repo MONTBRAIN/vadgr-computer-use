@@ -26,6 +26,11 @@ import type {
   WindowSummary,
   WindowsEnumApi,
 } from "./target/enumeration";
+import {
+  clearTypingCancellation,
+  typingCancelled,
+  waitTypingDelay,
+} from "./typing-cancellation";
 
 // --- the session target (the headline of 0.5.0) ---
 //
@@ -124,11 +129,73 @@ async function useTargetOp(p: Params) {
 // The pinned target tab, resolved BY ID (never "active"/"currentWindow"). In
 // owned mode a first call opens the dedicated window; a lost attach target
 // raises target_lost (surfaced by the router as a terminal error).
-async function targetTab(): Promise<chrome.tabs.Tab> {
+async function targetTab(params: Params = {}): Promise<chrome.tabs.Tab> {
+  const exact = params._target as { window_id?: number; tab_id?: number } | undefined;
+  if (exact?.tab_id != null) {
+    const tab = await chrome.tabs.get(exact.tab_id);
+    if (!tab?.id || (exact.window_id != null && tab.windowId !== exact.window_id)) {
+      throw new Error("the exact broker target is gone");
+    }
+    return tab;
+  }
   const { tabId } = await sharedResolver().resolve();
   const tab = await chrome.tabs.get(tabId);
   if (!tab?.id) throw new Error("the pinned tab is gone");
   return tab;
+}
+
+function wireError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
+}
+
+function restrictedPage(url: string): boolean {
+  return /^(chrome|edge|devtools|chrome-extension|file):/i.test(url) ||
+    /^https:\/\/chromewebstore\.google\.com\//i.test(url);
+}
+
+export async function runnableTargetTab(
+  params: Params = {},
+): Promise<chrome.tabs.Tab> {
+  const tab = await targetTab(params);
+  if (tab.discarded) {
+    throw wireError("target_discarded", "the exact browser target is discarded");
+  }
+  if ((tab as chrome.tabs.Tab & { frozen?: boolean }).frozen) {
+    throw wireError("target_frozen", "the exact browser target is frozen");
+  }
+  if (restrictedPage(tab.url ?? "")) {
+    throw wireError(
+      "target_restricted",
+      `the extension cannot access the exact browser target URL`,
+    );
+  }
+  return tab;
+}
+
+export async function exactTargetReceivesTrustedKeyboard(
+  params: Params,
+): Promise<boolean> {
+  const tab = await runnableTargetTab(params);
+  const win = await chrome.windows.get(tab.windowId);
+  return tab.active === true && win.focused === true;
+}
+
+async function inactiveSafeKeyboardMutation(
+  op: string,
+  p: Params,
+  cdp: Executor | null,
+) {
+  if (await exactTargetReceivesTrustedKeyboard(p)) {
+    return withEscalation(op, p, domExecutor, cdp, isInteractive);
+  }
+  const result = await domExecutor.execute(op, p) as any;
+  if (result?.ok === false) {
+    throw wireError(
+      "inactive_tab_trusted_keyboard_unsupported",
+      `the exact inactive target rejected the ${op} content operation; trusted keyboard fallback was not dispatched`,
+    );
+  }
+  return result;
 }
 
 // How long to wait for a navigation to settle before returning whatever state
@@ -235,7 +302,7 @@ export async function deliverWithSelfHeal(
 
 // Forward a DOM op into the pinned tab's content script and await its reply.
 async function forwardToContent(op: string, params: Record<string, unknown>) {
-  const tab = await targetTab();
+  const tab = await runnableTargetTab(params);
   const ch: ContentChannel = {
     send: (o, p) => chrome.tabs.sendMessage(tab.id!, { type: "op", op: o, params: p }),
     reinject: async () => {
@@ -245,15 +312,36 @@ async function forwardToContent(op: string, params: Record<string, unknown>) {
       });
     },
   };
-  return deliverWithSelfHeal(op, params, ch);
+  try {
+    const delivery = deliverWithSelfHeal(op, params, ch);
+    if (op !== "wait_for") return await delivery;
+    const requested = Number(params.timeout ?? 5000);
+    const bound = Math.max(
+      2000,
+      (Number.isFinite(requested) ? requested : 5000) + 1500,
+    );
+    return await Promise.race([
+      delivery,
+      new Promise((resolve) => setTimeout(() => resolve({ matched: false }), bound)),
+    ]);
+  } catch (e) {
+    const message = String((e as Error)?.message ?? e);
+    if (/cannot access|extensions gallery|missing host permission/i.test(message)) {
+      throw wireError(
+        "target_restricted",
+        "the extension cannot access the exact browser target",
+      );
+    }
+    throw e;
+  }
 }
 
 // `eval` runs JS in the page's MAIN world via chrome.scripting - the content
 // script's isolated world is CSP-blocked from eval under MV3. Returns {value}.
 // (HIGH-risk escape hatch; page CSP may still forbid eval, which now surfaces
 // as a real error instead of an empty result.)
-async function evalInPage(expression: string) {
-  const tab = await targetTab();
+async function evalInPage(expression: string, params: Params = {}) {
+  const tab = await runnableTargetTab(params);
   const [inj] = await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
     world: "MAIN",
@@ -289,8 +377,8 @@ function settleNav(
 // extension-initiated chrome.tabs.update navigations are unreachable through
 // them - they fail "no page in history" even when history.length is large.
 // history.go() uses the page session history and is not gated.
-async function historyGo(delta: number) {
-  const tab = await targetTab();
+async function historyGo(delta: number, params: Params = {}) {
+  const tab = await targetTab(params);
   const before = (await chrome.tabs.get(tab.id!)).url;
   await chrome.scripting.executeScript({
     target: { tabId: tab.id! },
@@ -323,17 +411,17 @@ const tabsExecutor: Executor = {
   async execute(op: string, p: Params) {
     switch (op) {
       case "navigate": {
-        const tab = await targetTab();
+        const tab = await targetTab(p);
         await chrome.tabs.update(tab.id!, { url: String(p.url) });
         await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
       }
       case "back":
-        return historyGo(-1);
+        return historyGo(-1, p);
       case "forward":
-        return historyGo(1);
+        return historyGo(1, p);
       case "reload": {
-        const tab = await targetTab();
+        const tab = await targetTab(p);
         await chrome.tabs.reload(tab.id!);
         await tabComplete(tab.id!, p.wait as string | undefined);
         return summary(await chrome.tabs.get(tab.id!));
@@ -341,7 +429,7 @@ const tabsExecutor: Executor = {
       case "cookies":
         return cookiesOp(p);
       case "eval":
-        return evalInPage(String(p.expression));
+        return evalInPage(String(p.expression), p);
       default:
         throw new Error(`tabs path has no op '${op}'`);
     }
@@ -356,13 +444,404 @@ const domExecutor: Executor = {
   },
 };
 
+interface HumanTypingStream {
+  identity: string;
+  selector: string;
+  clear: boolean;
+  submit: boolean;
+  expectedValue: string;
+  totalUnits: number;
+  completedUnits: number;
+  fallbackUnits: number;
+  timingProfile: string | null;
+  nominalWpm: number | null;
+  started: number;
+  aborted: boolean;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const humanTypingStreams = new Map<string, HumanTypingStream>();
+const HUMAN_TYPING_STREAM_IDLE_MS = 60_000;
+
+function removeHumanTypingStream(
+  streamId: string,
+  state: HumanTypingStream,
+): void {
+  state.aborted = true;
+  if (state.idleTimer !== null) clearTimeout(state.idleTimer);
+  state.idleTimer = null;
+  if (humanTypingStreams.get(streamId) === state) {
+    humanTypingStreams.delete(streamId);
+  }
+}
+
+function refreshHumanTypingStreamIdle(
+  streamId: string,
+  state: HumanTypingStream,
+): void {
+  if (state.idleTimer !== null) clearTimeout(state.idleTimer);
+  state.idleTimer = setTimeout(() => {
+    if (humanTypingStreams.get(streamId) === state) {
+      removeHumanTypingStream(streamId, state);
+    }
+  }, HUMAN_TYPING_STREAM_IDLE_MS);
+}
+
+export function abortAllHumanTypingStreams(): void {
+  for (const [streamId, state] of humanTypingStreams) {
+    removeHumanTypingStream(streamId, state);
+  }
+}
+
+function typingTargetIdentity(p: Params): string {
+  return JSON.stringify({
+    target: p._target ?? null,
+    ownership_revision: p._ownership_revision ?? null,
+  });
+}
+
+function typingProgressError(code: string, completedUnits: number): Error {
+  return Object.assign(
+    new Error(`${code}: ${completedUnits} complete units`),
+    { code },
+  );
+}
+
+function typingStreamRemainingMs(stream: any): number | undefined {
+  let remainingMs = stream.remaining_ms === undefined
+    ? undefined
+    : Number(stream.remaining_ms);
+  if (stream.deadline_epoch_ms !== undefined) {
+    const epochRemaining = Number(stream.deadline_epoch_ms) - Date.now();
+    remainingMs = remainingMs === undefined
+      ? epochRemaining
+      : Math.min(remainingMs, epochRemaining);
+  }
+  return remainingMs;
+}
+
+async function legacyHumanTypeViaExactContentTarget(p: Params, dom: Executor) {
+  const plan = p.typing_plan as any;
+  if (!plan || !Array.isArray(plan.units)) {
+    throw new Error("human typing requires a validated typing plan");
+  }
+  await dom.execute("assert_actionable", p);
+  const beforeResult = await dom.execute("get_value", p) as any;
+  if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
+    throw new Error(`${String(p.selector)} is not a text input or textarea`);
+  }
+  const requestId = Number(p._request_id);
+  let completedUnits = 0;
+  let fallbackUnits = 0;
+  let expectedValue = p.clear !== false ? "" : beforeResult.value;
+  const started = Date.now();
+  try {
+    if (plan.units.length === 0 && p.clear !== false) {
+      const cleared = await dom.execute("clear", p) as any;
+      if (!cleared || cleared.ok !== true || cleared.value !== "") {
+        throw Object.assign(new Error("typing_mismatch: empty clear did not complete"), {
+          code: "typing_mismatch",
+        });
+      }
+    }
+    for (const unit of plan.units) {
+      const delay = Number(unit?.delay_before_ms ?? 0);
+      if (!Number.isFinite(delay) || delay < 0) {
+        throw new Error("typing plan contains an invalid delay");
+      }
+      if (delay > 0) await waitTypingDelay(delay, requestId);
+      if (typingCancelled(requestId)) {
+        throw typingProgressError("typing_cancelled", completedUnits);
+      }
+      const unitText = String(unit?.text ?? "");
+      const unitResult = await dom.execute("human_type_unit", {
+        ...p,
+        text: unitText,
+        replace: p.clear !== false && completedUnits === 0,
+      }) as any;
+      expectedValue = p.clear !== false && completedUnits === 0
+        ? unitText
+        : expectedValue + unitText;
+      if (!unitResult || unitResult.ok !== true || unitResult.value !== expectedValue) {
+        throw Object.assign(new Error("typing_mismatch: the page rejected a planned input unit"), {
+          code: "typing_mismatch",
+        });
+      }
+      if (unit?.fallback === true) fallbackUnits += 1;
+      completedUnits += 1;
+    }
+    if (typingCancelled(requestId)) {
+      throw typingProgressError("typing_cancelled", completedUnits);
+    }
+    const finalResult = await dom.execute("get_value", p) as any;
+    const expected = p.clear !== false
+      ? String(p.text ?? "")
+      : beforeResult.value + String(p.text ?? "");
+    if (!finalResult || finalResult.value !== expected) {
+      throw Object.assign(
+        new Error("typing_mismatch: final value does not match expected text"),
+        { code: "typing_mismatch" },
+      );
+    }
+    if (p.submit) await dom.execute("human_submit", p);
+    return {
+      human: true,
+      timing_profile: plan.timing_profile ?? null,
+      nominal_wpm: plan.nominal_wpm ?? null,
+      units: plan.units.length,
+      fallback_units: fallbackUnits,
+      elapsed_ms: Date.now() - started,
+      ok: true,
+      via: "content",
+    };
+  } finally {
+    clearTypingCancellation(requestId);
+  }
+}
+
+export async function humanTypeViaExactContentTarget(
+  p: Params,
+  dom: Executor = domExecutor,
+) {
+  if (p.typing_stream === undefined && p.typing_plan !== undefined) {
+    return legacyHumanTypeViaExactContentTarget(p, dom);
+  }
+  const stream = p.typing_stream as any;
+  const action = String(stream?.action ?? "");
+  const streamId = String(stream?.stream_id ?? "");
+  if (!streamId || !["begin", "chunk", "finish", "abort"].includes(action)) {
+    throw new Error("human typing requires a validated typing stream");
+  }
+  if (action === "abort") {
+    const state = humanTypingStreams.get(streamId);
+    if (state) removeHumanTypingStream(streamId, state);
+    return { aborted: true };
+  }
+
+  const identity = typingTargetIdentity(p);
+  if (action === "begin") {
+    if (humanTypingStreams.has(streamId)) {
+      throw new Error("human typing stream already exists");
+    }
+    const requestId = Number(p._request_id);
+    const remainingMs = typingStreamRemainingMs(stream);
+    if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs <= 0)) {
+      throw typingProgressError("typing_deadline_exceeded", 0);
+    }
+    const deadlineMs = remainingMs === undefined ? undefined : performance.now() + remainingMs;
+    const requireActive = () => {
+      if (typingCancelled(requestId)) {
+        throw typingProgressError("typing_cancelled", 0);
+      }
+      if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+        throw typingProgressError("typing_deadline_exceeded", 0);
+      }
+    };
+    try {
+      requireActive();
+      const totalUnits = Number(stream.total_units);
+      const predictedMs = Number(stream.predicted_ms);
+      if (!Number.isInteger(totalUnits) || totalUnits < 0 || !Number.isFinite(predictedMs)) {
+        throw new Error("human typing stream metadata is invalid");
+      }
+      await dom.execute("assert_actionable", p);
+      requireActive();
+      const beforeResult = await dom.execute("get_value", p) as any;
+      requireActive();
+      if (!beforeResult || beforeResult.ok !== true || typeof beforeResult.value !== "string") {
+        throw new Error(`${String(p.selector)} is not a text input or textarea`);
+      }
+      const state: HumanTypingStream = {
+        identity,
+        selector: String(p.selector),
+        clear: p.clear !== false,
+        submit: p.submit === true,
+        expectedValue: p.clear !== false ? "" : beforeResult.value,
+        totalUnits,
+        completedUnits: 0,
+        fallbackUnits: 0,
+        timingProfile: stream.timing_profile ?? null,
+        nominalWpm: stream.nominal_wpm ?? null,
+        started: Date.now(),
+        aborted: false,
+        idleTimer: null,
+      };
+      humanTypingStreams.set(streamId, state);
+      refreshHumanTypingStreamIdle(streamId, state);
+      return { started: true, completed_units: 0, value_length: beforeResult.value.length };
+    } finally {
+      clearTypingCancellation(requestId);
+    }
+  }
+
+  const state = humanTypingStreams.get(streamId);
+  if (!state || state.aborted) {
+    throw new Error("human typing stream is not active");
+  }
+  if (state.identity !== identity || state.selector !== String(p.selector)) {
+    removeHumanTypingStream(streamId, state);
+    throw Object.assign(new Error("typing_state_uncertain: typing target changed"), {
+      code: "typing_state_uncertain",
+    });
+  }
+
+  const remainingMs = typingStreamRemainingMs(stream);
+  if (remainingMs !== undefined && (!Number.isFinite(remainingMs) || remainingMs <= 0)) {
+    removeHumanTypingStream(streamId, state);
+    throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+  }
+  const deadlineMs = remainingMs === undefined ? undefined : performance.now() + remainingMs;
+
+  if (action === "chunk") {
+    const requestId = Number(p._request_id);
+    try {
+      const units = stream.units as any[];
+      if (!Array.isArray(units) || units.length === 0 || units.length > 256) {
+        throw new Error("human typing chunk unit count is invalid");
+      }
+      if (Number(stream.confirmed_units) !== state.completedUnits) {
+        throw Object.assign(new Error("typing_state_uncertain: progress count changed"), {
+          code: "typing_state_uncertain",
+        });
+      }
+      const plannedMs = units.reduce(
+        (sum, unit) => sum + Number(unit?.delay_before_ms ?? Number.NaN),
+        0,
+      );
+      const wireBytes = new TextEncoder().encode(JSON.stringify(units)).byteLength;
+      if (!Number.isFinite(plannedMs) || plannedMs < 0 || plannedMs > 5_000) {
+        throw new Error("human typing chunk duration is invalid");
+      }
+      if (wireBytes > 256 * 1024) {
+        throw new Error("human typing chunk is too large");
+      }
+      refreshHumanTypingStreamIdle(streamId, state);
+
+      for (const unit of units) {
+        if (state.aborted || typingCancelled(requestId)) {
+          throw typingProgressError("typing_cancelled", state.completedUnits);
+        }
+        if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+          throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+        }
+        const delay = Number(unit?.delay_before_ms ?? Number.NaN);
+        if (!Number.isFinite(delay) || delay < 0) {
+          throw new Error("typing plan contains an invalid delay");
+        }
+        if (delay > 0) {
+          const waited = await waitTypingDelay(
+            delay,
+            requestId,
+            deadlineMs,
+            () => state.aborted,
+          );
+          if (waited === "deadline") {
+            throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+          }
+          if (waited === "cancelled") {
+            throw typingProgressError("typing_cancelled", state.completedUnits);
+          }
+        }
+        const unitText = String(unit?.text ?? "");
+        const unitResult = await dom.execute("human_type_unit", {
+          ...p,
+          text: unitText,
+          replace: state.clear && state.completedUnits === 0,
+        }) as any;
+        const expected = state.clear && state.completedUnits === 0
+          ? unitText
+          : state.expectedValue + unitText;
+        if (!unitResult || unitResult.ok !== true || unitResult.value !== expected) {
+          throw Object.assign(
+            new Error("typing_mismatch: the page rejected a planned input unit"),
+            { code: "typing_mismatch" },
+          );
+        }
+        state.expectedValue = expected;
+        if (unit?.fallback === true) state.fallbackUnits += 1;
+        state.completedUnits += 1;
+        if (state.aborted || typingCancelled(requestId)) {
+          throw typingProgressError("typing_cancelled", state.completedUnits);
+        }
+        if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+          throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+        }
+      }
+      refreshHumanTypingStreamIdle(streamId, state);
+      return {
+        completed_units: state.completedUnits,
+        value_length: state.expectedValue.length,
+      };
+    } catch (error) {
+      removeHumanTypingStream(streamId, state);
+      throw error;
+    } finally {
+      clearTypingCancellation(requestId);
+    }
+  }
+
+  const finishRequestId = Number(p._request_id);
+  try {
+    if (Number(stream.confirmed_units) !== state.completedUnits) {
+      throw Object.assign(new Error("typing_state_uncertain: progress count changed"), {
+        code: "typing_state_uncertain",
+      });
+    }
+    if (state.completedUnits !== state.totalUnits) {
+      throw Object.assign(new Error("typing_state_uncertain: typing stream is incomplete"), {
+        code: "typing_state_uncertain",
+      });
+    }
+    refreshHumanTypingStreamIdle(streamId, state);
+    const requireRemainingDeadline = () => {
+      if (state.aborted || typingCancelled(finishRequestId)) {
+        throw typingProgressError("typing_cancelled", state.completedUnits);
+      }
+      if (deadlineMs !== undefined && performance.now() >= deadlineMs) {
+        throw typingProgressError("typing_deadline_exceeded", state.completedUnits);
+      }
+    };
+    requireRemainingDeadline();
+    if (state.totalUnits === 0 && state.clear) {
+      const cleared = await dom.execute("clear", p) as any;
+      if (!cleared || cleared.ok !== true || cleared.value !== "") {
+        throw Object.assign(new Error("typing_mismatch: empty clear did not complete"), {
+          code: "typing_mismatch",
+        });
+      }
+    }
+    const finalResult = await dom.execute("get_value", p) as any;
+    if (!finalResult || finalResult.value !== state.expectedValue) {
+      throw Object.assign(
+        new Error("typing_mismatch: final value does not match expected text"),
+        { code: "typing_mismatch" },
+      );
+    }
+    requireRemainingDeadline();
+    if (state.submit) await dom.execute("human_submit", p);
+    return {
+      human: true,
+      timing_profile: state.timingProfile,
+      nominal_wpm: state.nominalWpm,
+      units: state.completedUnits,
+      fallback_units: state.fallbackUnits,
+      elapsed_ms: Date.now() - state.started,
+      ok: true,
+      via: "content",
+    };
+  } finally {
+    clearTypingCancellation(finishRequestId);
+    removeHumanTypingStream(streamId, state);
+  }
+}
+
 // The CDP universal path (chrome.debugger). Null when the API is absent (no
 // `debugger` permission / non-extension test context) → escalation is skipped.
 // The onEvent channel is passed so the CDP path can handle JS dialogs.
 function defaultCdp(): Executor | null {
   if (typeof chrome === "undefined" || !chrome.debugger) return null;
   return new CdpExecutor(
-    chromeDebuggerAttach(async () => (await targetTab()).id!),
+    chromeDebuggerAttach(async (p) => (await runnableTargetTab(p)).id!),
     chrome.debugger.onEvent,
   );
 }
@@ -608,7 +1087,7 @@ export async function profilesOp(
 // chrome://newtab is visible immediately, not inferred two ops later. Only
 // object results carry it (a bare string from read_text is passed through); a
 // result that already has `target` is left untouched.
-export type TargetProvider = () =>
+export type TargetProvider = (p: Params) =>
   | Promise<{ window_id: number; tab_id: number; url: string } | null>
   | { window_id: number; tab_id: number; url: string }
   | null;
@@ -627,7 +1106,7 @@ export function wrapWithTarget(
     ) {
       return result;
     }
-    const ctx = await provider();
+    const ctx = await provider(p);
     if (!ctx) return result;
     return { ...(result as Record<string, unknown>), target: ctx };
   };
@@ -635,9 +1114,19 @@ export function wrapWithTarget(
 
 // The live target-context provider: the in-memory `current` (never resolve() - 
 // wrapping must not itself open a window) plus the tab's real url.
-async function currentTargetContext(): Promise<
+async function currentTargetContext(p: Params = {}): Promise<
   { window_id: number; tab_id: number; url: string } | null
 > {
+  const exact = p._target as { window_id?: number; tab_id?: number } | undefined;
+  if (exact?.window_id != null && exact.tab_id != null) {
+    let url = "";
+    try {
+      url = (await chrome.tabs.get(exact.tab_id)).url ?? "";
+    } catch {
+      // A target that vanished mid-op still reports the exact broker ids.
+    }
+    return { window_id: exact.window_id, tab_id: exact.tab_id, url };
+  }
   const cur = sharedResolver().current();
   if (!cur) return null;
   let url = "";
@@ -673,6 +1162,15 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
           ? cdp.execute(op, p)
           : withEscalation(op, p, domExecutor, cdp, isInteractive),
       );
+    } else if (op === "type") {
+      reg(op, async (p) => {
+        if (p.human === true) {
+          return humanTypeViaExactContentTarget(p);
+        }
+        return inactiveSafeKeyboardMutation(op, p, cdp);
+      });
+    } else if (op === "fill" || op === "clear") {
+      reg(op, (p) => inactiveSafeKeyboardMutation(op, p, cdp));
     } else if (ESCALATING.has(op)) {
       reg(op, (p) => withEscalation(op, p, domExecutor, cdp, isInteractive));
     } else {
@@ -680,7 +1178,28 @@ export function buildRouter(cdp: Executor | null = defaultCdp()): Router {
     }
   }
 
-  if (cdp) for (const op of CDP_ONLY) reg(op, (p) => cdp.execute(op, p));
+  // Private streamed form of human `type`. Advertising this separately makes
+  // a matching extension a precondition, instead of sending stream data to an
+  // older extension that only understands the released whole-operation shape.
+  reg("human_type_stream", (p) => humanTypeViaExactContentTarget(p));
+
+  if (cdp) {
+    for (const op of CDP_ONLY) {
+      if (op === "press") {
+        reg(op, async (p) => {
+          if (!(await exactTargetReceivesTrustedKeyboard(p))) {
+            throw wireError(
+              "inactive_tab_trusted_keyboard_unsupported",
+              "trusted keyboard input is unavailable while the exact target tab or window is inactive",
+            );
+          }
+          return cdp.execute(op, p);
+        });
+      } else {
+        reg(op, (p) => cdp.execute(op, p));
+      }
+    }
+  }
 
   // `eval` prefers the CDP path: page-world eval() is governed by the page's
   // CSP (a `script-src` without 'unsafe-eval' blocks it, and executeScript

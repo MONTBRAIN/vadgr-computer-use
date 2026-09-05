@@ -2,6 +2,82 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.6] - 2026-09-01
+
+### Added
+
+- Add one detached per-user browser broker for concurrent local MCP clients.
+  Each client has its own profile selection and exact current target.
+- Run the shared Windows/WSL broker as one verified self-contained Windows
+  process. WSL uses the packaged stdio proxy, so NAT and mirrored networking
+  converge without Windows Python or network-setting changes.
+- Add `vadgr-cua --version` so clean-install and support checks can identify the
+  installed distribution without importing source files.
+- Add window leases as the normal multi-tab browser workspace. Add explicit tab
+  claims for a single tab in a shared user window. Registry listings show mine,
+  other, unowned, and orphaned targets without hiding foreign targets.
+- Add opt-in human-paced browser and pixel typing. Both surfaces use one
+  validated schedule, a versioned 68 WPM default profile, or an explicit WPM
+  and within-session IKI coefficient of variation.
+
+### Changed
+
+- Route browser operations by exact profile, window, and tab identifiers.
+  Concurrent requests no longer share one mutable target or one response lock.
+- Make browser actionability descend through nested open shadow roots and use
+  composed-tree containment while retaining real-overlay rejection.
+- Keep `browser fill`, fast browser `type`, and fast pixel `type_text` as the
+  backward-compatible bulk or existing backend paths.
+- Remove the implicit total deadline from human-paced browser and pixel typing.
+  An optional caller timeout remains one explicit monotonic budget. Browser
+  typing now streams bounded, progress-confirmed chunks with a per-chunk
+  inactivity backstop and never replays an uncertain dispatch.
+- Replace independent key delays and whole-message normalization with the
+  released empirical gap tables plus one stationary four-bin rank chain. The
+  chain adds local cadence while preserving each timing distribution. Ordinary
+  spaces add no separate pause.
+- Use Unicode grapheme clusters as timed units. Custom human timing accepts an
+  IKI coefficient of variation from 0 through 1 and keeps the same rank chain.
+
+### Fixed
+
+- Detect missing Windows native-host setup from the real HKCU registration
+  instead of a separate broker manifest copy.
+- Keep an explicitly selected browser profile and its owned target pinned while
+  its MV3 worker reconnects, instead of silently retargeting a remaining browser
+  profile and rejecting the original operation as foreign ownership.
+- Return the named Windows interop remedy when WSL cannot launch the shared
+  browser broker, instead of collapsing the setup failure to a generic tool error.
+- Preserve a released current target as a stale fenced selection. The next page
+  dispatch now fails before extension execution instead of silently creating a
+  replacement window, so lease revisions remain observable and race-safe.
+- Keep covered-element rejection mandatory in real extension documents when a
+  hidden or throttled target transiently reports a zero root layout box or no
+  compositor hit, while preserving ordinary inactive-target operations.
+- Deliver each human-paced browser unit through the exact leased tab's content
+  channel, with ordered keydown, before-input, input and keyup events plus
+  per-unit read-back. Inactive tabs and unfocused windows no longer discard
+  paced input, and the path never activates or foregrounds its target.
+- Keep hidden background tabs from waiting forever for an animation frame while
+  verifying a state-bearing DOM click.
+- Reject trusted keyboard commands by name when their exact tab or window is
+  inactive, instead of reporting a discarded CDP key event as success or
+  activating the target. Discarded, frozen and restricted targets now fail by
+  name too.
+- Keep native Windows auto-registration on the packaged, content-addressed
+  native-host executable. Starting a Windows MCP client no longer replaces the
+  working Chrome registration with a Python batch launcher.
+- Honor `profile_id` carried by `browser(use_target)` before the shared broker
+  performs its multi-profile ambiguity check.
+- Confirm a native port only after the broker hello arrives, and probe an
+  apparently open port from the MV3 heartbeat so a failed host can reconnect.
+- Distinguish missing native-host setup, a missing extension, a disabled
+  extension, an enabled but sleeping worker, and a bounded recovery timeout.
+- Stop returning typed input in the pixel tool result. The result now reports
+  counts and timing metadata only.
+- Keep WSL input-bearing PowerShell scripts on the persistent process pipe.
+  They no longer fall back to a temporary script file.
+
 ## [0.7.5] - 2026-08-29
 
 ### Fixed

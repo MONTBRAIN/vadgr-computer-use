@@ -23,6 +23,7 @@ fully unit-tested.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -42,6 +43,20 @@ PIXEL_FALLBACK = (
 _MANIFEST_NAME = "com.vadgr.cua.json"
 
 
+def _browser_platform(platform: str | None = None) -> str:
+    if platform is not None:
+        return platform
+    try:
+        from computer_use.core.types import Platform
+        from computer_use.platform.detect import detect_platform
+
+        if detect_platform() == Platform.WSL2:
+            return "wsl"
+    except Exception:
+        pass
+    return sys.platform
+
+
 @dataclass
 class BridgeStatus:
     """The pre-flight report: is a browser usable right now?
@@ -56,15 +71,31 @@ class BridgeStatus:
     setup: bool
     reason: str | None
     profiles: list[dict[str, Any]] = field(default_factory=list)
+    broker_epoch: str | None = None
+    client_id: str | None = None
+    broker_pid: int | None = None
+    broker_process_started_ns: str | None = None
+    broker_bundle_hash: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "connected": self.connected,
             "browsers": self.browsers,
             "setup": self.setup,
             "reason": self.reason,
             "profiles": self.profiles,
         }
+        if self.broker_epoch is not None:
+            result["broker_epoch"] = self.broker_epoch
+        if self.client_id is not None:
+            result["client_id"] = self.client_id
+        if self.broker_pid is not None:
+            result["broker_pid"] = self.broker_pid
+        if self.broker_process_started_ns is not None:
+            result["broker_process_started_ns"] = self.broker_process_started_ns
+        if self.broker_bundle_hash is not None:
+            result["broker_bundle_hash"] = self.broker_bundle_hash
+        return result
 
 
 @runtime_checkable
@@ -101,7 +132,13 @@ class BrowserSession:
     profile_id: str = "default"
     profile_context: dict[str, Any] = field(default_factory=dict)
 
-    def request(self, op: str, params: dict[str, Any]) -> Any:  # pragma: no cover
+    def request(
+        self,
+        op: str,
+        params: dict[str, Any],
+        *,
+        cancelled=None,
+    ) -> Any:  # pragma: no cover
         # The live round-trip is wired in the spike (socket -> native host ->
         # extension). The base record exists so the registry and routing are
         # unit-testable without a browser.
@@ -109,6 +146,7 @@ class BrowserSession:
 
 
 # --- the per-OS native-host manifest locations (browser.md) ---
+
 
 def windows_user_home_mnt(windows_user: str | None = None) -> Path:
     """The WSL view of the Windows user's home: ``/mnt/c/Users/<user>``.
@@ -134,7 +172,9 @@ def _detect_windows_user() -> str:  # pragma: no cover - interop, mocked in test
 
         out = subprocess.run(
             ["cmd.exe", "/c", "echo %USERNAME%"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
             # Never inherit fd 0: under a stdio MCP server, fd 0 is the JSON-RPC
             # pipe, and a cmd.exe interop child that holds it stalls `initialize`.
             stdin=subprocess.DEVNULL,
@@ -157,17 +197,25 @@ def manifest_paths(
     setup script writes the manifest itself. On WSL the targets are the
     *Windows* Chrome locations, written from Linux via ``/mnt/c``.
     """
-    plat = platform or sys.platform
+    plat = _browser_platform(platform)
     home = Path.home()
     if plat == "wsl":
         # cua-in-WSL drives Windows Chrome - register to the Windows locations.
         win = windows_user_home_mnt(windows_user)
         local = win / "AppData" / "Local"
         return {
-            "chrome": local / "Google" / "Chrome" / "User Data"
-            / "NativeMessagingHosts" / _MANIFEST_NAME,
-            "edge": local / "Microsoft" / "Edge" / "User Data"
-            / "NativeMessagingHosts" / _MANIFEST_NAME,
+            "chrome": local
+            / "Google"
+            / "Chrome"
+            / "User Data"
+            / "NativeMessagingHosts"
+            / _MANIFEST_NAME,
+            "edge": local
+            / "Microsoft"
+            / "Edge"
+            / "User Data"
+            / "NativeMessagingHosts"
+            / _MANIFEST_NAME,
         }
     if plat == "darwin":
         base = home / "Library" / "Application Support"
@@ -191,6 +239,58 @@ def manifest_paths(
 def probe_manifests(paths: dict[str, Path]) -> list[str]:
     """Return the browsers whose native-host manifest is present on disk."""
     return [name for name, p in paths.items() if Path(p).exists()]
+
+
+def _browser_profile_roots(platform: str | None = None) -> list[Path]:
+    """Return browser user-data roots without starting or changing a browser."""
+    plat = _browser_platform(platform)
+    home = Path.home()
+    if plat == "wsl":
+        local = windows_user_home_mnt() / "AppData" / "Local"
+        return [
+            local / "Google" / "Chrome" / "User Data",
+            local / "Microsoft" / "Edge" / "User Data",
+        ]
+    if plat.startswith("win"):
+        local = home / "AppData" / "Local"
+        return [
+            local / "Google" / "Chrome" / "User Data",
+            local / "Microsoft" / "Edge" / "User Data",
+        ]
+    if plat == "darwin":
+        base = home / "Library" / "Application Support"
+        return [base / "Google" / "Chrome", base / "Microsoft Edge"]
+    return [
+        home / ".config" / "google-chrome",
+        home / ".config" / "chromium",
+        home / ".config" / "microsoft-edge",
+    ]
+
+
+def probe_extension_state(platform: str | None = None) -> str:
+    """Return ``enabled``, ``disabled`` or ``missing`` from browser preferences."""
+    from computer_use.setup.extension_setup import KNOWN_EXTENSION_IDS
+
+    found = False
+    for root in _browser_profile_roots(platform):
+        if not root.exists():
+            continue
+        profiles = [root / "Default", *sorted(root.glob("Profile *"))]
+        for profile in profiles:
+            for name in ("Secure Preferences", "Preferences"):
+                try:
+                    value = json.loads((profile / name).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                settings = value.get("extensions", {}).get("settings", {})
+                for extension_id in KNOWN_EXTENSION_IDS:
+                    entry = settings.get(extension_id)
+                    if not isinstance(entry, dict):
+                        continue
+                    found = True
+                    if entry.get("state") == 1 and not entry.get("disable_reasons"):
+                        return "enabled"
+    return "disabled" if found else "missing"
 
 
 class FakeBridge:
@@ -282,6 +382,10 @@ class NativeMessagingBridge:
 
     def _probe_setup(self) -> list[str]:
         self._maybe_self_register()
+        if _browser_platform().startswith("win"):
+            from computer_use.setup.extension_setup import probe_windows_registry
+
+            return probe_windows_registry()
         return probe_manifests(manifest_paths())
 
     def _active_session(self) -> BrowserSession | None:
@@ -308,8 +412,7 @@ class NativeMessagingBridge:
             return self._current
         pin = os.environ.get(self._PROFILE_PIN_ENV)
         if pin:
-            matches = [k for k, s in self._sessions.items()
-                       if self._pin_matches(s, pin)]
+            matches = [k for k, s in self._sessions.items() if self._pin_matches(s, pin)]
             if len(matches) == 1:
                 return matches[0]
         # The sole-connection convenience is suppressed while a selection is
@@ -330,14 +433,16 @@ class NativeMessagingBridge:
         out: list[dict[str, Any]] = []
         for key, s in self._sessions.items():
             ctx = s.profile_context or {}
-            out.append({
-                "profile_id": s.profile_id,
-                "browser": s.browser,
-                "is_current": key == cur,
-                "window_count": ctx.get("window_count"),
-                "tab_count": ctx.get("tab_count"),
-                "sample_tab_titles": list(ctx.get("sample_tab_titles", [])),
-            })
+            out.append(
+                {
+                    "profile_id": s.profile_id,
+                    "browser": s.browser,
+                    "is_current": key == cur,
+                    "window_count": ctx.get("window_count"),
+                    "tab_count": ctx.get("tab_count"),
+                    "sample_tab_titles": list(ctx.get("sample_tab_titles", [])),
+                }
+            )
         return out
 
     def _ambiguous_error(self, reason: str | None = None) -> BrowserError:
@@ -349,14 +454,15 @@ class NativeMessagingBridge:
         listing = "; ".join(
             f"{p['profile_id']} (browser={p['browser']}, "
             f"tabs={p['tab_count']}"
-            + (f", open: {', '.join(map(str, p['sample_tab_titles'][:3]))}"
-               if p["sample_tab_titles"] else "")
+            + (
+                f", open: {', '.join(map(str, p['sample_tab_titles'][:3]))}"
+                if p["sample_tab_titles"]
+                else ""
+            )
             + ")"
             for p in self._profile_list()
         )
-        message = reason or (
-            "more than one browser profile is connected and none is selected"
-        )
+        message = reason or ("more than one browser profile is connected and none is selected")
         return BrowserError(
             BrowserErrorCode.PROFILE_AMBIGUOUS,
             f"{message}. Connected profiles: {listing or '(none)'}",
@@ -372,16 +478,16 @@ class NativeMessagingBridge:
         """Point ``current`` at the profile matching ``profile_id`` (exact or a
         unique prefix). Raises ``profile_ambiguous`` on zero or many matches."""
         if profile_id:
-            matches = [k for k, s in self._sessions.items()
-                       if s.profile_id == profile_id
-                       or s.profile_id.startswith(profile_id)]
+            matches = [
+                k
+                for k, s in self._sessions.items()
+                if s.profile_id == profile_id or s.profile_id.startswith(profile_id)
+            ]
             if len(matches) == 1:
                 self._current = matches[0]
                 self._dropped_selection = None
                 return matches[0]
-        raise self._ambiguous_error(
-            f"no connected profile matches {profile_id!r}"
-        )
+        raise self._ambiguous_error(f"no connected profile matches {profile_id!r}")
 
     def _profiles_op(self, params: dict[str, Any]) -> Any:
         """Answer the ``profiles`` op from cua's connection registry (the only
@@ -403,9 +509,7 @@ class NativeMessagingBridge:
                 "browser": session.browser,
                 "is_current": True,
             }
-        raise BrowserError(
-            BrowserErrorCode.OP_FAILED, f"unknown profiles sub-op {sub!r}"
-        )
+        raise BrowserError(BrowserErrorCode.OP_FAILED, f"unknown profiles sub-op {sub!r}")
 
     def _refresh_profile_contexts(self) -> None:
         """Re-query each connected extension for its LIVE profile context.
@@ -468,24 +572,45 @@ class NativeMessagingBridge:
         session = self._active_session()
         if session is not None:
             return BridgeStatus(
-                connected=True, browsers=browsers or [session.browser],
-                setup=True, reason=None, profiles=profiles,
+                connected=True,
+                browsers=browsers or [session.browser],
+                setup=True,
+                reason=None,
+                profiles=profiles,
             )
         if self._sessions:
             # Connected, but the ladder can't pick one (more than one profile,
             # none selected). Connected is true; the profiles array shows the
             # choices and the reason flags the ambiguity.
             return BridgeStatus(
-                connected=True, browsers=browsers or [], setup=True,
-                reason="profile_ambiguous", profiles=profiles,
+                connected=True,
+                browsers=browsers or [],
+                setup=True,
+                reason="profile_ambiguous",
+                profiles=profiles,
             )
         if not browsers:
+            return BridgeStatus(connected=False, browsers=[], setup=False, reason="not_set_up")
+        extension = probe_extension_state()
+        if extension == "disabled":
             return BridgeStatus(
-                connected=False, browsers=[], setup=False, reason="not_set_up"
+                connected=False,
+                browsers=browsers,
+                setup=True,
+                reason="extension_disabled",
             )
-        return BridgeStatus(
-            connected=False, browsers=browsers, setup=True, reason="not_connected"
-        )
+        if extension == "missing":
+            return BridgeStatus(
+                connected=False,
+                browsers=browsers,
+                setup=True,
+                reason="extension_missing",
+            )
+        return BridgeStatus(connected=False, browsers=browsers, setup=True, reason="waking")
+
+    def has_sessions(self) -> bool:
+        """Return whether at least one extension profile is live."""
+        return bool(self._sessions)
 
     def send(self, op: str, /, **params) -> Any:
         # `profiles` is resolved cua-side (the connection registry is the only
@@ -495,14 +620,18 @@ class NativeMessagingBridge:
         # A profile carried inline (use_target(profile_id=...)) pins `current`
         # first, then is consumed here - the extension never sees profile_id.
         profile_id = params.pop("profile_id", None)
+        cancelled = params.pop("_cancelled", None)
+        selected: tuple[str, str] | None = None
         if profile_id is not None:
-            self._select_profile(profile_id)
-        session = self._active_session()
+            selected = self._select_profile(profile_id)
+        session = self._sessions.get(selected) if selected is not None else self._active_session()
         if session is None:
             self._raise_no_session()
         if op not in session.supported_ops:
             raise self._op_unsupported(op)
-        return session.request(op, params)
+        if cancelled is None:
+            return session.request(op, params)
+        return session.request(op, params, cancelled=cancelled)
 
     def _raise_no_session(self) -> None:
         if self._dropped_selection is not None and self._sessions:
@@ -519,9 +648,24 @@ class NativeMessagingBridge:
                 remediation="run extension setup (`vadgr-cua browser-setup`)",
                 fallback=PIXEL_FALLBACK,
             )
+        extension = probe_extension_state()
+        if extension == "disabled":
+            raise BrowserError(
+                BrowserErrorCode.EXTENSION_DISABLED,
+                "the browser extension is installed but disabled",
+                remediation="enable the vadgr-cua extension in the browser",
+                fallback=PIXEL_FALLBACK,
+            )
+        if extension == "missing":
+            raise BrowserError(
+                BrowserErrorCode.EXTENSION_MISSING,
+                "the native host is registered but the browser extension is not installed",
+                remediation="install the vadgr-cua extension",
+                fallback=PIXEL_FALLBACK,
+            )
         raise BrowserError(
-            BrowserErrorCode.NOT_CONNECTED,
-            "the native host is registered but no browser session is live",
-            remediation="open Chrome/Edge and enable the vadgr-cua extension",
+            BrowserErrorCode.WAKING,
+            "the extension is enabled but its worker or native port is not live",
+            remediation="wait for bounded recovery; reopen the browser if it times out",
             fallback=PIXEL_FALLBACK,
         )

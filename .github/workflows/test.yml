@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
@@ -22,6 +24,33 @@ jobs:
         run: pip install ruff==0.16.0 # pinned so lint enforcement can't drift red
       - name: Ruff check
         run: ruff check computer_use
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.24.0"
+          cache-dependency-path: computer_use/browser/winhost/go.mod
+      - name: Verify the static Windows proxy and committed broker bundle
+        run: |
+          set -euo pipefail
+          python scripts/check_windows_broker_bundle.py
+          cd computer_use/browser/winhost
+          go test ./...
+          GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath \
+            -ldflags='-s -w -buildid=' -o "$RUNNER_TEMP/vadgr-cua-host.exe" .
+          cmp "$RUNNER_TEMP/vadgr-cua-host.exe" vadgr-cua-host.exe
+
+  windows-broker-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Verify and run the self-contained broker without system Python
+        run: |
+          python scripts/check_windows_broker_bundle.py
+          python scripts/smoke_windows_broker.py
 
   test:
     runs-on: ${{ matrix.os }}

@@ -4,6 +4,9 @@
 
 """XTestExecutor: click/scroll/drag/key mechanics via an injected X-input seam."""
 
+import pytest
+
+from computer_use.core.typing import TypingCancelled, TypingPlan, TypingUnit
 from computer_use.platform.backends.xtest import XTestExecutor
 
 
@@ -95,3 +98,18 @@ class TestKeyboard:
         # both go down then up in reverse
         downs = [e for e in fx.events if e[0] == "key" and e[2] is True]
         assert len(downs) == 2
+
+    def test_human_plan_uses_one_xinput_session_and_honors_cancellation(self):
+        ex, fx = _exec()
+        plan = TypingPlan(
+            True,
+            "test",
+            40,
+            (TypingUnit("a", 0), TypingUnit("b", 0)),
+            0,
+        )
+        checks = iter((False, True))
+        with pytest.raises(TypingCancelled):
+            ex.type_text_plan(plan, cancelled=lambda: next(checks, True))
+        assert ("key", 1000 + ord("a"), True) in fx.events
+        assert ("key", 1000 + ord("b"), True) not in fx.events

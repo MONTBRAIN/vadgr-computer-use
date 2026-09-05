@@ -171,6 +171,16 @@ class TestSelfRegister:
         assert any(r"Microsoft\Edge" in k for k in keys)
         assert all(v.endswith("com.vadgr.cua.json") for _, v in calls)
 
+    def test_probe_windows_registry_requires_key_and_target(self, tmp_path):
+        chrome = tmp_path / "chrome.json"
+        chrome.write_text("{}")
+        values = {
+            S._WIN_REGISTRY_KEYS["chrome"]: str(chrome),
+            S._WIN_REGISTRY_KEYS["edge"]: str(tmp_path / "missing.json"),
+        }
+
+        assert S.probe_windows_registry(reader=values.get) == ["chrome"]
+
     def test_ensure_registered_writes_manifest_with_host_and_id(self, tmp_path):
         chrome = tmp_path / "chrome" / "com.vadgr.cua.json"
         result = S.ensure_registered(
@@ -195,6 +205,30 @@ class TestSelfRegister:
         )
         assert calls, "Windows registration must write a registry key"
         assert all(v == str(chrome) for _, v in calls)
+
+    def test_ensure_registered_windows_installs_content_addressed_exe(self, tmp_path, monkeypatch):
+        source = tmp_path / "package" / "vadgr-cua-host.exe"
+        source.parent.mkdir()
+        source.write_bytes(b"NATIVE-HOST")
+        home = tmp_path / "owner"
+        manifest = tmp_path / "manifest" / "com.vadgr.cua.json"
+        registry: list[tuple[str, str]] = []
+        monkeypatch.setattr(S, "bundled_relay_exe", lambda: source)
+        monkeypatch.setattr(S.Path, "home", lambda: home)
+
+        result = S.ensure_registered(
+            paths={"chrome": manifest},
+            platform="win32",
+            registry_writer=lambda key, value: registry.append((key, value)),
+        )
+
+        expected = S.native_windows_relay_dest(src=source)
+        assert result["host_path"] == str(expected)
+        assert expected.read_bytes() == b"NATIVE-HOST"
+        assert expected.parent.name == S._file_sha256(source)
+        assert json.loads(manifest.read_text())["path"] == str(expected)
+        assert registry and registry[0][1] == str(manifest)
+        assert not (home / ".vadgr-cua" / "host.bat").exists()
 
 
 class TestWSLRegistration:
@@ -265,6 +299,7 @@ class TestWSLRegistration:
         assert p.endswith("vadgr-cua-host.exe")
         assert p.startswith("C:\\Users\\alice\\")
         assert "vadgr-cua" in p
+        assert len(p.split("\\")[-2]) == 64
 
     def test_ensure_registered_wsl_manifest_path_is_the_relay_exe(self, tmp_path):
         chrome = tmp_path / "com.vadgr.cua.json"
@@ -300,13 +335,13 @@ class TestWSLRegistration:
         assert out == dest
         assert dest.read_bytes() == b"RELAYBINARY"
 
-    def test_ensure_relay_exe_is_idempotent_on_same_size(self, tmp_path):
+    def test_ensure_relay_exe_replaces_same_size_wrong_content(self, tmp_path):
         src = tmp_path / "src.exe"
         src.write_bytes(b"NEWBYTES")  # 8 bytes
         dest = tmp_path / "dest.exe"
-        dest.write_bytes(b"OLDBYTES")  # also 8 bytes -> same size, treated as present
+        dest.write_bytes(b"OLDBYTES")  # also 8 bytes
         S.ensure_relay_exe(src=src, dest=dest)
-        assert dest.read_bytes() == b"OLDBYTES"  # not overwritten
+        assert dest.read_bytes() == b"NEWBYTES"
 
     def test_ensure_relay_exe_recopies_when_size_differs(self, tmp_path):
         src = tmp_path / "src.exe"

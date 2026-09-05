@@ -14,14 +14,16 @@ type Listener = (...args: any[]) => void;
 
 function fakePort() {
   const disconnectListeners: Listener[] = [];
-  return {
+  const port = {
     onMessage: { addListener: vi.fn() },
     onDisconnect: {
       addListener: (fn: Listener) => disconnectListeners.push(fn),
     },
     postMessage: vi.fn(),
     fireDisconnect: () => disconnectListeners.forEach((fn) => fn()),
+    disconnect: vi.fn(() => disconnectListeners.forEach((fn) => fn())),
   };
+  return port;
 }
 
 function chromeStub() {
@@ -137,6 +139,23 @@ describe("connect() idempotency", () => {
     mod.connect();
     expect(connectNative).toHaveBeenCalledTimes(2);
   });
+
+  it("returns an in-flight reply only through the port that received the request", async () => {
+    const { ports, mod } = await importBackground();
+    const original = ports[0];
+    original.fireDisconnect();
+    mod.connect();
+    const replacement = ports[1];
+
+    await mod.onMessage(original as any, { type: "hello", proto: -1, id: 7 });
+
+    expect(original.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "result", id: 7, ok: false }),
+    );
+    expect(replacement.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "result", id: 7 }),
+    );
+  });
 });
 
 describe("keep-alive alarm", () => {
@@ -177,5 +196,24 @@ describe("offscreen heartbeat message", () => {
     ports[0].fireDisconnect();
     messageListeners.forEach((fn) => fn({ type: "something-else" }));
     expect(connectNative).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes an existing native port and reconnects when it became stale", async () => {
+    vi.useFakeTimers();
+    try {
+      const { connectNative, ports, messageListeners } = await importBackground();
+      await vi.runAllTicks();
+      ports[0].postMessage.mockImplementationOnce(() => {
+        throw new Error("Attempting to use a disconnected port object");
+      });
+
+      messageListeners.forEach((fn) => fn({ type: "keepalive" }));
+      await vi.runAllTicks();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(connectNative).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
