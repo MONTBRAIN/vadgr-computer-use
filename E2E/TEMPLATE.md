@@ -421,6 +421,14 @@ system discovering a blocker four groups in.
 > no later successful result and the entire owned process tree exits within the
 > written bound. Test this on every OS the subprocess path supports.
 
+> A release that changes pixel text input includes a real stock-editor cell on
+> every affected OS, not only an instrumented fixture. Open a fresh unsaved
+> document through the public tools, establish the exact foreground window,
+> type a fixed sensitive-file value through pixel `type_text`, save it through
+> the editor UI into the isolated test root, and independently compare the file
+> bytes by hash. Record only redacted input, timing metadata, foreground identity
+> and hashes. Delete only that test file and close the test document.
+
 ## Part &lt;X&gt;: &lt;what it proves&gt;
 
 > Parts, not cells: this repo's unit of work is an agent task with a verdict,
