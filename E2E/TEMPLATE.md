@@ -321,6 +321,16 @@ never appears in.
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
 
+> Pixel and screenshot-driven cells use GPT-5.6 Sol at medium reasoning when
+> driven by Codex, or the current Claude Opus at medium reasoning when driven by
+> Claude Code. Before selection, recheck the candidates' current official
+> capability and pricing pages and the authenticated account catalog; record
+> the source date, exact model id, reasoning level, projected cost and hard
+> ceiling. Choose between those two qualified paths using availability, task
+> fit and projected total cost. Do not substitute Terra, Sonnet or Gemini for a
+> visual cell. A higher reasoning level or cost tier requires a recorded
+> capability failure at medium and explicit owner approval.
+
 ## Prerequisites (per OS)
 
 > One block per operating system this pass covers. Display server, browser and
