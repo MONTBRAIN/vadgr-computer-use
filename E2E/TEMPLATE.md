@@ -151,6 +151,11 @@ present in a given runbook, the entry is all there is.
     daemon.** Two drivers sharing one daemon read each other's work and neither
     verdict means anything. [Repeatability] [../README.md]
 
+21. **Every browser-tier cell uses a versioned Chrome for Testing executable
+    with a fresh isolated profile and the matching development extension.**
+    Never attach to the owner's normal browser process or profile. A normal
+    Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -336,6 +341,35 @@ never appears in.
 > One block per operating system this pass covers. Display server, browser and
 > extension state, profiles, and anything that must already be running. An
 > unstated prerequisite becomes a mystery failure on the OS nobody had at hand.
+
+## Browser isolation
+
+Every cua browser-tier cell uses Chrome for Testing from the
+[official versioned downloads][chrome-for-testing-downloads]. Record the exact
+browser version, download URL and downloaded archive hash. Do not silently use an installed normal Chrome,
+Chromium or Edge executable when Chrome for Testing is unavailable. Mark the
+affected cells `blocked` instead.
+
+Create a new `--user-data-dir` below the pass's isolated test root. Load only
+the matching built `extension/dist` as an unpacked development extension. Do
+not reuse or copy an owner profile, cookies, sign-in, preferences or extensions.
+Do not enable browser sync. A test account required by a written cell remains a
+declared credential and is entered only in this isolated profile.
+
+Each independent pass owns its Chrome for Testing process, profile directory,
+debugging endpoint and extension state. A concurrency cell can deliberately
+connect several agent sessions to the same isolated extension bridge. No other
+cell shares a browser with another pass. Record the process id and profile path.
+After evidence is committed and pushed, stop only that process and remove only
+that profile directory.
+
+On WSL, run the Windows Chrome for Testing build and load the extension built in
+the Windows checkout. Do not point Windows Chrome for Testing at a WSL path.
+Native Linux, Windows and macOS use the Chrome for Testing build for their own
+operating system. A headed desktop or `xvfb` can provide the display according
+to the cell, but both use the same isolation rule.
+
+[chrome-for-testing-downloads]: https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
 
 ## Setup
 
