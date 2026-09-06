@@ -238,7 +238,7 @@ class TestWSLRegistration:
     def test_manifest_paths_wsl_targets_windows_under_mnt_c(self):
         paths = S.manifest_paths("wsl", windows_user="alice")
         for browser, p in paths.items():
-            assert str(p).startswith("/mnt/c/Users/alice/")
+            assert p.as_posix().startswith("/mnt/c/Users/alice/")
             assert p.name == "com.vadgr.cua.json"
         assert "chrome" in paths and "edge" in paths
 
@@ -294,7 +294,16 @@ class TestWSLRegistration:
             r"C:\Users\alice\AppData\Local\Google\Chrome\com.vadgr.cua.json"
         )
 
-    def test_windows_relay_path_points_at_the_exe(self):
+    def test_windows_relay_path_points_at_the_exe(self, monkeypatch):
+        monkeypatch.setattr(
+            S,
+            "relay_exe_dest",
+            lambda _user=None: (
+                "/mnt/c/Users/alice/AppData/Local/vadgr-cua/"
+                + "a" * 64
+                + "/vadgr-cua-host.exe"
+            ),
+        )
         p = S.windows_relay_path(windows_user="alice")
         assert p.endswith("vadgr-cua-host.exe")
         assert p.startswith("C:\\Users\\alice\\")

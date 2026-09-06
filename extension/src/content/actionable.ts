@@ -10,9 +10,9 @@
 import { OpFailed } from "./errors";
 
 // Layout is only measurable in a real browser; jsdom/happy-dom report every box
-// as 0×0. Probe the document's own root box: if it has height, layout is live and
-// the box / hit-test checks apply; otherwise they're skipped so the op logic stays
-// unit-testable on a no-layout DOM.
+// as zero size. Probe the document's own root box: if it has height, layout is
+// live and the box / hit-test checks apply; otherwise they're skipped so the op
+// logic stays unit-testable on a no-layout DOM.
 function layoutIsLive(doc: Document): boolean {
   // A content script always runs inside a real Chromium document. Hidden or
   // throttled targets can transiently report a zero root box between requests;

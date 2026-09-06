@@ -109,7 +109,7 @@ class TestExpandExec:
                                             name="My App", path=Path("/x/my.desktop"))
         assert "%F" not in argv
         assert "My App" in argv  # %c -> Name
-        assert "/x/my.desktop" in argv  # %k -> path
+        assert str(Path("/x/my.desktop")) in argv  # %k -> native path
         assert "%literal" in argv  # %% -> %
         assert "myapp" in argv and "--flag" in argv
 

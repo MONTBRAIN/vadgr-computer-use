@@ -87,7 +87,7 @@ class TestManifestProbe:
         # The Linux table from browser.md must be representable.
         paths = B.manifest_paths(platform="linux")
         assert "chrome" in paths
-        assert str(paths["chrome"]).endswith(
+        assert paths["chrome"].as_posix().endswith(
             "google-chrome/NativeMessagingHosts/com.vadgr.cua.json"
         )
 

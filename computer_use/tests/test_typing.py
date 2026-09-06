@@ -383,7 +383,8 @@ def test_checked_in_schema_six_profile_names_source_and_exact_deriver():
     assert source["license"] == "CC BY 4.0"
     assert source["bytes"] > 0
     assert len(source["sha256"]) == 64
-    assert hashlib.sha256(script.read_bytes()).hexdigest() == profile["provenance"]["script_sha256"]
+    canonical_script = script.read_text(encoding="utf-8").replace("\r\n", "\n").encode()
+    assert hashlib.sha256(canonical_script).hexdigest() == profile["provenance"]["script_sha256"]
     assert profile["fit"]["candidate_rung"] == "released_marginals_rank4"
     assert profile["nominal_wpm"] == 68
     assert profile["model"]["styles"] == [{"speed_log": 0.0, "weight": 1.0}]

@@ -44,11 +44,11 @@ def _bundle_inputs() -> tuple[Path, Path, dict[str, object]]:
 
 
 def _windows_path(path: Path) -> str:
-    value = str(path)
+    value = str(path).replace("\\", "/")
     if value.startswith("/mnt/") and len(value) > 6:
         return f"{value[5].upper()}:{value[6:].replace('/', chr(92))}"
     if sys.platform == "win32":
-        return value
+        return str(path)
     result = subprocess.run(
         ["wslpath", "-w", value],
         capture_output=True,

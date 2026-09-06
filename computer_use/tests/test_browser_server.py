@@ -138,7 +138,7 @@ class TestDiscoveryFile:
 
     def test_wsl_discovery_path_is_under_mnt_c(self):
         p = S.wsl_discovery_path(windows_user="alice")
-        assert str(p).startswith("/mnt/c/Users/alice/")
+        assert p.as_posix().startswith("/mnt/c/Users/alice/")
         assert p.name == "browser.port"
 
     def test_write_discovery_wsl_also_writes_windows_copy(self, tmp_path):
