@@ -453,9 +453,9 @@ claude --dangerously-skip-permissions --print --output-format stream-json --mode
 
 Every cua browser-tier cell uses Chrome for Testing from the
 [official versioned downloads][chrome-for-testing-downloads]. Record the exact
-browser version, download URL and downloaded archive hash. Do not silently use an installed normal Chrome,
-Chromium or Edge executable when Chrome for Testing is unavailable. Mark the
-affected cells `blocked` instead.
+browser version, download URL and downloaded archive hash. Do not silently use
+an installed normal Chrome, Chromium or Edge executable when Chrome for Testing
+is unavailable. Mark the affected cells `blocked` instead.
 
 Create a new `--user-data-dir` below the pass's isolated test root. Load only
 the matching built `extension/dist` as an unpacked development extension. Do

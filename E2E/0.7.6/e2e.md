@@ -34,6 +34,9 @@ from this branch. The MCP configuration must call that environment's
     not substitute Terra, Sonnet or Gemini. Record the exact model, reasoning
     level, sources and hard ceiling. A higher reasoning level or cost tier
     requires a recorded medium-tier capability failure and owner approval.
+11. Every remaining browser-tier cell uses a versioned Chrome for Testing
+    executable, a fresh isolated profile, and the matching development
+    extension. Never attach to the owner's normal browser process or profile.
 
 ## Owner and environment requirements
 
@@ -42,7 +45,7 @@ Tell the owner about these requirements before the affected group starts.
 | requirement | cells | owner action |
 |---|---|---|
 | Linux, native Windows, macOS, and WSL hosts | all OS rows | Provide one real interactive session on each host |
-| Chrome or Chromium with developer mode | A01-A04, B01-B10, C01-C04 | Approve the unpacked extension load if the browser asks |
+| Chrome for Testing with developer mode | A01-A04, B01-B17, C01-C07, E02 browser path | Approve the unpacked development extension only if the isolated browser asks |
 | Browser restart and extension disable permission | A03-A04, B09 | Approve only the named browser action |
 | Host suspend and resume | A02 | Resume the host if automation cannot do so safely |
 | Native input permission | D01-D05, E02 pixel path | Grant only the normal OS accessibility or input permission |
@@ -94,6 +97,30 @@ install, and diff checks before the live pass.
 The committed harness must start the local instrumented page and capture each
 MCP client's JSON stream. Helpers prepare state and capture output. They never
 drive product operations or decide a verdict.
+
+### Browser isolation for remaining hosts
+
+Linux, native Windows, and macOS must use Chrome for Testing from the
+[official versioned downloads][chrome-for-testing-downloads] for every browser
+cell. Record the exact executable path, version, download URL, archive hash,
+process id, and profile path. A normal Chrome, Chromium, or Edge process is not
+a fallback.
+
+Create a fresh `--user-data-dir` below the host's isolated test root. Load only
+the matching built `extension/dist` as an unpacked development extension. Do
+not copy or reuse the owner's browser profile, cookies, sign-in, preferences,
+or extensions. Do not enable browser sync.
+
+C05 and C06 deliberately connect multiple agent sessions to the same isolated
+Chrome for Testing extension bridge. No independent pass shares that process,
+profile, debugging endpoint, or extension state. After evidence is committed
+and pushed, stop only the recorded process and remove only its profile root.
+
+The completed 2026-09-06 WSL pass predates this environment rule. Its observed
+product results remain valid. Every later WSL rerun must use the Windows Chrome
+for Testing build and the extension built in the Windows checkout.
+
+[chrome-for-testing-downloads]: https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
 
 Start the loopback fixture with one host-specific ready file and capture its
 sanitized request log:
@@ -228,6 +255,10 @@ after cleanup.
 
 ## Findings
 
+- After the WSL pass, the owner required Chrome for Testing for all later cua
+  browser e2e. The remaining hosts use a fresh isolated profile and cannot
+  fall back to an owner's normal browser. This environment rule changes no
+  product code and does not invalidate the completed WSL observations.
 - The first pixel matrix proved timing only in an instrumented field. D01a now
   also drives the stock editor on every affected OS and verifies its saved bytes
   independently. The WSL observation used GPT-5.6 Sol at medium reasoning,
