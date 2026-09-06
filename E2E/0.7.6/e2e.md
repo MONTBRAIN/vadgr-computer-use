@@ -45,8 +45,8 @@ Tell the owner about these requirements before the affected group starts.
 | Chrome or Chromium with developer mode | A01-A04, B01-B10, C01-C04 | Approve the unpacked extension load if the browser asks |
 | Browser restart and extension disable permission | A03-A04, B09 | Approve only the named browser action |
 | Host suspend and resume | A02 | Resume the host if automation cannot do so safely |
-| Native input permission | D01-D05 | Grant only the normal OS accessibility or input permission |
-| Stock plain-text editor | D01a | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; no installation solely for the cell |
+| Native input permission | D01-D05, E02 pixel path | Grant only the normal OS accessibility or input permission |
+| Stock plain-text editor | D01-D05, E02 pixel path | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; install no editor solely for these cells |
 | Windows browser reachable from native Windows and WSL | B02a-B02f, B11-B17 | Keep both clients available during the convergence and lifecycle cells; provide hosts already configured for NAT and mirrored networking |
 | Authenticated agent CLI and bounded billing | D01, D01a, D02b, D04, E02 | Keep one supported Claude or Codex login available; approve no unbounded or higher-cost fallback |
 
@@ -65,7 +65,12 @@ the interrupted 2026-09-05 attempt.
 
 | cells | provider/auth | required capabilities | selected model | hard ceiling | escalation |
 |---|---|---|---|---|---|
-| D01, D02b, D04, E02 | authenticated Codex or Claude Code owner login | image-result continuation and MCP tools | pending owner-authorized resume: GPT-5.6 Sol medium or current Claude Opus medium | declare iterations, input tokens, output tokens and cost before the group resumes | Stop at the first ceiling. Do not change the qualified model or reasoning level without a recorded failure and owner approval. |
+| D01, D02b, D04, E02 | authenticated Codex owner login | image-result continuation and MCP tools | GPT-5.6 Sol, medium reasoning | USD 4 API-list-price equivalent for the accepted boundary | Stop at the first ceiling. Do not change the qualified model or reasoning level without a recorded failure and owner approval. |
+
+The WSL pass rechecked the official OpenAI capability and pricing pages on
+2026-09-06. GPT-5.6 Sol supports image input and tools. The comparison rates
+were USD 4 per million input tokens, USD 0.40 per million cached input tokens,
+and USD 20 per million output tokens.
 
 [models]: https://developers.openai.com/api/docs/models
 [openai-pricing]: https://developers.openai.com/api/docs/pricing
@@ -158,6 +163,15 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 
 ## Part D: pixel typing
 
+Use the operating system's stock plain-text editor for every cell in this part:
+Windows Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and
+the available stock plain-text editor on Linux. Use a fresh document and the
+public pixel tools. Do not substitute a custom event recorder, test GUI, browser
+field, or repository helper for the editor. Take one pixel screenshot before
+typing and one after typing. The after screenshot must visibly confirm the
+mutation. Do not save the document. Use the returned typing metadata for timing
+assertions.
+
 On WSL, invoke the committed foreground helper through a process-only execution
 policy override; it does not change the host policy:
 
@@ -169,20 +183,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| D01 | Native event-recording field focused. On WSL, give the isolated Windows test window a unique title and use `harness/focus_window.ps1 -ExactTitle` to verify its exact non-minimized HWND is foreground. | Run fast `type_text` and named-profile human `type_text` | Fast mode stays compatible; human mode emits ordered varied input and exact final text | Native event record with text removed; clear field | not run: the 68 WPM rebuild invalidated the named-profile result | not run: remote host | not run: remote host | not run: remote host |
-| D01a | Fresh unsaved stock-editor document. Use Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and the available stock plain-text editor on Linux. Verify the exact non-minimized editor window is foreground and choose one path inside the isolated test root. | Through the agent and public pixel tools, type the fixed sensitive-file value with `type_text(human=true)` and no timing override, then save through the editor UI | Metadata names `us_adult_transcription_2026`, nominal WPM 68, all units complete and no unexpected fallback; the saved file's SHA-256 equals the sensitive-file value's SHA-256; no browser or structured typing path is used | Redacted agent JSON, foreground identity, timing metadata and hash comparison only; delete only the saved test file and close the test document | pass: GPT-5.6 Sol medium completed 240 units in 38.729 seconds and the saved-file hash matched | not run: remote host | not run: remote host | not run: remote host |
-| D02 | D01 field focused | Run custom WPM plus IKI-CV at both accepted endpoints | Planned and achieved metadata are valid; IKI-CV zero removes marginal spread while the shared rank chain remains | Timing metadata and redacted event intervals only; clear field | pass: 10 WPM constant and 200 WPM varied endpoint plans completed exactly | not run: remote host | not run: remote host | not run: remote host |
-| D02b | D01 field focused; text contains ordinary spaces and every semantic-boundary class | Run default and custom human input | Ordinary spaces add no separate pause; grapheme order and final value remain exact; all complete gaps stay within the documented class bounds | Redacted native event timing, boundary counts, and independent value hash; clear field | not run: the 68 WPM rebuild invalidated the default-profile result | not run: remote host | not run: remote host | not run: remote host |
-| D03 | D01 field focused | Try incomplete or mixed timing options, IKI-CV below 0 or above 1, and a deadline shorter than the plan | Each fails before input and leaves the field unchanged | Error results and independent field read-back | pass: seven invalid or preflight-deadline requests left the field empty | not run: remote host | not run: remote host | not run: remote host |
-| D04 | D01 field focused | Complete a plan longer than 60 seconds without a timeout, then exercise runtime deadline, cancellation and combining-mark or joined-emoji grapheme fallback | Long input completes; deadline and cancellation report a truthful prefix; modifiers are released; each grapheme stays whole; exact text or named fallback is reported; no whole-string retry or submit occurs after interruption | Event record with text removed; release keys and clear field | not run: the 68 WPM rebuild invalidated the long default-profile result | not run: remote host | not run: remote host | not run: remote host |
-| D05 | Human pixel typing active in one client | Start a second pixel keyboard action | The product makes no parallel-safety claim; evidence records machine-global serialization or conflict behavior exactly | Both streams; stop both operations and release keys | pass: two concurrent calls completed; the 535-unit result was interleaved | not run: remote host | not run: remote host | not run: remote host |
+| D01 | Fresh stock-editor document focused. On WSL, use `harness/focus_window.ps1 -ExactTitle` to verify the exact non-minimized Notepad window is foreground. | Run fast `type_text` and named-profile human `type_text` in separate fresh documents | Fast mode stays compatible; human metadata names the profile and reports complete varied input; each after screenshot visibly confirms the mutation | Redacted agent JSON with before and after screenshot results; close the test documents without saving | pass: Notepad fast mode completed 93 units in 0.107 seconds; profile mode completed 314 units in 53.563 seconds | not run: remote host | not run: remote host | not run: remote host |
+| D01a | Fresh unsaved stock-editor document. Use Notepad on Windows and WSL, TextEdit in plain-text mode on macOS, and the available stock plain-text editor on Linux. Verify the exact non-minimized editor window is foreground. | Through the agent and public pixel tools, type the fixed sensitive-file value with `type_text(human=true)` and no timing override | Metadata names `us_adult_transcription_2026`, nominal WPM 68, all units complete and no unexpected fallback; the after screenshot visibly confirms the mutation; no browser or structured typing path is used | Redacted agent JSON, foreground identity, timing metadata, and before and after screenshot results; close without saving | pass: GPT-5.6 Sol medium completed 240 units in 38.729 seconds and produced the stronger saved-file hash oracle | not run: remote host | not run: remote host | not run: remote host |
+| D02 | Fresh stock-editor document focused | Run custom WPM plus IKI-CV at both accepted endpoints in separate documents | Planned and achieved metadata are valid; IKI-CV zero removes marginal spread while the shared rank chain remains; each after screenshot visibly confirms the mutation | Redacted timing metadata and before and after screenshot results; close without saving | pass: Notepad completed the 10 WPM and 200 WPM endpoint plans in 15.112 and 2.075 seconds | not run: remote host | not run: remote host | not run: remote host |
+| D02b | Fresh stock-editor document focused; text contains ordinary spaces and every semantic-boundary class | Run default and custom human input in separate documents | Metadata reports each requested mode; each after screenshot visibly confirms the mutation; browser cell C03b retains the independent boundary-timing oracle | Redacted metadata, boundary counts, and before and after screenshot results; close without saving | pass: Notepad completed 353-unit default and 90 WPM multiline inputs in 62.678 and 45.032 seconds | not run: remote host | not run: remote host | not run: remote host |
+| D03 | Fresh empty stock-editor document focused | Try incomplete or mixed timing options, IKI-CV below 0 or above 1, and a deadline shorter than the plan | Each fails before input and leaves the document visibly empty | Error results and before and after screenshot results | pass: seven invalid or preflight-deadline requests failed before input; the document remained empty | not run: remote host | not run: remote host | not run: remote host |
+| D04 | Fresh stock-editor document focused | Complete a plan longer than 60 seconds without a timeout, then exercise runtime deadline, cancellation and combining-mark or joined-emoji grapheme fallback in fresh documents | Long input completes; deadline and cancellation report a truthful prefix; modifiers are released; each grapheme stays whole; the after screenshot confirms visible input or the named fallback is reported; no whole-string retry or submit occurs after interruption | Redacted agent JSON with before and after screenshot results; release keys and close without saving | pass: Notepad completed 614 units in 100.634 seconds and the Unicode path named four fallbacks; prior runtime-deadline and cancellation evidence remains valid | not run: remote host | not run: remote host | not run: remote host |
+| D05 | Human pixel typing active in one fresh stock-editor document | Start a second pixel keyboard action against the same document | The product makes no parallel-safety claim; evidence records machine-global serialization or conflict behavior exactly | Both streams and before and after screenshot results; stop both operations, release keys, and close without saving | pass: synchronized Notepad clients overlapped and completed 314 and 228 units | not run: remote host | not run: remote host | not run: remote host |
 
 ## Part E: packaged and clean delivery
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: clean wheel reported 0.7.6 and served the MCP outside the checkout | not run: remote host | not run: remote host | not run: remote host |
-| E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact foreground-window setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed; close test state | not run: the 68 WPM rebuild invalidated the default-profile inputs | not run: remote host | not run: remote host | not run: remote host |
+| E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | not run: remote host | not run: remote host | not run: remote host |
 
 ## Per-OS results
 
@@ -191,9 +205,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | A: recovery and setup diagnosis | pass | not run: remote host | not run: remote host | not run: remote host |
 | B: shared broker and target ownership | pass | not run: remote host | not run: remote host | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | not run: remote host | not run: remote host |
-| D: pixel typing | not run: cost-bounded 68 WPM rerun required | not run: remote host | not run: remote host | not run: remote host |
-| E: packaged and clean delivery | not run: cost-bounded pixel rerun required | not run: remote host | not run: remote host | not run: remote host |
-| overall | not run: WSL pixel rerun remains | not run: remote host | not run: remote host | not run: remote host |
+| D: pixel typing | pass | not run: remote host | not run: remote host | not run: remote host |
+| E: packaged and clean delivery | pass | not run: remote host | not run: remote host | not run: remote host |
+| overall | pass | not run: remote host | not run: remote host | not run: remote host |
 
 ## Evidence
 
@@ -223,6 +237,22 @@ after cleanup.
   owner before product mutation because it violated the reasoning boundary.
   Both redacted streams remain rejected attempts and do not change D01a's
   earlier passing observation.
+- The owner rejected the custom Windows Forms event recorder during the WSL
+  rerun. Every new positive pixel observation now uses Windows Notepad. The
+  ruling invalidated custom-field results that depended on a visible field. It
+  did not invalidate D01a or earlier negative and interruption observations
+  whose oracles did not depend on that field.
+- The accepted GPT-5.6 Sol medium boundary used USD 3.085261 of API-list-price
+  equivalent tokens and stayed below the USD 4 ceiling. Rejected attempts raised
+  the complete rerun to USD 4.866510. The run used an authenticated Codex
+  subscription, so these values do not measure an extra owner charge.
+- A save-dialog attempt typed a path into Notepad and was stopped. It created no
+  test file and contributes to no pass. The accepted stock-editor observations
+  use screenshots and metadata only and leave the owner document unsaved.
+- The new D04 short-timeout probes failed during preflight and are retained as
+  redundant diagnostics. The already accepted runtime-deadline and cancellation
+  observations remain applicable because the 68 WPM default change and editor
+  ruling did not affect their interruption or prefix oracles.
 - A01 first changed the selected client from its restarting profile to the one
   remaining profile. The resulting stale target failed as foreign ownership.
   The repaired broker keeps an explicit profile pinned during bounded MV3
