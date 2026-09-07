@@ -148,7 +148,19 @@ def prepare_internal_pages(devtools: DevTools) -> dict[str, Any]:
   return {enabled: true, changed: true};
 })()
 """
-    outcome = devtools.evaluate(chrome_urls, expression)
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            outcome = devtools.evaluate(chrome_urls, expression)
+            break
+        except LifecycleSetupError as error:
+            if (
+                "internal debugging page enable control is unavailable"
+                not in str(error)
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.1)
 
     discards = next(
         (

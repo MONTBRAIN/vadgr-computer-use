@@ -69,6 +69,47 @@ def test_lifecycle_row_waits_for_discard_table_population():
     assert result["lifecycle"] == "hidden"
 
 
+def test_prepare_waits_for_internal_debugging_page_render():
+    lifecycle = _lifecycle()
+
+    class DelayedChromeUrls:
+        attempts = 0
+
+        @staticmethod
+        def targets():
+            return [
+                {
+                    "id": "chrome-urls",
+                    "type": "page",
+                    "url": "chrome://chrome-urls/",
+                },
+                {
+                    "id": "discards",
+                    "type": "page",
+                    "url": "chrome://discards/",
+                    "title": "Discards",
+                },
+            ]
+
+        def evaluate(self, target, expression):
+            del target, expression
+            self.attempts += 1
+            if self.attempts == 1:
+                raise lifecycle.LifecycleSetupError(
+                    "Error: internal debugging page enable control is unavailable"
+                )
+            return {"enabled": True, "changed": True}
+
+    devtools = DelayedChromeUrls()
+    result = lifecycle.prepare_internal_pages(devtools)
+
+    assert devtools.attempts == 2
+    assert result == {
+        "debug_pages": {"enabled": True, "changed": True},
+        "discards_target_id": "discards",
+    }
+
+
 def test_wsl_focus_helper_is_exact_and_refuses_minimized_windows():
     source = FOCUS_WINDOW.read_text(encoding="utf-8")
 

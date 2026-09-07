@@ -8,8 +8,6 @@
 
 """The browser / browser_eval MCP tools against a FakeBridge (no browser)."""
 
-import time
-
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -113,11 +111,16 @@ class TestOpRouting:
             )
         assert fake.calls == []
 
-    def test_explicit_deadline_cannot_be_extended_by_finish_transport(self):
+    def test_explicit_deadline_cannot_be_extended_by_finish_transport(
+        self, monkeypatch
+    ):
+        now = [0.0]
+        monkeypatch.setattr(T.time, "monotonic", lambda: now[0])
+
         def respond(**params):
             action = params["typing_stream"]["action"]
             if action == "finish":
-                time.sleep(0.02)
+                now[0] = 0.006
                 return {"human": True, "units": 0}
             return {"completed_units": 0}
 
