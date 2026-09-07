@@ -182,10 +182,10 @@ independent oracle and cleanup.
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: one read recovered the same target at `c5c78b8` | not run: remote host | pass: isolated worker recovery preserved the selected profile and completed one read on the same target | not run: remote host |
-| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: one post-resume DOM read completed without retry at `26e7d05` | not run: remote host | not run: owner prohibited sleep and power actions while away | not run: remote host |
-| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: final bundle returned `extension_disabled` | not run: remote host | pass: isolated disable returned `extension_disabled`; extension restored | not run: remote host |
-| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: final bundle returned `not_set_up`; registration restored | not run: remote host | pass: isolated registration removal returned `not_set_up`; registration restored | not run: remote host |
+| A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: one read recovered the same target at `c5c78b8` | pass: one bounded recovery restored the worker and completed one read on the same target | pass: isolated worker recovery preserved the selected profile and completed one read on the same target | not run: remote host |
+| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: one post-resume DOM read completed without retry at `26e7d05` | blocked: automatic RTC wake powered off the VM; a clean suspend and resume requires the owner at the host | not run: owner prohibited sleep and power actions while away | not run: remote host |
+| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: final bundle returned `extension_disabled` | pass: isolated disable returned `extension_disabled`; extension restored | pass: isolated disable returned `extension_disabled`; extension restored | not run: remote host |
+| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: final bundle returned `not_set_up`; registration restored | pass: clean extension shutdown and registration removal returned `not_set_up`; registration restored | pass: isolated registration removal returned `not_set_up`; registration restored | not run: remote host |
 
 ## Part B: shared broker and target ownership
 
@@ -268,7 +268,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | pass | not run: remote host | incomplete: A02 awaits owner permission for suspend/resume | not run: remote host |
+| A: recovery and setup diagnosis | pass | incomplete: A02 requires owner-assisted VM suspend and resume | incomplete: A02 awaits owner permission for suspend/resume | not run: remote host |
 | B: shared broker and target ownership | pass | not run: remote host | pass | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | pass | not run: remote host |
 | D: pixel typing | pass | not run: remote host | pass | not run: remote host |
