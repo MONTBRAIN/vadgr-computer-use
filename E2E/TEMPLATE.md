@@ -156,6 +156,12 @@ present in a given runbook, the entry is all there is.
     Never attach to the owner's normal browser process or profile. A normal
     Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
 
+22. **The agent driver uses the CLI's existing interactive login and permission
+    bypass.** Do not require, read, export or pass an OpenAI or Anthropic API key
+    solely to drive this e2e. Until the Vadgr-native e2e harness is ready, start
+    each live task with `codex --yolo exec --json` or Claude Code with
+    `--dangerously-skip-permissions`. [The approach]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -245,6 +251,29 @@ it.
 > **goal-level** ("log in and confirm the banner"), never a script of tool calls:
 > a runbook that dictates the calls tests the runbook, not the runtime.
 
+**Use the agent CLI's existing interactive login.** A signed-in Codex or Claude
+Code session is the authentication requirement for the driver. The driver does
+not need an OpenAI or Anthropic API key from `.env`. Do not inspect, source,
+export or pass either provider key solely to run this e2e.
+
+Until the Vadgr-native e2e harness is production-ready, every live task uses
+the matching permission-bypass form:
+
+```text
+codex --yolo exec --json --model <qualified-model> <MCP, directory and prompt options>
+claude --dangerously-skip-permissions --output-format stream-json <MCP, directory and prompt options>
+```
+
+The MCP configuration invokes the exact isolated-wheel `vadgr-cua` entry point.
+Run the command from an isolated working directory. Pipe its JSON stream through
+the runbook's redactor. The bypass prevents an unattended approval stall. It
+does not broaden the cell, approve a destructive action, waive an owner action,
+change the model ceiling, or replace the required oracle and cleanup.
+
+If neither CLI has an active login, mark the affected agent-driven cells
+`blocked: authenticated agent CLI unavailable`. Do not convert an API key into
+a substitute login and do not select an unapproved driver.
+
 ## Paired surfaces this pass depends on
 
 > **This runtime depends on no sibling repository, and that is worth stating
@@ -301,6 +330,10 @@ never appears in.
 > GitHub text, documentation or evidence. Run
 > `python3 scripts/check_no_secrets.py --env-file ../.env` before every commit
 > and before sealing evidence.
+>
+> The authenticated Codex or Claude Code driver uses its existing interactive
+> login. It does not require a provider API key from `.env`. Read a provider key
+> only when a written cell explicitly tests that provider API.
 
 | requirement | parts or cells | non-secret availability check | cost or destructive effect | cleanup |
 |---|---|---|---|---|
@@ -312,6 +345,8 @@ never appears in.
 > authenticated account catalog on the execution date. Pick the least expensive
 > model that supports the exact agent task and MCP/tool-use contract. Do not
 > start a billed call with a blank ceiling or an unrecorded escalation path.
+> The table tracks an API-list-price equivalent for a subscription-authenticated
+> CLI session. It does not require an API key and does not claim an extra charge.
 
 | parts or cells | provider/auth | required capabilities | selected model | official source and date | input/output price | hard iterations/tokens/cost | escalation condition |
 |---|---|---|---|---|---|---|---|
@@ -392,6 +427,9 @@ to the cell, but both use the same isolation rule.
    driver, `python -m`, a product import or a private function is acceptance
    evidence and cannot close an e2e part. Helpers may prepare state, capture
    streams and parse evidence, but they cannot drive the goal.
+   State that the driver uses the CLI's existing interactive login, needs no
+   provider API key, and uses `codex --yolo` or Claude Code with
+   `--dangerously-skip-permissions` until the Vadgr-native harness is ready.
 3. Paste-ready native setup for every claimed OS. Include Linux
    `vadgr-cua install-deps --yes`, macOS Accessibility and Screen Recording for
    the installed environment's Python, and native Windows execution without
