@@ -475,6 +475,15 @@ not reuse or copy an owner profile, cookies, sign-in, preferences or extensions.
 Do not enable browser sync. A test account required by a written cell remains a
 declared credential and is entered only in this isolated profile.
 
+On native Linux and macOS, Chrome resolves a user-level native-messaging host
+from the active user-data directory. After `vadgr-cua browser-setup`, copy only
+the generated `com.vadgr.cua.json` manifest into
+`<isolated-user-data-dir>/NativeMessagingHosts/` and keep the file owner-only.
+Do this before Chrome for Testing starts. Verify `browser(op='status')` reports
+`connected: true` before the first cell. A manifest left only in the normal
+Chrome profile does not configure a fresh `--user-data-dir`. Windows continues
+to use the registered native-messaging host path.
+
 Each independent pass owns its Chrome for Testing process, profile directory,
 debugging endpoint and extension state. A concurrency cell can deliberately
 connect several agent sessions to the same isolated extension bridge. No other

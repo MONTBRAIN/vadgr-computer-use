@@ -120,6 +120,15 @@ the matching built `extension/dist` as an unpacked development extension. Do
 not copy or reuse the owner's browser profile, cookies, sign-in, preferences,
 or extensions. Do not enable browser sync.
 
+On native Linux and macOS, run `vadgr-cua browser-setup`, then copy only its
+generated `com.vadgr.cua.json` manifest into
+`<isolated-user-data-dir>/NativeMessagingHosts/` with owner-only permissions
+before Chrome for Testing starts. Chrome resolves a user-level native host from
+the active user-data directory, so the normal Chrome profile registration is
+not enough for this isolated profile. Verify `browser(op='status')` reports
+`connected: true` before A01. Windows continues to use its registered native
+host path.
+
 C05 and C06 deliberately connect multiple agent sessions to the same isolated
 Chrome for Testing extension bridge. No independent pass shares that process,
 profile, debugging endpoint, or extension state. After evidence is committed
