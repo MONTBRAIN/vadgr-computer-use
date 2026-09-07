@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.6 implementation:**
 > `feature/0.7.6-browser-reliability` at product commit
-> `b87685b5e621265b7b67bbfe079b4951b561e4b8`.
+> `d8276071fcec953d5aeab43622fa7326fc4f1aca`.
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
@@ -235,7 +235,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | D02 | Fresh stock-editor document focused | Run custom WPM plus IKI-CV at both accepted endpoints in separate documents | Planned and achieved metadata are valid; IKI-CV zero removes marginal spread while the shared rank chain remains; each after screenshot visibly confirms the mutation | Redacted timing metadata and before and after screenshot results; close without saving | pass: Notepad completed the 10 WPM and 200 WPM endpoint plans in 15.112 and 2.075 seconds | not run: remote host | pass: both endpoint mutations completed with visible read-back; public metadata does not expose internal rank fields | not run: remote host |
 | D02b | Fresh stock-editor document focused; text contains ordinary spaces and every semantic-boundary class | Run default and custom human input in separate documents | Metadata reports each requested mode; each after screenshot visibly confirms the mutation; browser cell C03b retains the independent boundary-timing oracle | Redacted metadata, boundary counts, and before and after screenshot results; close without saving | pass: Notepad completed 353-unit default and 90 WPM multiline inputs in 62.678 and 45.032 seconds | not run: remote host | pass | not run: remote host |
 | D03 | Fresh empty stock-editor document focused | Try incomplete or mixed timing options, IKI-CV below 0 or above 1, and a deadline shorter than the plan | Each fails before input and leaves the document visibly empty | Error results and before and after screenshot results | pass: seven invalid or preflight-deadline requests failed before input; the document remained empty | not run: remote host | pass | not run: remote host |
-| D04 | Fresh stock-editor document focused | Complete a plan longer than 60 seconds without a timeout, then exercise runtime deadline, cancellation and combining-mark or joined-emoji grapheme fallback in fresh documents | Long input completes; deadline and cancellation report a truthful prefix; modifiers are released; each grapheme stays whole; the after screenshot confirms visible input or the named fallback is reported; no whole-string retry or submit occurs after interruption | Redacted agent JSON with before and after screenshot results; release keys and close without saving | pass: Notepad completed 614 units in 100.634 seconds and the Unicode path named four fallbacks; prior runtime-deadline and cancellation evidence remains valid | not run: remote host | not run: requires the owner's screen and approval to exceed the USD 4 Windows ceiling | not run: remote host |
+| D04 | Fresh stock-editor document focused | Complete a plan longer than 60 seconds without a timeout, then exercise runtime deadline, cancellation and combining-mark or joined-emoji grapheme fallback in fresh documents | Long input completes; deadline and cancellation report a truthful prefix; modifiers are released; each grapheme stays whole; the after screenshot confirms visible input or the named fallback is reported; no whole-string retry or submit occurs after interruption | Redacted agent JSON with before and after screenshot results; release keys and close without saving | pass: Notepad completed 614 units in 100.634 seconds and the Unicode path named four fallbacks; prior runtime-deadline and cancellation evidence remains valid | not run: remote host | pass: the installed wheel completed 980 units in 160.907 seconds; the repaired Unicode path preserved seven graphemes and named four fallbacks; prior runtime-deadline and cancellation evidence remains valid | not run: remote host |
 | D05 | Human pixel typing active in one fresh stock-editor document | Start a second pixel keyboard action against the same document | The product makes no parallel-safety claim; evidence records machine-global serialization or conflict behavior exactly | Both streams and before and after screenshot results; stop both operations, release keys, and close without saving | pass: synchronized Notepad clients overlapped and completed 314 and 228 units | not run: remote host | pass: two synchronized clients completed; evidence records the observed interleaving without a parallel-safety claim | not run: remote host |
 
 ## Part E: packaged and clean delivery
@@ -243,7 +243,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: clean wheel reported 0.7.6 and served the MCP outside the checkout | not run: remote host | pass: final wheel reported 0.7.6, served 33 tools and loaded both required payloads outside the checkout | not run: remote host |
-| E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | not run: remote host | not run: requires the owner's screen and approval to exceed the USD 4 Windows ceiling | not run: remote host |
+| E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | not run: remote host | pass: the installed wheel completed a 980-unit browser type in 149.8 seconds and a 980-unit Notepad type in 164.719 seconds without an implicit deadline | not run: remote host |
 
 ## Per-OS results
 
@@ -252,9 +252,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | A: recovery and setup diagnosis | pass | not run: remote host | incomplete: A02 awaits owner permission for suspend/resume | not run: remote host |
 | B: shared broker and target ownership | pass | not run: remote host | incomplete: B13 blocked by unrelated owner processes in the WSL distribution | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | pass | not run: remote host |
-| D: pixel typing | pass | not run: remote host | incomplete: D04 awaits the owner's screen and billing-ceiling approval | not run: remote host |
-| E: packaged and clean delivery | pass | not run: remote host | incomplete: E02 awaits the owner's screen and billing-ceiling approval | not run: remote host |
-| overall | pass | not run: remote host | incomplete: A02, B13, D04 and E02 remain | not run: remote host |
+| D: pixel typing | pass | not run: remote host | pass | not run: remote host |
+| E: packaged and clean delivery | pass | not run: remote host | pass | not run: remote host |
+| overall | pass | not run: remote host | incomplete: A02 and B13 remain | not run: remote host |
 
 ## Evidence
 
@@ -275,9 +275,10 @@ after cleanup.
 
 ## Findings
 
-- The native Windows pass tested product commit
-  `b87685b5e621265b7b67bbfe079b4951b561e4b8`. Its final isolated wheel has
-  SHA-256 `877ee37af6ce1eaf1553216636a13f1a4ddec5a2d23bd46249695dd75d823267`,
+- The native Windows pass first tested product commit
+  `b87685b5e621265b7b67bbfe079b4951b561e4b8`. D04 and E02 tested final product
+  commit `d8276071fcec953d5aeab43622fa7326fc4f1aca`. Its final isolated wheel has
+  SHA-256 `b6e742516efe8d65a362dab698a74864b8cd8ef8c60016d511ef5900c00af28c`,
   and its embedded Windows broker bundle has SHA-256
   `576fdb332d0e8b8ec628de9b1c83a39df8a2eaac80c8c80ec23e850e3b77ca60`.
 - The Windows pass found that the WSL launcher resolved the broker proxy from
@@ -292,8 +293,16 @@ after cleanup.
 - The native Windows pass remains incomplete. A02 was not run because the owner
   prohibited sleep and power actions while away. B13 was not run because the
   active WSL distribution contains unrelated owner shells and agent processes.
-  D04 and E02 require the owner's screen and would exceed the recorded USD 4
-  Windows ceiling. None of these boundaries is reconstructed or called a pass.
+  Neither boundary is reconstructed or called a pass.
+- The owner approved D04 and E02 after the recorded Windows billing ceiling was
+  reached. D04 and E02 passed through unrestricted Codex drivers. The drivers
+  used the installed wheel, preserved unrelated windows, and retained redacted
+  streams. Failed driver attempts contribute to no passing verdict.
+- Native Windows human typing treated every fitted plan unit as one Unicode code
+  point. A combining sequence or joined emoji therefore failed before input.
+  The repaired backend emits a complete multi-code-point grapheme through the
+  existing UTF-16 SendInput fallback. The regression suite and live D04 rerun
+  passed with seven graphemes and four fallback units.
 - After the WSL pass, the owner required Chrome for Testing for all later cua
   browser e2e. The remaining hosts use a fresh isolated profile and cannot
   fall back to an owner's normal browser. This environment rule changes no
