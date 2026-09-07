@@ -11,7 +11,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SENSITIVE_KEYS = frozenset({"text", "value", "expression", "prompt"})
+SENSITIVE_KEYS = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "expression",
+        "password",
+        "prompt",
+        "secret",
+        "text",
+        "token",
+        "value",
+    }
+)
 
 
 def marker(value: str) -> dict[str, object]:
@@ -37,6 +49,13 @@ def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any
     if isinstance(value, list):
         return [redact(item, literals) for item in value]
     if isinstance(value, str):
+        if key == "text":
+            try:
+                nested = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            else:
+                return json.dumps(redact(nested, literals), separators=(",", ":"))
         if key in SENSITIVE_KEYS:
             return marker(value)
         replaced = value

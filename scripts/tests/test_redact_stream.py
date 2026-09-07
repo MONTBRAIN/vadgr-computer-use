@@ -21,3 +21,44 @@ def test_redacts_image_payload_but_keeps_media_identity():
         "data": {"redacted": True, "length": 14},
         "mimeType": "image/png",
     }
+
+
+def test_keeps_structured_tool_result_while_redacting_nested_typed_values():
+    result = MODULE.redact(
+        {
+            "type": "text",
+            "text": '{"connected":true,"target_id":"fixture","value":"secret"}',
+        },
+        (),
+    )
+
+    assert result == {
+        "type": "text",
+        "text": '{"connected":true,"target_id":"fixture","value":'
+        '{"redacted":true,"length":6}}',
+    }
+
+
+def test_redacts_unstructured_text_content():
+    result = MODULE.redact({"type": "text", "text": "agent prose"}, ())
+
+    assert result == {
+        "type": "text",
+        "text": {"redacted": True, "length": 11},
+    }
+
+
+def test_redacts_credentials_in_structured_tool_result():
+    result = MODULE.redact(
+        {
+            "type": "text",
+            "text": '{"token":"abc123","authorization":"Bearer abc123"}',
+        },
+        (),
+    )
+
+    assert result == {
+        "type": "text",
+        "text": '{"token":{"redacted":true,"length":6},'
+        '"authorization":{"redacted":true,"length":13}}',
+    }
