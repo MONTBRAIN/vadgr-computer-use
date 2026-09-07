@@ -182,6 +182,12 @@ class ExtensionBridge:
                 }
             )
             return {"window_id": window_id, "tab_id": tab_id, "created": True}
+        if op == "windows" and params.get("op") == "close":
+            window_id = int(params["window_id"])
+            self.windows = [
+                window for window in self.windows if window["window_id"] != window_id
+            ]
+            return {"closed": True, "window_id": window_id}
         if op == "tabs" and params.get("op") == "open":
             window_id = int(params["window_id"])
             window = next(item for item in self.windows if item["window_id"] == window_id)
@@ -310,6 +316,15 @@ def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
     assert all(tab["ownership"]["state"] == "orphaned" for tab in listed["windows"][0]["tabs"])
     claimed = broker.request(client, "windows", {"op": "claim", "window_id": 1})
     assert claimed["ownership"]["state"] == "mine"
+    closed = broker.request(
+        client, "windows", {"op": "close", "window_id": 1, "force": False}
+    )
+    assert closed == {"closed": True, "window_id": 1}
+    assert next(
+        params
+        for operation, params in broker.bridge.calls
+        if operation == "windows" and params.get("op") == "close"
+    )["force"] is True
 
 
 def test_two_clients_racing_for_one_tab_have_one_atomic_winner():

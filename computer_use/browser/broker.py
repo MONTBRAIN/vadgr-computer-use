@@ -485,6 +485,12 @@ class BrowserBroker:
                 != "window"
             ):
                 raise OwnershipConflict("window", window_id, lease.owner_id or "none")
+            if sub == "close":
+                # The broker has already required a current window lease.  Its
+                # explicit post-restart reclaim is authoritative even when the
+                # freshly reloaded extension no longer has its old local
+                # provenance marker.
+                params["force"] = True
             result = self._send_profile(profile_id, op, **params)
             if sub == "close" and state.window_id == window_id:
                 state.window_id = state.tab_id = state.revision = None
