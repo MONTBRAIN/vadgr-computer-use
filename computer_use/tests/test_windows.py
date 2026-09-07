@@ -137,6 +137,17 @@ class TestWindowsActionExecutorInternals:
         ex._tracker.update(42, 84)
         assert ex._tracker.get_pos() == (42, 84)
 
+    def test_multi_codepoint_grapheme_uses_unicode_fallback_intact(self):
+        Cls, _, _ = _import_windows_module()
+        ex = Cls()
+        grapheme = "e\N{COMBINING ACUTE ACCENT}"
+
+        with patch.object(ex, "_send_unicode_char") as send_unicode:
+            fallback = ex._type_char(grapheme)
+
+        send_unicode.assert_called_once_with(grapheme)
+        assert fallback is True
+
 
 # ---------------------------------------------------------------------------
 # DPI Awareness

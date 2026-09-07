@@ -311,6 +311,14 @@ class WindowsActionExecutor(ActionExecutor):
             self._send_key_event(special[char], down=True)
             self._send_key_event(special[char], down=False)
             return False
+        # A human typing plan is segmented into extended grapheme clusters, so
+        # one unit may contain multiple Unicode code points (for example a
+        # combining sequence or a joined emoji). VkKeyScanW and ord() accept a
+        # single code point only. Keep the complete unit intact and emit its
+        # UTF-16 sequence through SendInput as one composition fallback.
+        if len(char) != 1:
+            self._send_unicode_char(char)
+            return True
         vk = ctypes.windll.user32.VkKeyScanW(ord(char))
         if vk == -1:
             self._send_unicode_char(char)
