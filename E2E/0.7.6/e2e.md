@@ -189,7 +189,7 @@ for the action under test and capture the independent oracle and cleanup.
 | B10 | Browser resources remain open | Restart only the broker | New epoch marks rediscovered targets orphaned; old secrets and revisions fail; URL and title do not restore identity | Before and after registry plus epoch; reclaim or close test state | pass | not run: remote host | pass: new identity rejected old credentials; rediscovered state was orphaned, reclaimed and closed | not run: remote host |
 | B11 | Windows and WSL clients share one broker | Exit only the WSL client, then operate from Windows | Windows continues through the same PID and epoch | Windows stream and broker identity | pass | Not-Needed: no cross-OS seam | pass | Not-Needed: no cross-OS seam |
 | B12 | Windows and WSL clients share one broker | Exit only the Windows client, then operate from WSL | WSL continues through the proxy and the same Windows PID and epoch | WSL stream and broker identity | pass | Not-Needed: no cross-OS seam | pass | Not-Needed: no cross-OS seam |
-| B13 | WSL client disconnected; Windows broker has a live Windows client or extension | Terminate only the test WSL distribution session | The Windows broker remains alive and usable | Windows process and operation read-back | pass: disposable distro stopped; native client kept the same broker | Not-Needed: no cross-OS seam | blocked: the distro contains unrelated owner shells and agent processes, so terminating it would destroy owner work | Not-Needed: no cross-OS seam |
+| B13 | WSL client disconnected; Windows broker has a live Windows client or extension | Terminate only the test WSL distribution session | The Windows broker remains alive and usable | Windows process and operation read-back | pass: disposable distro stopped; native client kept the same broker | Not-Needed: no cross-OS seam | pass: a disposable distro stopped while the native client retained the same live broker PID, start identity, epoch, and bundle hash | Not-Needed: no cross-OS seam |
 | B14 | Fresh verified bundle and endpoint | Corrupt isolated copies of the endpoint token and bundle | Bad authentication is refused and altered payload fails before execution | Named errors and unchanged live bundle hash; delete isolated copies | pass | Not-Needed: Windows-only packaging seam | pass: bad authentication was refused and an isolated tampered bundle was rejected before execution | Not-Needed: Windows-only packaging seam |
 | B15 | Broker running with owned resources | Terminate only that broker process and reconnect both clients | One new Windows PID and epoch appear; rediscovered leases are orphaned | Before/after identity and registry | pass | Not-Needed: no cross-OS seam | pass: both clients converged on the new identity and rediscovered state was orphaned | Not-Needed: no cross-OS seam |
 | B16 | Isolated stale and corrupt endpoint copies | Start both clients through the normal launcher | Startup rejects corrupt identity and safely recovers stale state without trusting its token | Named result, one Windows process and clean identity | pass | Not-Needed: Windows-only packaging seam | pass: corrupt identity was rejected and stale state safely replaced | Not-Needed: Windows-only packaging seam |
@@ -250,11 +250,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
 | A: recovery and setup diagnosis | pass | not run: remote host | incomplete: A02 awaits owner permission for suspend/resume | not run: remote host |
-| B: shared broker and target ownership | pass | not run: remote host | incomplete: B13 blocked by unrelated owner processes in the WSL distribution | not run: remote host |
+| B: shared broker and target ownership | pass | not run: remote host | pass | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | pass | not run: remote host |
 | D: pixel typing | pass | not run: remote host | pass | not run: remote host |
 | E: packaged and clean delivery | pass | not run: remote host | pass | not run: remote host |
-| overall | pass | not run: remote host | incomplete: A02 and B13 remain | not run: remote host |
+| overall | pass | not run: remote host | incomplete: A02 remains | not run: remote host |
 
 ## Evidence
 
@@ -291,9 +291,11 @@ after cleanup.
   orphan reclaim, then lets the extension close that broker-authorized window.
   The regression test and live B10 and B15 reruns cover the repair.
 - The native Windows pass remains incomplete. A02 was not run because the owner
-  prohibited sleep and power actions while away. B13 was not run because the
-  active WSL distribution contains unrelated owner shells and agent processes.
-  Neither boundary is reconstructed or called a pass.
+  prohibited sleep and power actions while away. B13 passed without disturbing
+  the active owner distribution: the rerun imported and terminated only a
+  disposable WSL 2 distribution, while the native client retained the same live
+  broker PID, process-start identity, epoch, and bundle hash. The owner
+  distribution remained running throughout.
 - The owner approved D04 and E02 after the recorded Windows billing ceiling was
   reached. D04 and E02 passed through unrestricted Codex drivers. The drivers
   used the installed wheel, preserved unrelated windows, and retained redacted
