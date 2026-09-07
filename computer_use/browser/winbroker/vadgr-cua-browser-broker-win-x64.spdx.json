@@ -7,7 +7,7 @@
     ]
   },
   "dataLicense": "CC0-1.0",
-  "documentNamespace": "https://github.com/MONTBRAIN/vadgr-computer-use/sbom/0.7.6/7f229f3da9a0516c4d5b408e850b7682922d206c5de83dc8855842b1f34c97d2",
+  "documentNamespace": "https://github.com/MONTBRAIN/vadgr-computer-use/sbom/0.7.6/576fdb332d0e8b8ec628de9b1c83a39df8a2eaac80c8c80ec23e850e3b77ca60",
   "name": "vadgr-cua-browser-broker-0.7.6-windows-x64",
   "packages": [
     {
