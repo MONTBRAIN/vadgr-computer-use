@@ -37,6 +37,12 @@ from this branch. The MCP configuration must call that environment's
 11. Every remaining browser-tier cell uses a versioned Chrome for Testing
     executable, a fresh isolated profile, and the matching development
     extension. Never attach to the owner's normal browser process or profile.
+12. Until the Vadgr-native E2E harness is production-ready, every live agent
+    task uses permission bypass: `codex --yolo` or Claude Code with
+    `--dangerously-skip-permissions`. The bypass prevents unattended approval
+    stalls. It does not broaden a cell, authorize destructive work, waive an
+    owner-dependent action, change the billing ceiling, or replace evidence and
+    cleanup.
 
 ## Owner and environment requirements
 
@@ -138,6 +144,20 @@ text itself in the command or retained evidence.
 python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
   --sensitive-file "$E2E_SENSITIVE_FILE"
 ```
+
+The native Windows pass uses this temporary driver form for every remaining
+live task:
+
+```text
+codex --yolo exec --json --model gpt-5.6-sol <MCP, working-directory and prompt options>
+```
+
+The command uses medium reasoning and invokes the exact isolated-wheel
+`vadgr-cua` entry point. Record paths only in owner-private local state, never in
+the public runbook or private evidence. The unrestricted agent driver may
+perform ordinary in-scope local setup, such as opening and focusing the stock
+editor, when a repository helper cannot. It must still use public product tools
+for the action under test and capture the independent oracle and cleanup.
 
 ## Part A: recovery and setup diagnosis
 

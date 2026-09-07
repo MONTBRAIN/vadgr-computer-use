@@ -162,9 +162,9 @@ present in a given runbook, the entry is all there is.
     Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
 
 23. **The agent driver uses the CLI's existing interactive login and permission
-    bypass.** Do not require, read, export or pass an OpenAI or Anthropic API key
-    solely to drive this e2e. Until the Vadgr-native e2e harness is ready, start
-    each live task with `codex --yolo exec --json` or Claude Code with
+    bypass.** Do not require, read, export or pass a provider API key solely to
+    drive this e2e. Until the Vadgr-native e2e harness is ready, start each live
+    task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
 23. **The driver is the CLI whose session is driving the pass.** A pass running
@@ -292,12 +292,14 @@ Code session is the authentication requirement for the driver. The driver does
 not need an OpenAI or Anthropic API key from `.env`. Do not inspect, source,
 export or pass either provider key solely to run this e2e.
 
-Until the Vadgr-native e2e harness is production-ready, every live task uses
-the matching permission-bypass form:
+### Temporary permission-bypass standard
+
+Until an approved design and implementation declares the Vadgr-native e2e
+harness production-ready, invoke every live agent task in one of these modes:
 
 ```text
-codex --yolo exec --json --model <qualified-model> <MCP, directory and prompt options>
-claude --dangerously-skip-permissions --output-format stream-json <MCP, directory and prompt options>
+codex --yolo exec --json <normal model, MCP, working-directory and prompt options>
+claude --dangerously-skip-permissions --print --output-format stream-json <normal model, MCP, working-directory and prompt options>
 ```
 
 The MCP configuration invokes the exact isolated-wheel `vadgr-cua` entry point.
@@ -305,6 +307,16 @@ Run the command from an isolated working directory. Pipe its JSON stream through
 the runbook's redactor. The bypass prevents an unattended approval stall. It
 does not broaden the cell, approve a destructive action, waive an owner action,
 change the model ceiling, or replace the required oracle and cleanup.
+
+Record the exact command shape, CLI version, selected model, reasoning level and
+MCP entry point without recording credentials or owner-private paths. The
+unrestricted agent driver owns the goal, including ordinary local setup, product
+tool calls, independent read-back and cleanup.
+
+Repository harness helpers may prepare deterministic fixtures, coordinate
+concurrency, redact streams and capture evidence. They do not impersonate the
+agent or become an acceptance surface. Investigate a helper-only failure as a
+harness failure before it becomes a product finding.
 
 If neither CLI has an active login, mark the affected agent-driven cells
 `blocked: authenticated agent CLI unavailable`. Do not convert an API key into
