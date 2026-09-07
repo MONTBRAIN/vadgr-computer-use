@@ -145,11 +145,11 @@ def launch_windows_broker() -> None:
 
 def open_windows_proxy() -> subprocess.Popen:
     """Open one Windows stdio tunnel to the broker's loopback endpoint."""
-    proxy = _package_root() / "winhost" / PROXY_EXECUTABLE
-    if not proxy.is_file():
-        raise FileNotFoundError("the packaged Windows browser proxy is missing")
+    from computer_use.setup.extension_setup import ensure_relay_exe
+
+    proxy = ensure_relay_exe()
     return subprocess.Popen(
-        [_windows_path(proxy), "broker-proxy"],
+        [str(proxy), "broker-proxy"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
