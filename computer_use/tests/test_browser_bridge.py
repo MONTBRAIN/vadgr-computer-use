@@ -91,25 +91,6 @@ class TestManifestProbe:
             "google-chrome/NativeMessagingHosts/com.vadgr.cua.json"
         )
 
-    def test_linux_paths_include_chrome_for_testing(self):
-        paths = B.manifest_paths(platform="linux")
-
-        assert paths["chrome-for-testing"].as_posix().endswith(
-            "google-chrome-for-testing/NativeMessagingHosts/com.vadgr.cua.json"
-        )
-
-    def test_linux_profile_roots_include_chrome_for_testing(self):
-        roots = B._browser_profile_roots(platform="linux")
-
-        assert any(root.name == "google-chrome-for-testing" for root in roots)
-
-    def test_macos_paths_include_chrome_for_testing(self):
-        paths = B.manifest_paths(platform="darwin")
-
-        assert paths["chrome-for-testing"].as_posix().endswith(
-            "Google/ChromeForTesting/NativeMessagingHosts/com.vadgr.cua.json"
-        )
-
     def test_wsl_is_detected_without_an_explicit_platform(self, tmp_path, monkeypatch):
         from computer_use.core.types import Platform
 

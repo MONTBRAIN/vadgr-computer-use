@@ -221,11 +221,6 @@ def manifest_paths(
         base = home / "Library" / "Application Support"
         return {
             "chrome": base / "Google" / "Chrome" / "NativeMessagingHosts" / _MANIFEST_NAME,
-            "chrome-for-testing": base
-            / "Google"
-            / "ChromeForTesting"
-            / "NativeMessagingHosts"
-            / _MANIFEST_NAME,
             "edge": base / "Microsoft Edge" / "NativeMessagingHosts" / _MANIFEST_NAME,
             "chromium": base / "Chromium" / "NativeMessagingHosts" / _MANIFEST_NAME,
         }
@@ -236,10 +231,6 @@ def manifest_paths(
     cfg = home / ".config"
     return {
         "chrome": cfg / "google-chrome" / "NativeMessagingHosts" / _MANIFEST_NAME,
-        "chrome-for-testing": cfg
-        / "google-chrome-for-testing"
-        / "NativeMessagingHosts"
-        / _MANIFEST_NAME,
         "chromium": cfg / "chromium" / "NativeMessagingHosts" / _MANIFEST_NAME,
         "edge": cfg / "microsoft-edge" / "NativeMessagingHosts" / _MANIFEST_NAME,
     }
@@ -268,14 +259,9 @@ def _browser_profile_roots(platform: str | None = None) -> list[Path]:
         ]
     if plat == "darwin":
         base = home / "Library" / "Application Support"
-        return [
-            base / "Google" / "Chrome",
-            base / "Google" / "ChromeForTesting",
-            base / "Microsoft Edge",
-        ]
+        return [base / "Google" / "Chrome", base / "Microsoft Edge"]
     return [
         home / ".config" / "google-chrome",
-        home / ".config" / "google-chrome-for-testing",
         home / ".config" / "chromium",
         home / ".config" / "microsoft-edge",
     ]

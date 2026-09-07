@@ -120,16 +120,14 @@ the matching built `extension/dist` as an unpacked development extension. Do
 not copy or reuse the owner's browser profile, cookies, sign-in, preferences,
 or extensions. Do not enable browser sync.
 
-On native Linux and macOS, set `--user-data-dir` to Chrome for Testing's normal
-profile root below the isolated home. Use
-`$HOME/.config/google-chrome-for-testing` on Linux and
-`$HOME/Library/Application Support/Google/ChromeForTesting` on macOS. Run
-`vadgr-cua browser-setup` before Chrome starts. It installs the native-host
-manifest into that profile root, which also lets A03 read the extension state.
-If a written cell requires a different profile path, copy only the generated
-`com.vadgr.cua.json` into its `NativeMessagingHosts/` directory and keep it
-owner-only. Verify `browser(op='status')` reports `connected: true` before A01.
-Windows continues to use its registered native host.
+On native Linux and macOS, keep the fresh profile below the isolated home at a
+profile root that `vadgr-cua browser-setup` and setup diagnosis both support.
+Use `$HOME/.config/google-chrome` on Linux and
+`$HOME/Library/Application Support/Google/Chrome` on macOS. Pass that exact
+path to Chrome for Testing with `--user-data-dir`. The executable remains the
+versioned Chrome for Testing build. Run `vadgr-cua browser-setup` before Chrome
+starts, then verify `browser(op='status')` reports `connected: true` before
+A01. Windows continues to use its registered native host.
 
 C05 and C06 deliberately connect multiple agent sessions to the same isolated
 Chrome for Testing extension bridge. No independent pass shares that process,
