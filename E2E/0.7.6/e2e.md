@@ -1,8 +1,7 @@
 # 0.7.6 - browser reliability and human-paced typing: e2e runbook
 
 > **vadgr-computer-use 0.7.6 implementation:**
-> `feature/0.7.6-browser-reliability` at product commit
-> `d8276071fcec953d5aeab43622fa7326fc4f1aca`.
+> [implementation PR #93](https://github.com/MONTBRAIN/vadgr-computer-use/pull/93).
 > **vadgr-computer-use 0.7.6 evidence PR:**
 > private evidence PR #143.
 
@@ -38,10 +37,12 @@ from this branch. The MCP configuration must call that environment's
     executable, a fresh isolated profile, and the matching development
     extension. Never attach to the owner's normal browser process or profile.
 12. Until the Vadgr-native E2E harness is production-ready, every live agent
-    task uses permission bypass: `codex --yolo` or Claude Code with
+    task uses the CLI's existing interactive login and permission bypass. Do not
+    require, read, export, or pass an OpenAI or Anthropic API key solely to drive
+    this e2e. Start each task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. The bypass prevents unattended approval
     stalls. It does not broaden a cell, authorize destructive work, waive an
-    owner-dependent action, change the billing ceiling, or replace evidence and
+    owner-dependent action, change the model ceiling, or replace evidence and
     cleanup.
 
 ## Owner and environment requirements
@@ -57,10 +58,10 @@ Tell the owner about these requirements before the affected group starts.
 | Native input permission | D01-D05, E02 pixel path | Grant only the normal OS accessibility or input permission |
 | Stock plain-text editor | D01-D05, E02 pixel path | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; install no editor solely for these cells |
 | Windows browser reachable from native Windows and WSL | B02a-B02f, B11-B17 | Keep both clients available during the convergence and lifecycle cells; provide hosts already configured for NAT and mirrored networking |
-| Authenticated agent CLI and bounded billing | D01, D01a, D02b, D04, E02 | Keep one supported Claude or Codex login available; approve no unbounded or higher-cost fallback |
+| Authenticated agent CLI and bounded model use | D01, D01a, D02b, D04, E02 | Keep one supported Claude or Codex interactive login available; no provider API key is required; approve no unbounded or higher-cost fallback |
 
 No product account or external test-site login is required. The visual driver
-uses the separately declared authenticated agent CLI and billing ceiling. The
+uses the separately declared authenticated agent CLI and model ceiling. The
 harness serves a local instrumented page. The pass changes browser test state
 and creates isolated temporary roots. It does not change host network state or
 privacy settings.
@@ -76,10 +77,12 @@ the interrupted 2026-09-05 attempt.
 |---|---|---|---|---|---|
 | D01, D02b, D04, E02 | authenticated Codex owner login | image-result continuation and MCP tools | GPT-5.6 Sol, medium reasoning | USD 4 API-list-price equivalent for the accepted boundary | Stop at the first ceiling. Do not change the qualified model or reasoning level without a recorded failure and owner approval. |
 
-The WSL pass rechecked the official OpenAI capability and pricing pages on
-2026-09-06. GPT-5.6 Sol supports image input and tools. The comparison rates
-were USD 4 per million input tokens, USD 0.40 per million cached input tokens,
-and USD 20 per million output tokens.
+The Linux pass rechecked the official OpenAI and Anthropic capability and
+pricing pages on 2026-09-07. GPT-5.6 Sol supports image input and tools. Its
+comparison rates are USD 4 per million input tokens, USD 0.40 per million
+cached input tokens, and USD 20 per million output tokens. The price-equivalent
+ceiling measures model use in the subscription-authenticated CLI session. It
+does not require an API key and does not claim an extra owner charge.
 
 [models]: https://developers.openai.com/api/docs/models
 [openai-pricing]: https://developers.openai.com/api/docs/pricing
@@ -145,19 +148,26 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
   --sensitive-file "$E2E_SENSITIVE_FILE"
 ```
 
-The native Windows pass uses this temporary driver form for every remaining
-live task:
+Every remaining host uses this temporary driver form for each live task:
 
 ```text
 codex --yolo exec --json --model gpt-5.6-sol <MCP, working-directory and prompt options>
+claude --dangerously-skip-permissions --print --output-format stream-json <MCP, working-directory and prompt options>
 ```
 
-The command uses medium reasoning and invokes the exact isolated-wheel
-`vadgr-cua` entry point. Record paths only in owner-private local state, never in
-the public runbook or private evidence. The unrestricted agent driver may
-perform ordinary in-scope local setup, such as opening and focusing the stock
-editor, when a repository helper cannot. It must still use public product tools
-for the action under test and capture the independent oracle and cleanup.
+Use the CLI's existing interactive login. Do not inspect, source, export, or pass
+`OPEN_AI_API_KEY` or `ANTHROPHIC_API_KEY` for the driver. If neither CLI has an
+active login, mark the agent-driven cells `blocked: authenticated agent CLI
+unavailable`. Do not convert an API key into a substitute login.
+
+The command uses the selected medium reasoning model and invokes the exact
+isolated-wheel `vadgr-cua` entry point. Run it from an isolated working
+directory. Pipe its JSON stream through `redact_stream.py`. Record paths only in
+owner-private local state, never in the public runbook or private evidence. The
+unrestricted agent driver may perform ordinary in-scope local setup, such as
+opening and focusing the stock editor, when a repository helper cannot. It must
+still use public product tools for the action under test and capture the
+independent oracle and cleanup.
 
 ## Part A: recovery and setup diagnosis
 
