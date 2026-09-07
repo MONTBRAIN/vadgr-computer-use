@@ -261,7 +261,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: clean wheel reported 0.7.6 and served the MCP outside the checkout | not run: remote host | pass: final wheel reported 0.7.6, served 33 tools and loaded both required payloads outside the checkout | not run: remote host |
+| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: clean wheel reported 0.7.6 and served the MCP outside the checkout | pass: clean wheel reported 0.7.6, served 33 tools, and loaded the fitted profile and Unicode segmenter outside the checkout | pass: final wheel reported 0.7.6, served 33 tools and loaded both required payloads outside the checkout | not run: remote host |
 | E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | not run: remote host | pass: the installed wheel completed a 980-unit browser type in 149.8 seconds and a 980-unit Notepad type in 164.719 seconds without an implicit deadline | not run: remote host |
 
 ## Per-OS results
@@ -272,7 +272,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | B: shared broker and target ownership | pass | not run: remote host | pass | not run: remote host |
 | C: actionability and browser typing | pass | not run: remote host | pass | not run: remote host |
 | D: pixel typing | pass | pass | pass | not run: remote host |
-| E: packaged and clean delivery | pass | not run: remote host | pass | not run: remote host |
+| E: packaged and clean delivery | pass | incomplete: E02 remains | pass | not run: remote host |
 | overall | pass | not run: remote host | incomplete: A02 remains | not run: remote host |
 
 ## Evidence
