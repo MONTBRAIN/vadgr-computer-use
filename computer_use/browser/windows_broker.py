@@ -149,7 +149,7 @@ def open_windows_proxy() -> subprocess.Popen:
     if not proxy.is_file():
         raise FileNotFoundError("the packaged Windows browser proxy is missing")
     return subprocess.Popen(
-        [str(proxy), "broker-proxy"],
+        [_windows_path(proxy), "broker-proxy"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

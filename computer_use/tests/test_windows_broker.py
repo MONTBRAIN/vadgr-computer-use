@@ -51,3 +51,30 @@ def test_windows_mount_path_is_converted_without_a_shell():
     assert windows_broker._windows_path(Path("/mnt/c/Users/Owner/file.zip")) == (
         "C:\\Users\\Owner\\file.zip"
     )
+
+
+def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
+    proxy = tmp_path / "winhost" / windows_broker.PROXY_EXECUTABLE
+    proxy.parent.mkdir()
+    proxy.write_bytes(b"proxy")
+    sentinel = object()
+    captured = {}
+
+    monkeypatch.setattr(windows_broker, "_package_root", lambda: tmp_path)
+    monkeypatch.setattr(windows_broker, "_windows_path", lambda path: "Z:\\proxy.exe")
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        return sentinel
+
+    monkeypatch.setattr(windows_broker.subprocess, "Popen", fake_popen)
+
+    assert windows_broker.open_windows_proxy() is sentinel
+    assert captured["command"] == ["Z:\\proxy.exe", "broker-proxy"]
+    assert captured["kwargs"] == {
+        "stdin": windows_broker.subprocess.PIPE,
+        "stdout": windows_broker.subprocess.PIPE,
+        "stderr": windows_broker.subprocess.DEVNULL,
+        "close_fds": True,
+    }
