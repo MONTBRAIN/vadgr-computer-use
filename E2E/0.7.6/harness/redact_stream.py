@@ -25,6 +25,12 @@ SENSITIVE_KEYS = frozenset(
     }
 )
 
+# Keep only these public setup codes. Error messages can contain page data,
+# local paths or secrets, so the surrounding text must still be removed.
+SETUP_ERROR_CODES = frozenset(
+    {"not_set_up", "extension_disabled", "extension_missing", "recovery_timed_out"}
+)
+
 
 def marker(value: str) -> dict[str, object]:
     return {
@@ -57,7 +63,14 @@ def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any
             else:
                 return json.dumps(redact(nested, literals), separators=(",", ":"))
         if key in SENSITIVE_KEYS:
-            return marker(value)
+            result = marker(value)
+            if key == "text":
+                message = value.removeprefix("Error executing tool browser: ")
+                for code in SETUP_ERROR_CODES:
+                    if message.startswith(f"[{code}] "):
+                        result["error_code"] = code
+                        break
+            return result
         replaced = value
         for literal in literals:
             replaced = replaced.replace(literal, "[redacted typed fixture]")

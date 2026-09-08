@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Report missing or disabled browser setup for an already selected profile,
+  with the matching remedy, instead of waiting for recovery that cannot succeed.
 - Restore a connected browser client's liveness when its authenticated
   heartbeat resumes, so a temporary heartbeat gap does not orphan its leases.
 - Detect missing Windows native-host setup from the real HKCU registration

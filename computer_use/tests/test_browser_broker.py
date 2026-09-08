@@ -309,6 +309,54 @@ def test_worker_recovery_keeps_selected_profile_and_original_target():
     )
 
 
+@pytest.mark.parametrize(
+    ("reason", "remedy"),
+    [
+        ("extension_disabled", "enable the vadgr-cua extension"),
+        ("not_set_up", "run vadgr-cua browser-setup"),
+        ("extension_missing", "install the vadgr-cua extension"),
+    ],
+)
+def test_selected_profile_preserves_terminal_setup_diagnosis(monkeypatch, reason, remedy):
+    class UnavailableBridge(ExtensionBridge):
+        unavailable = False
+
+        def status(self):
+            if self.unavailable:
+                return BridgeStatus(False, [], reason != "not_set_up", reason, [])
+            return super().status()
+
+        def send(self, op, /, **params):
+            if self.unavailable and op == "profiles":
+                return {"profiles": []}
+            return super().send(op, **params)
+
+    extension = UnavailableBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+    extension.unavailable = True
+    extension.calls.clear()
+    clock = SimpleNamespace(now=0.0)
+
+    def advance(seconds):
+        clock.now += seconds
+
+    monkeypatch.setattr(
+        broker_module, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=advance)
+    )
+
+    with pytest.raises(BrowserError) as caught:
+        broker.request(client, "read_text", {})
+
+    assert caught.value.code.value == reason
+    assert caught.value.remediation == remedy
+    assert clock.now == 0.0
+    assert client.profile_id == "profile-one"
+    assert client.tab_id == 10
+    assert not any(op == "read_text" for op, _params in extension.calls)
+
+
 def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
     broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
     client = broker.connect(None, None)

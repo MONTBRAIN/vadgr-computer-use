@@ -48,6 +48,36 @@ def test_redacts_unstructured_text_content():
     }
 
 
+def test_preserves_named_browser_error_without_retaining_its_message():
+    message = "[recovery_timed_out] private page detail. To fix: private path."
+    result = MODULE.redact({"type": "text", "text": message}, ())
+
+    assert result["text"] == {
+        "redacted": True,
+        "length": len(message),
+        "error_code": "recovery_timed_out",
+    }
+
+
+def test_does_not_extract_unknown_or_embedded_error_like_text():
+    for message in ("[private_value] details", "page says [recovery_timed_out]"):
+        assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
+            "redacted": True,
+            "length": len(message),
+        }
+
+
+def test_keeps_only_setup_code_from_wrapped_tool_error():
+    message = "Error executing tool browser: [extension_disabled] confidential detail"
+    result = MODULE.redact({"type": "text", "text": message}, ())
+
+    assert result["text"] == {
+        "redacted": True,
+        "length": len(message),
+        "error_code": "extension_disabled",
+    }
+
+
 def test_redacts_credentials_in_structured_tool_result():
     result = MODULE.redact(
         {
