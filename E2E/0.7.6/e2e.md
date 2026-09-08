@@ -289,7 +289,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 |---|---|---|---|---|
 | A: recovery and setup diagnosis | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | partial: A01, A03 and A04 passed on the repaired wheel; coordinated sleep/wake remains |
 | B: shared broker and target ownership | incomplete: rerun B09, B10 and B15 after the repair | incomplete: rerun B09 and B10 after the repair | incomplete: rerun B09, B10 and B15 after the repair | not run: subscription-authenticated continuation pending |
-| C: actionability and browser typing | pass | pass | pass | not run: subscription-authenticated continuation pending |
+| C: actionability and browser typing | pass | pass | pass | partial: C01-C03 passed; cadence audit, interruption and corrected inactive-tab groups remain |
 | D: pixel typing | pass | pass | pass | partial: D01, D01a, D02, D02b and D03 passed; D04 interruption and D05 remain |
 | E: packaged and clean delivery | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | partial: earlier E01 and E02 pixel leg passed; refreshed package identity and browser leg remain |
 | overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | partial: native cells ran; repaired recovery and remaining subscription-driven cells pending |
