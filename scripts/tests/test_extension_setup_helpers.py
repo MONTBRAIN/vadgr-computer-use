@@ -41,7 +41,8 @@ class ToggleDevTools:
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_toggle_expression_resolves_requested_state(monkeypatch, enabled):
+@pytest.mark.parametrize("failure", [None, "missing-control", "stuck-control"])
+def test_toggle_expression_resolves_requested_state(monkeypatch, enabled, failure):
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node is needed to evaluate the real browser expression")
@@ -50,6 +51,9 @@ def test_toggle_expression_resolves_requested_state(monkeypatch, enabled):
     def evaluate(target, expression):
         assert target == {"id": "temporary-management-tab"}
         setup = """
+let elapsed = 0;
+global.performance = {now: () => elapsed};
+global.requestAnimationFrame = callback => { elapsed += 1000; callback(); };
 const control = {checked: INITIAL, click() { this.checked = !this.checked; }};
 const item = {shadowRoot: {querySelector(s) {
   if (s !== '#enableToggle') throw Error('wrong control'); return control;
@@ -66,21 +70,45 @@ global.document = {querySelector(s) {
 """.replace("INITIAL", json.dumps(not enabled)).replace(
             "SELECTOR", json.dumps(f'extensions-item[id="{module.EXTENSION_ID}"]')
         )
+        if failure == "missing-control":
+            setup = setup.replace("return control;", "return null;")
+        elif failure == "stuck-control":
+            setup = setup.replace("this.checked = !this.checked;", "")
         script = (
             setup
             + "\nPromise.resolve("
             + expression
-            + ").then(r => console.log(JSON.stringify(r)));"
+            + ").then(r => console.log(JSON.stringify(r)), "
+            + "e => console.log(JSON.stringify({error: e.message, elapsed})));"
         )
-        completed = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=5)
+        # Process startup is separate from the expression's 5000 ms deadline,
+        # checked with the mock clock. Hosted runners can start Node slowly.
+        completed = subprocess.run(
+            [node, "-e", script],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         assert completed.returncode == 0, completed.stderr
-        return json.loads(completed.stdout)
+        result = json.loads(completed.stdout)
+        if failure:
+            assert result == {
+                "error": "toggle not found" if failure == "missing-control" else "toggle timed out",
+                "elapsed": 5000,
+            }
+            raise module.LifecycleSetupError(result["error"])
+        return result
 
     devtools = ToggleDevTools(evaluate)
-    assert module.toggle(devtools, enabled) == {
-        "enabled": enabled,
-        "temporary_extensions_page_closed": True,
-    }
+    if failure:
+        with pytest.raises(module.LifecycleSetupError, match="toggle (not found|timed out)"):
+            module.toggle(devtools, enabled)
+    else:
+        assert module.toggle(devtools, enabled) == {
+            "enabled": enabled,
+            "temporary_extensions_page_closed": True,
+        }
     assert devtools.closed == ["temporary-management-tab"]
 
 
