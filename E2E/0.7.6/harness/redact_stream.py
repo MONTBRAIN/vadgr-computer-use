@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,10 +26,53 @@ SENSITIVE_KEYS = frozenset(
     }
 )
 
-# Keep only these public setup codes. Error messages can contain page data,
+# Keep only public browser codes. Error messages can contain page data,
 # local paths or secrets, so the surrounding text must still be removed.
-SETUP_ERROR_CODES = frozenset(
-    {"not_set_up", "extension_disabled", "extension_missing", "recovery_timed_out"}
+BROWSER_ERROR_CODES = frozenset(
+    {
+        "not_set_up",
+        "not_connected",
+        "op_unsupported",
+        "proto_mismatch",
+        "waking",
+        "op_failed",
+        "target_lost",
+        "profile_ambiguous",
+        "target_owned_by_another_client",
+        "recovery_timed_out",
+        "extension_disabled",
+        "extension_missing",
+        "typing_mismatch",
+        "typing_deadline_exceeded",
+        "typing_cancelled",
+        "typing_state_uncertain",
+        "inactive_tab_trusted_keyboard_unsupported",
+        "target_discarded",
+        "target_frozen",
+        "target_restricted",
+    }
+)
+
+# Exact public messages only. These annotations preserve observed text, not an
+# isError flag: some drivers omit that wire field even for failed tool calls.
+TYPING_ERROR_MESSAGES = frozenset(
+    {"Error executing tool type_text"}
+    | {
+        f"Error executing tool type_text: {message}"
+        for message in (
+            "typing_options_require_human",
+            "timing_profile and custom timing are mutually exclusive",
+            "custom timing requires both wpm and iki_cv",
+            "wpm must be an integer",
+            "wpm must be from 10 through 200",
+            "iki_cv must be finite and from 0 through 1",
+            "timeout must be a positive finite number of milliseconds",
+        )
+    }
+)
+TYPING_INTERRUPTION = re.compile(
+    r"Error executing tool type_text: "
+    r"(typing_cancelled|typing_deadline_exceeded): ([0-9]{1,12}) complete units"
 )
 
 
@@ -43,9 +87,9 @@ def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any
     if isinstance(value, dict):
         if value.get("type") in {"image", "audio"} and isinstance(value.get("data"), str):
             return {
-                item_key: marker(item) if item_key == "data" else redact(
-                    item, literals, str(item_key).lower()
-                )
+                item_key: marker(item)
+                if item_key == "data"
+                else redact(item, literals, str(item_key).lower())
                 for item_key, item in value.items()
             }
         return {
@@ -65,8 +109,14 @@ def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any
         if key in SENSITIVE_KEYS:
             result = marker(value)
             if key == "text":
+                if value in TYPING_ERROR_MESSAGES:
+                    result["error_message"] = value
+                interruption = TYPING_INTERRUPTION.fullmatch(value)
+                if interruption:
+                    result["error_code"] = interruption[1]
+                    result["completed_units"] = int(interruption[2])
                 message = value.removeprefix("Error executing tool browser: ")
-                for code in SETUP_ERROR_CODES:
+                for code in BROWSER_ERROR_CODES:
                     if message.startswith(f"[{code}] "):
                         result["error_code"] = code
                         break

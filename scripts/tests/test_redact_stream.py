@@ -3,6 +3,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "E2E" / "0.7.6" / "harness" / "redact_stream.py"
 SPEC = importlib.util.spec_from_file_location("redact_stream", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
@@ -34,8 +36,7 @@ def test_keeps_structured_tool_result_while_redacting_nested_typed_values():
 
     assert result == {
         "type": "text",
-        "text": '{"connected":true,"target_id":"fixture","value":'
-        '{"redacted":true,"length":6}}',
+        "text": '{"connected":true,"target_id":"fixture","value":{"redacted":true,"length":6}}',
     }
 
 
@@ -91,4 +92,93 @@ def test_redacts_credentials_in_structured_tool_result():
         "type": "text",
         "text": '{"token":{"redacted":true,"length":6},'
         '"authorization":{"redacted":true,"length":13}}',
+    }
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "not_connected",
+        "op_unsupported",
+        "proto_mismatch",
+        "waking",
+        "op_failed",
+        "target_lost",
+        "profile_ambiguous",
+        "target_owned_by_another_client",
+        "typing_mismatch",
+        "typing_deadline_exceeded",
+        "typing_cancelled",
+        "typing_state_uncertain",
+        "inactive_tab_trusted_keyboard_unsupported",
+        "target_discarded",
+        "target_frozen",
+        "target_restricted",
+    ],
+)
+def test_preserves_public_browser_codes_needed_by_remaining_cells(code):
+    message = f"Error executing tool browser: [{code}] private page or input detail"
+    assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
+        "redacted": True,
+        "length": len(message),
+        "error_code": code,
+    }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Error executing tool type_text",
+        "Error executing tool type_text: typing_options_require_human",
+        "Error executing tool type_text: timing_profile and custom timing are mutually exclusive",
+        "Error executing tool type_text: custom timing requires both wpm and iki_cv",
+        "Error executing tool type_text: wpm must be an integer",
+        "Error executing tool type_text: wpm must be from 10 through 200",
+        "Error executing tool type_text: iki_cv must be finite and from 0 through 1",
+        "Error executing tool type_text: timeout must be a positive finite number of milliseconds",
+    ],
+)
+def test_keeps_exact_fixed_typing_error_text_without_inventing_wire_error_flag(message):
+    result = MODULE.redact({"type": "text", "text": message}, ())
+    assert result["text"] == {
+        "redacted": True,
+        "length": len(message),
+        "error_message": message,
+    }
+    assert "isError" not in result
+
+
+@pytest.mark.parametrize("code", ["typing_cancelled", "typing_deadline_exceeded"])
+@pytest.mark.parametrize("completed", [0, 37])
+def test_retains_anchored_pixel_interruption_prefix_metadata(code, completed):
+    message = f"Error executing tool type_text: {code}: {completed} complete units"
+    assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
+        "redacted": True,
+        "length": len(message),
+        "error_code": code,
+        "completed_units": completed,
+    }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Error executing tool type_text: private input",
+        "Error executing tool type_text: custom timing requires both wpm and iki_cv PRIVATE",
+        "page says Error executing tool type_text",
+        "Error executing tool type_text: typing_cancelled: 37 complete units PRIVATE",
+        "Error executing tool type_text: unsupported timing profile 'private input'",
+    ],
+)
+def test_does_not_retain_unknown_or_extended_typing_error_text(message):
+    assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
+        "redacted": True,
+        "length": len(message),
+    }
+
+
+def test_keeps_real_wire_error_flag_when_driver_includes_it():
+    assert MODULE.redact({"isError": True, "content": []}, ()) == {
+        "isError": True,
+        "content": [],
     }
