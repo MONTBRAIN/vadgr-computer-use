@@ -86,6 +86,14 @@ def marker(value: str) -> dict[str, object]:
 
 def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any:
     if isinstance(value, dict):
+        if value.get("type") == "control_response":
+            response = value.get("response")
+            payload = response.get("response") if isinstance(response, dict) else None
+            if isinstance(payload, dict) and "account" in payload:
+                value = dict(value)
+                response = dict(response)
+                response["response"] = {**payload, "account": {"redacted": True}}
+                value["response"] = response
         if value.get("type") in {"image", "audio"} and isinstance(value.get("source"), dict):
             value = dict(value)
             source = dict(value["source"])

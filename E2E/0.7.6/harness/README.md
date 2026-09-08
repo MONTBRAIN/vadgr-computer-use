@@ -6,6 +6,7 @@ They do not drive the product, select actions, or decide a cell verdict.
 - `server.py` serves the loopback browser fixture and records sanitized request metadata.
 - `page.html` is the instrumented browser fixture for the browser cells.
 - `redact_stream.py` captures JSONL while removing typed values and binary result data.
+  It also removes the account subtree from CLI control responses.
   It retains an allowlisted public browser error code from a tool error and removes
   the surrounding message, which can contain local paths or page data.
   Agent shell command bodies are removed because they can contain typed fixture

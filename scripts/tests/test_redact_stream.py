@@ -12,6 +12,30 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+def test_redacts_account_only_from_cli_control_response():
+    account = {"email": "fixture@example.test", "organization": "synthetic-account"}
+    source = {
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": "initialize-fixture",
+            "response": {"account": account, "commands": [], "ready": True},
+        },
+    }
+    result = MODULE.redact(source, ())
+    assert result == {
+        "type": "control_response",
+        "response": {
+            "subtype": "success",
+            "request_id": "initialize-fixture",
+            "response": {"account": {"redacted": True}, "commands": [], "ready": True},
+        },
+    }
+    assert source["response"]["response"]["account"] == account
+    oracle = {"value": {"account": {"count": 2, "selected": True}}}
+    assert MODULE.redact(oracle, ()) == oracle
+
+
 def test_redacts_image_payload_but_keeps_media_identity():
     result = MODULE.redact(
         {"type": "image", "data": "base64-payload", "mimeType": "image/png"},
