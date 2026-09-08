@@ -183,7 +183,7 @@ independent oracle and cleanup.
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: one read recovered the same target at `c5c78b8` | pass: one bounded recovery restored the worker and completed one read on the same target | pass: isolated worker recovery preserved the selected profile and completed one read on the same target | not run: remote host |
-| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: one post-resume DOM read completed without retry at `26e7d05` | blocked: automatic RTC wake powered off the VM; a clean suspend and resume requires the owner at the host | not run: owner prohibited sleep and power actions while away | not run: remote host |
+| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | not run: rebuild the Windows bundle and rerun after the heartbeat-liveness fix; prior observation retained | pass: owner-assisted VM save/resume preserved the same target and revision; one post-resume read succeeded on the fixed wheel without a CLI retry | not run: rebuild the Windows bundle, then obtain owner permission and rerun after the heartbeat-liveness fix | not run: remote host |
 | A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: final bundle returned `extension_disabled` | pass: isolated disable returned `extension_disabled`; extension restored | pass: isolated disable returned `extension_disabled`; extension restored | not run: remote host |
 | A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: final bundle returned `not_set_up`; registration restored | pass: clean extension shutdown and registration removal returned `not_set_up`; registration restored | pass: isolated registration removal returned `not_set_up`; registration restored | not run: remote host |
 
@@ -204,7 +204,7 @@ independent oracle and cleanup.
 | B06 | Unowned tab and window targets | Race two clients for the tab, then race a window claim against a foreign child lease | One atomic winner exists; every loser gets the named conflict before dispatch | Both streams and lease revision record; release winner | pass | pass: each race had one winner and named conflicts for every loser | pass | not run: remote host |
 | B07 | Owned window, child tabs, popup, and shared window | Open tabs with and without opener, a popup, and an unattributable shared-window child | Owned descendants inherit the correct lease; the unattributable shared child stays unowned | Registry snapshots; close created targets | pass | pass: attributable descendants inherited leases and the shared child stayed unowned | pass | not run: remote host |
 | B08 | Client owns one tab and one multi-tab window | Release each, then dispatch with the old revision | Browser state stays open, leases clear, and stale revisions fail | Registry and page records; close created state | pass: rerun after repair | pass: releases kept resources open and stale dispatches failed | pass | not run: remote host |
-| B09 | Client owns targets; second client stays connected | Break the first socket, reconnect inside 30 seconds, then repeat after heartbeat and grace expiry | Timely reconnect restores state; expired leases become orphaned and are explicitly reclaimable | Streams and monotonic timing; release reclaimed state | pass | pass: reconnect at 13.950 seconds retained the lease; reconnect at 60.148 seconds exposed orphaned state for explicit reclaim | pass: timely reconnect restored state in 0.031 seconds; expired state was orphaned and explicitly reclaimed | not run: remote host |
+| B09 | Client owns targets; second client stays connected | Break the first socket, reconnect inside 30 seconds, then repeat after heartbeat and grace expiry | Timely reconnect restores state; expired leases become orphaned and are explicitly reclaimable | Streams and monotonic timing; release reclaimed state | not run: rebuild the Windows bundle and rerun after the heartbeat-liveness fix; prior pass retained | not run: rerun in progress after the heartbeat-liveness fix; prior pass retained | not run: rebuild the Windows bundle and rerun after the heartbeat-liveness fix; prior pass retained | not run: remote host |
 | B10 | Browser resources remain open | Restart only the broker | New epoch marks rediscovered targets orphaned; old secrets and revisions fail; URL and title do not restore identity | Before and after registry plus epoch; reclaim or close test state | pass | pass: new identity rejected old credentials and revisions; rediscovered state was orphaned, reclaimed and closed | pass: new identity rejected old credentials; rediscovered state was orphaned, reclaimed and closed | not run: remote host |
 | B11 | Windows and WSL clients share one broker | Exit only the WSL client, then operate from Windows | Windows continues through the same PID and epoch | Windows stream and broker identity | pass | Not-Needed: no cross-OS seam | pass | Not-Needed: no cross-OS seam |
 | B12 | Windows and WSL clients share one broker | Exit only the Windows client, then operate from WSL | WSL continues through the proxy and the same Windows PID and epoch | WSL stream and broker identity | pass | Not-Needed: no cross-OS seam | pass | Not-Needed: no cross-OS seam |
@@ -268,12 +268,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | pass | incomplete: A02 requires owner-assisted VM suspend and resume | incomplete: A02 awaits owner permission for suspend/resume | not run: remote host |
-| B: shared broker and target ownership | pass | pass | pass | not run: remote host |
+| A: recovery and setup diagnosis | incomplete: A02 needs the rebuilt Windows bundle and a rerun | pass: VM save/resume tested; see driver-isolation caveat below | incomplete: A02 needs the rebuilt bundle and owner permission for suspend/resume | not run: remote host |
+| B: shared broker and target ownership | incomplete: B09 rerun after the heartbeat fix | incomplete: B09 rerun after the heartbeat fix | incomplete: B09 rerun after the heartbeat fix | not run: remote host |
 | C: actionability and browser typing | pass | pass | pass | not run: remote host |
 | D: pixel typing | pass | pass | pass | not run: remote host |
 | E: packaged and clean delivery | pass | pass | pass | not run: remote host |
-| overall | pass | incomplete: A02 requires owner-assisted VM suspend and resume | incomplete: A02 remains | not run: remote host |
+| overall | incomplete: heartbeat-fix reruns and Windows bundle rebuild remain | incomplete: B09 rerun and final delivery gates remain | incomplete: heartbeat-fix reruns and Windows bundle rebuild remain | not run: remote host |
 
 ## Evidence
 
@@ -294,6 +294,25 @@ after cleanup.
 
 ## Findings
 
+- The Linux VM save/resume rerun completed one DOM read on the same window,
+  tab, and ownership revision. The first attempt returned an error whose text
+  was fully redacted; its retained length does not establish an exact code or
+  cause. Separately, a deterministic regression proved that resumed heartbeats
+  left the client marked disconnected. The fix restores liveness under the
+  broker lock. The regression fails without the fix and passes with it.
+- The A02 driver used the fixed installed-wheel entry point but started from
+  the checkout directory instead of the required isolated working directory.
+  This is a driver-method defect, not a clean-install proof. The recorded
+  installed broker bytes match the fix. The observation covers VirtualBox
+  save/resume, not separate bare-metal sleep. The stream proves one high-level
+  post-resume call; extension wire-dispatch counting was not captured.
+- The heartbeat fix makes the committed Windows broker bundle stale. Native
+  Windows must rebuild its archive, manifest, and SBOM with
+  `scripts/build_windows_broker.py --source-commit <fix-commit>`, using the
+  script's pinned native toolchain. Do not edit source hashes to bypass the
+  bundle check. Rerun A02 and B09 on previously passing Windows and WSL hosts,
+  and verify packaged identity before those cells. macOS still owes its
+  native matrix. The PR cannot merge while the bundle check fails.
 - The native Windows pass first tested product commit
   `b87685b5e621265b7b67bbfe079b4951b561e4b8`. D04 and E02 tested final product
   commit `d8276071fcec953d5aeab43622fa7326fc4f1aca`. Its final isolated wheel has
