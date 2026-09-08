@@ -250,6 +250,16 @@ spec describing what was replaced. A design left describing the code that no
 longer exists is a defect, the same as a stale comment. This holds in every repo
 in this family.
 
+**Every new or changed diagram requires a visual review before the PR is
+offered or merged.** Render the final source and open every rendered diagram
+at its intended reading size. Inspect labels, clipping, contrast, spacing,
+arrow direction, edge crossings and agreement with the surrounding text.
+Check light and dark themes where supported. Split an overcrowded diagram
+rather than shrink it until unreadable. Re-render and inspect after every
+diagram edit. Record the renderer/version, diagrams checked and result in the
+PR; source inspection or a successful parser is not a visual pass. If rendering
+or inspection is unavailable, report the block and do not claim completion.
+
 **CI is not an e2e pass.** The automated gate builds an environment and runs the
 unit suites. It drives no session, calls nothing over the wire and reaches no
 glass, so a green CI row on an OS says the suites pass there and **nothing at
