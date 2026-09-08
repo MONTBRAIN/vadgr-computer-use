@@ -34,7 +34,7 @@ new Promise((resolve, reject) => {
     else requestAnimationFrame(probe);
   };
   probe();
-})()
+})
 """.replace("EXTENSION_ID", json.dumps(EXTENSION_ID)).replace("ENABLED", json.dumps(enabled))
     try:
         result = devtools.evaluate(target, expression)
