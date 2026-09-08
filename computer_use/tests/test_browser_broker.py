@@ -185,9 +185,7 @@ class ExtensionBridge:
             return {"window_id": window_id, "tab_id": tab_id, "created": True}
         if op == "windows" and params.get("op") == "close":
             window_id = int(params["window_id"])
-            self.windows = [
-                window for window in self.windows if window["window_id"] != window_id
-            ]
+            self.windows = [window for window in self.windows if window["window_id"] != window_id]
             return {"closed": True, "window_id": window_id}
         if op == "tabs" and params.get("op") == "open":
             window_id = int(params["window_id"])
@@ -407,15 +405,54 @@ def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
     assert all(tab["ownership"]["state"] == "orphaned" for tab in listed["windows"][0]["tabs"])
     claimed = broker.request(client, "windows", {"op": "claim", "window_id": 1})
     assert claimed["ownership"]["state"] == "mine"
-    closed = broker.request(
-        client, "windows", {"op": "close", "window_id": 1, "force": False}
-    )
+    closed = broker.request(client, "windows", {"op": "close", "window_id": 1, "force": False})
     assert closed == {"closed": True, "window_id": 1}
-    assert next(
-        params
-        for operation, params in broker.bridge.calls
-        if operation == "windows" and params.get("op") == "close"
-    )["force"] is True
+    assert (
+        next(
+            params
+            for operation, params in broker.bridge.calls
+            if operation == "windows" and params.get("op") == "close"
+        )["force"]
+        is True
+    )
+
+
+@pytest.mark.parametrize("tab_id", [10, 11])
+def test_rejected_reconnect_requires_explicit_target_before_content(tab_id):
+    extension = ExtensionBridge()
+    original_broker = BrowserBroker(extension)
+    original = original_broker.connect(None, None)
+    original_broker.request(original, "tabs", {"op": "claim", "tab_id": tab_id})
+    broker = BrowserBroker(extension, recovered_epoch=True)
+    client = broker.connect(original.client_id, original.secret)
+    assert client.client_id != original.client_id
+    assert broker.request(client, "status", {})["connected"] is True
+    listed = broker.request(client, "tabs", {"op": "list"})
+    assert all(tab["ownership"]["state"] == "orphaned" for tab in listed["windows"][0]["tabs"])
+    extension.calls.clear()
+
+    with pytest.raises(BrowserError) as caught:
+        broker.request(client, "read_text", {})
+
+    assert caught.value.code.value == "target_lost"
+    assert "claim" in caught.value.remediation
+    assert client.window_id is None and client.tab_id is None
+    assert len(extension.windows) == 1
+    assert not any(
+        op == "read_text" or (op == "windows" and params.get("op") == "open")
+        for op, params in extension.calls
+    )
+    broker.request(client, "tabs", {"op": "claim", "tab_id": tab_id})
+    assert broker.request(client, "read_text", {})["value"] == f"target-{tab_id}"
+
+
+def test_fresh_client_can_still_create_default_workspace_for_content():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    result = broker.request(client, "read_text", {})
+    assert result["value"] == "target-20"
+    assert len(extension.windows) == 2
 
 
 def test_two_clients_racing_for_one_tab_have_one_atomic_winner():

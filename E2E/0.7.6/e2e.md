@@ -307,6 +307,15 @@ after cleanup.
 
 ## Findings
 
+- The macOS B10 pass reproduced an implicit retarget after broker restart
+  for two independent clients. Rejected reconnect credentials created a fresh
+  client state, and the next content request silently opened a new window.
+  The repair requires explicit target selection after a rejected reconnect.
+  Content now returns `target_lost` before creating a window or dispatching.
+  Fresh clients keep their normal default workspace. Two regressions fail
+  without the repair. B09, B10, applicable B15 and packaged E01 require
+  refreshed-artifact reruns on affected hosts; existing recovery reruns remain
+  owed. Connected content and pixel operations are unchanged.
 - The macOS A03 continuation reproduced an immediate-disable race twice.
   Status initially retained the previous session or said waking. The first
   read waited for recovery and returned `recovery_timed_out`; a later read

@@ -105,6 +105,7 @@ class ClientState:
     last_seen: float = field(default_factory=time.monotonic)
     lost_at: float | None = None
     active_requests: int = 0
+    needs_explicit_target: bool = False
 
 
 class BrowserBroker:
@@ -139,6 +140,9 @@ class BrowserBroker:
                         state.last_seen = time.monotonic()
                         return state
             state = ClientState(secrets.token_hex(8), secrets.token_hex(24))
+            # Rejected reconnect credentials must not turn an old content
+            # request into an implicit new workspace in a different epoch.
+            state.needs_explicit_target = bool(client_id or secret)
             self.clients[state.client_id] = state
             return state
 
@@ -319,6 +323,7 @@ class BrowserBroker:
         state.window_id = window_id
         state.tab_id = tab_id
         state.revision = lease.revision
+        state.needs_explicit_target = False
         result = dict(target)
         result["ownership"] = self.ownership.describe(
             profile_id, window_id, tab_id, state.client_id
@@ -326,6 +331,12 @@ class BrowserBroker:
         return result
 
     def _ensure_target(self, state: ClientState, profile_id: str) -> None:
+        if state.needs_explicit_target:
+            raise BrowserError(
+                BrowserErrorCode.TARGET_LOST,
+                "the previous browser client identity is no longer valid",
+                remediation="list browser targets, then explicitly claim or select a workspace",
+            )
         if state.window_id is not None and state.tab_id is not None:
             self.ownership.require(
                 profile_id, state.window_id, state.tab_id, state.client_id, state.revision
