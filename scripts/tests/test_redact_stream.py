@@ -182,3 +182,23 @@ def test_keeps_real_wire_error_flag_when_driver_includes_it():
         "isError": True,
         "content": [],
     }
+
+
+@pytest.mark.parametrize("media_type", ["image", "audio"])
+def test_redacts_claude_nested_media_source(media_type):
+    original = {
+        "type": media_type,
+        "source": {
+            "type": "base64",
+            "media_type": f"{media_type}/fixture",
+            "data": "fixture-payload",
+        },
+    }
+    assert MODULE.redact(original, ()) == {
+        "type": media_type,
+        "source": {
+            "type": "base64",
+            "media_type": f"{media_type}/fixture",
+            "data": {"redacted": True, "length": 15},
+        },
+    }

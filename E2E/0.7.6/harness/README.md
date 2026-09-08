@@ -28,6 +28,11 @@ an untracked mode-0600 file below the isolated test root.
 
 ## B09 transport fault
 
+This relay supports POSIX hosts only. Native Windows refuses alias creation
+before writing a credential because an owner-only Windows ACL implementation
+is not present. A POSIX mode bit is not a Windows privacy guarantee. Existing
+Windows B09 observations use their own recorded setup and remain unchanged.
+
 Start the installed broker normally. Keep the second installed MCP client on
 its original endpoint. Start the relay with `--root`, `--endpoint`, and `--alias`.
 All paths must stay inside a named `vadgr-cua-*` root below the system temporary

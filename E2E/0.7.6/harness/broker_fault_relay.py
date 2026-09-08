@@ -14,6 +14,7 @@ import os
 import queue
 import select
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -43,6 +44,8 @@ def read_endpoint(root: Path, path: Path) -> dict:
 
 
 def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int) -> Path:
+    if sys.platform == "win32":
+        raise ValueError("relay alias requires an owner-only Windows ACL implementation")
     destination = isolated_path(root, alias)
     if destination == isolated_path(root, source):
         raise ValueError("alias must not replace the original endpoint")

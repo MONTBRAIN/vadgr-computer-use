@@ -29,6 +29,12 @@ def test_alias_is_private_and_preserves_original(isolated):
     endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret", "pid": 7}
     source.write_text(json.dumps(endpoint))
     alias = isolated / "alias.json"
+    if sys.platform == "win32":
+        with pytest.raises(ValueError, match="owner-only Windows ACL"):
+            relay_module.write_alias(isolated, source, alias, endpoint, 23456)
+        assert not alias.exists()
+        assert json.loads(source.read_text()) == endpoint
+        return
     relay_module.write_alias(isolated, source, alias, endpoint, 23456)
     assert stat.S_IMODE(alias.stat().st_mode) == 0o600
     assert json.loads(alias.read_text()) == dict(endpoint, port=23456)
@@ -139,6 +145,12 @@ def test_cli_eof_cleans_alias_without_logging_credentials(isolated):
         capture_output=True,
         timeout=5,
     )
+    if sys.platform == "win32":
+        assert result.returncode != 0
+        assert "owner-only Windows ACL" in result.stderr
+        assert not alias.exists()
+        assert "fixture-credential" not in result.stdout + result.stderr
+        return
     assert result.returncode == 0, result.stderr
     assert not alias.exists()
     assert json.loads(original.read_text()) == endpoint
@@ -146,3 +158,15 @@ def test_cli_eof_cleans_alias_without_logging_credentials(isolated):
     events = [json.loads(line) for line in result.stdout.splitlines()]
     assert events[0]["event"] == "ready"
     assert events[-1]["event"] == "stopped"
+
+
+def test_windows_refuses_before_creating_credential_alias(isolated, monkeypatch):
+    source = isolated / "original.json"
+    alias = isolated / "alias.json"
+    endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret"}
+    source.write_text(json.dumps(endpoint))
+    monkeypatch.setattr(sys, "platform", "win32")
+    with pytest.raises(ValueError, match="owner-only Windows ACL"):
+        relay_module.write_alias(isolated, source, alias, endpoint, 23456)
+    assert not alias.exists()
+    assert json.loads(source.read_text()) == endpoint

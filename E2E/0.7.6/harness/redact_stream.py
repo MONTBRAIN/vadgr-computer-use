@@ -85,6 +85,12 @@ def marker(value: str) -> dict[str, object]:
 
 def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any:
     if isinstance(value, dict):
+        if value.get("type") in {"image", "audio"} and isinstance(value.get("source"), dict):
+            value = dict(value)
+            source = dict(value["source"])
+            if isinstance(source.get("data"), str):
+                source["data"] = marker(source["data"])
+            value["source"] = source
         if value.get("type") in {"image", "audio"} and isinstance(value.get("data"), str):
             return {
                 item_key: marker(item)
