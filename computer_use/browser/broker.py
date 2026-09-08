@@ -291,6 +291,8 @@ class BrowserBroker:
         self, state: ClientState, profile_id: str, result: dict[str, Any]
     ) -> dict[str, Any]:
         result = copy.deepcopy(result)
+        # The extension's current target is shared; listing metadata is not.
+        result.pop("target", None)
         windows = result.get("windows", [])
         self.ownership.observe(profile_id, windows)
         for window in windows:
@@ -303,7 +305,15 @@ class BrowserBroker:
                 own = self.ownership.describe(profile_id, wid, tid, state.client_id)
                 tab["ownership"] = own
                 tab["owned"] = own["state"] == "mine"
-                tab["is_current"] = state.tab_id == tid
+                tab["is_current"] = (
+                    state.profile_id == profile_id
+                    and state.window_id == wid
+                    and state.tab_id == tid
+                )
+                if tab["is_current"]:
+                    result["target"] = {"window_id": wid, "tab_id": tid}
+                    if "url" in tab:
+                        result["target"]["url"] = tab["url"]
         return result
 
     def _list_tabs(self, state: ClientState, profile_id: str) -> dict[str, Any]:

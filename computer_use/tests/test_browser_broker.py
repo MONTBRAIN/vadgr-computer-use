@@ -262,6 +262,44 @@ def test_listings_show_mine_other_and_unowned_without_hiding_targets():
     assert [tab["ownership"]["state"] for tab in two_tabs] == ["other", "unowned"]
 
 
+@pytest.mark.parametrize("selection", [None, 10, 11, 99])
+def test_list_target_envelope_is_caller_specific(selection):
+    class GlobalTargetBridge(ExtensionBridge):
+        def send(self, op, /, **params):
+            result = super().send(op, **params)
+            if op == "tabs" and params.get("op") == "list":
+                result["target"] = {"window_id": 1, "tab_id": 11, "url": "https://two.test"}
+            return result
+
+    extension = GlobalTargetBridge()
+    broker = BrowserBroker(extension)
+    one = broker.connect(None, None)
+    two = broker.connect(None, None)
+    broker.request(two, "tabs", {"op": "claim", "tab_id": 11})
+    if selection == 10:
+        broker.request(one, "tabs", {"op": "claim", "tab_id": 10})
+    elif selection == 11:
+        one = two
+    elif selection == 99:
+        one.profile_id, one.window_id, one.tab_id = "profile-one", 1, 99
+
+    first = broker.request(one, "tabs", {"op": "list"})
+    second = broker.request(two, "tabs", {"op": "list"})
+    expected = (
+        None
+        if selection in (None, 99)
+        else {
+            "window_id": 1,
+            "tab_id": selection,
+            "url": "https://one.test" if selection == 10 else "https://two.test",
+        }
+    )
+    assert first.get("target") == expected
+    assert second["target"] == {"window_id": 1, "tab_id": 11, "url": "https://two.test"}
+    assert [tab["tab_id"] for tab in first["windows"][0]["tabs"]] == [10, 11]
+    assert "ownership" not in extension.windows[0]
+
+
 def test_reconnect_secret_restores_client_state_inside_grace():
     broker = BrowserBroker(ExtensionBridge())
     original = broker.connect(None, None)
