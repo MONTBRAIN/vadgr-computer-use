@@ -178,30 +178,33 @@ class BrowserBroker:
             profile["is_current"] = profile.get("profile_id") == state.profile_id
         return result
 
+    def _check_terminal_setup(self) -> None:
+        status = self.bridge.status()
+        if status.reason == "not_set_up":
+            raise BrowserError(
+                BrowserErrorCode.NOT_SET_UP,
+                "no native-host registration exists for the browser",
+                remediation="run vadgr-cua browser-setup",
+            )
+        if status.reason == "extension_disabled":
+            raise BrowserError(
+                BrowserErrorCode.EXTENSION_DISABLED,
+                "the browser extension is installed but disabled",
+                remediation="enable the vadgr-cua extension",
+            )
+        if status.reason == "extension_missing":
+            raise BrowserError(
+                BrowserErrorCode.EXTENSION_MISSING,
+                "the native host exists but the browser extension is not installed",
+                remediation="install the vadgr-cua extension",
+            )
+
     def _profile(self, state: ClientState) -> str:
         profiles = self._profiles(state).get("profiles", [])
         if not profiles:
             # A selected profile remains sticky during transient recovery, but
             # recovery cannot repair a missing or disabled installation.
-            status = self.bridge.status()
-            if status.reason == "not_set_up":
-                raise BrowserError(
-                    BrowserErrorCode.NOT_SET_UP,
-                    "no native-host registration exists for the browser",
-                    remediation="run vadgr-cua browser-setup",
-                )
-            if status.reason == "extension_disabled":
-                raise BrowserError(
-                    BrowserErrorCode.EXTENSION_DISABLED,
-                    "the browser extension is installed but disabled",
-                    remediation="enable the vadgr-cua extension",
-                )
-            if status.reason == "extension_missing":
-                raise BrowserError(
-                    BrowserErrorCode.EXTENSION_MISSING,
-                    "the native host exists but the browser extension is not installed",
-                    remediation="install the vadgr-cua extension",
-                )
+            self._check_terminal_setup()
         if state.profile_id and not any(
             item.get("profile_id") == state.profile_id for item in profiles
         ):
@@ -217,6 +220,9 @@ class BrowserBroker:
                 profiles = self._profiles(state).get("profiles", [])
                 if any(item.get("profile_id") == state.profile_id for item in profiles):
                     return state.profile_id
+                if not profiles:
+                    # Browser preference writes can settle after disconnection.
+                    self._check_terminal_setup()
             raise BrowserError(
                 BrowserErrorCode.RECOVERY_TIMEOUT,
                 f"the selected profile {state.profile_id!r} did not reconnect during bounded recovery",
@@ -227,6 +233,8 @@ class BrowserBroker:
             while time.monotonic() < deadline and not profiles:
                 time.sleep(0.1)
                 profiles = self._profiles(state).get("profiles", [])
+                if not profiles:
+                    self._check_terminal_setup()
             if not profiles:
                 raise BrowserError(
                     BrowserErrorCode.RECOVERY_TIMEOUT,

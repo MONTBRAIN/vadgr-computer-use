@@ -357,6 +357,48 @@ def test_selected_profile_preserves_terminal_setup_diagnosis(monkeypatch, reason
     assert not any(op == "read_text" for op, _params in extension.calls)
 
 
+@pytest.mark.parametrize("selected", [False, True])
+@pytest.mark.parametrize("reason", ["extension_disabled", "extension_missing", "not_set_up"])
+def test_recovery_refreshes_terminal_setup_state(monkeypatch, selected, reason):
+    clock = SimpleNamespace(now=0.0)
+
+    class SettlingSetupBridge(ExtensionBridge):
+        unavailable = False
+
+        def status(self):
+            if self.unavailable:
+                current = reason if clock.now >= 0.3 else "waking"
+                return BridgeStatus(False, [], current != "not_set_up", current, [])
+            return super().status()
+
+        def send(self, op, /, **params):
+            if self.unavailable and op == "profiles":
+                return {"profiles": []}
+            return super().send(op, **params)
+
+    extension = SettlingSetupBridge()
+    broker = BrowserBroker(extension)
+    client = broker.connect(None, None)
+    if selected:
+        broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+    extension.unavailable = True
+    extension.calls.clear()
+
+    def advance(seconds):
+        clock.now += seconds
+
+    monkeypatch.setattr(
+        broker_module, "time", SimpleNamespace(monotonic=lambda: clock.now, sleep=advance)
+    )
+    with pytest.raises(BrowserError) as caught:
+        broker.request(client, "read_text", {})
+    assert caught.value.code.value == reason
+    assert 0.3 <= clock.now < 0.5
+    assert client.profile_id == ("profile-one" if selected else None)
+    assert client.tab_id == (10 if selected else None)
+    assert not any(op == "read_text" for op, _params in extension.calls)
+
+
 def test_new_broker_epoch_requires_explicit_reclaim_of_rediscovered_targets():
     broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
     client = broker.connect(None, None)

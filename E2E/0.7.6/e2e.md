@@ -197,7 +197,7 @@ independent oracle and cleanup.
 |---|---|---|---|---|---|---|---|---|
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: preference-repair rerun pending; intermittent result retained |
 | A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | blocked: no contemporaneous sleep/wake event was verified |
-| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: passed at 94d1632; preference-repair rerun pending |
+| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | fail: immediate disabled-extension read returned recovery_timed_out twice at 7c719db; repair and rerun pending |
 | A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: passed at 94d1632; preference-repair rerun pending |
 
 ## Part B: shared broker and target ownership
@@ -274,7 +274,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: clean noneditable wheel at 7c719db served 33 tools outside the checkout |
+| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: recovery-refresh package identity owed; prior 7c719db clean install passed |
 | E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | pass: the installed wheel completed 520 browser units in 89.730 seconds and 520 gedit units in 88.632 seconds without an implicit deadline | pass: the installed wheel completed a 980-unit browser type in 149.8 seconds and a 980-unit Notepad type in 164.719 seconds without an implicit deadline | partial: 86.630-second pixel leg passed; browser leg running |
 
 ## Per-OS results
@@ -285,7 +285,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | B: shared broker and target ownership | incomplete: rerun B09, B10 and B15 after the repair | incomplete: rerun B09 and B10 after the repair | incomplete: rerun B09, B10 and B15 after the repair | not run: subscription-authenticated continuation pending |
 | C: actionability and browser typing | pass | pass | pass | not run: subscription-authenticated continuation pending |
 | D: pixel typing | pass | pass | pass | partial: D01, D01a, D02, D02b and D03 passed; D04 interruption and D05 remain |
-| E: packaged and clean delivery | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | partial: E01 passed at 7c719db and E02 pixel leg passed; browser leg remains |
+| E: packaged and clean delivery | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | partial: earlier E01 and E02 pixel leg passed; refreshed package identity and browser leg remain |
 | overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | partial: native cells ran; repaired recovery and remaining subscription-driven cells pending |
 
 ## Evidence
@@ -307,6 +307,14 @@ after cleanup.
 
 ## Findings
 
+- The macOS A03 continuation reproduced an immediate-disable race twice.
+  Status initially retained the previous session or said waking. The first
+  read waited for recovery and returned `recovery_timed_out`; a later read
+  correctly returned `extension_disabled`. The recovery loop checked terminal
+  setup state only before waiting. The repair rechecks terminal diagnosis
+  during bounded recovery without retargeting or replaying the operation.
+  Six transition regressions fail without the repair. A01-A04, B09, B10,
+  applicable B15 and packaged E01 need fresh-artifact reruns on affected hosts.
 - A repaired-wheel macOS A01 attempt returned `extension_disabled` after a
   verified worker stop. The unchanged-wheel repeat recovered successfully;
   the live failure is intermittent. A separate preference-probe regression
