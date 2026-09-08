@@ -202,3 +202,32 @@ def test_redacts_claude_nested_media_source(media_type):
             "data": {"redacted": True, "length": 15},
         },
     }
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {
+            "type": "tool_use",
+            "name": "Bash",
+            "input": {
+                "command": "printf synthetic-typed-fixture",
+                "description": "Prepare fixture hash",
+            },
+        },
+        {
+            "type": "command_execution",
+            "command": "printf synthetic-typed-fixture",
+            "exit_code": 0,
+            "aggregated_output": "fixture hash prepared",
+        },
+    ],
+)
+def test_redacts_shell_commands_without_requiring_known_typed_literals(event):
+    result = MODULE.redact(event, ())
+    original = event.get("input", event)
+    actual = result.get("input", result)
+    assert actual["command"] == {"redacted": True, "length": len(original["command"])}
+    assert {k: v for k, v in actual.items() if k != "command"} == {
+        k: v for k, v in original.items() if k != "command"
+    }

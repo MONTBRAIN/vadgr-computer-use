@@ -8,6 +8,11 @@ They do not drive the product, select actions, or decide a cell verdict.
 - `redact_stream.py` captures JSONL while removing typed values and binary result data.
   It retains an allowlisted public browser error code from a tool error and removes
   the surrounding message, which can contain local paths or page data.
+  Agent shell command bodies are removed because they can contain typed fixture
+  values; tool names, descriptions, outputs and exit codes remain. Return DOM
+  oracle objects directly from `browser_eval`, not JSON-stringified objects.
+  String-valued fields are deliberately redacted; a hidden value's length is
+  not evidence that a hash or boolean matched.
 - `lifecycle_control.py` prepares and verifies the Chrome lifecycle states required by C07.
 - `stop_extension_worker.py` stops the exact isolated extension worker for A01,
   confirms the stopped event, and disconnects DevTools before the product call.

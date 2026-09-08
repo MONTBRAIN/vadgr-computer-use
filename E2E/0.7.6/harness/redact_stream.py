@@ -16,6 +16,7 @@ SENSITIVE_KEYS = frozenset(
     {
         "authorization",
         "cookie",
+        "command",
         "expression",
         "password",
         "prompt",
