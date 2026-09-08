@@ -129,6 +129,12 @@ versioned Chrome for Testing build. Run `vadgr-cua browser-setup` before Chrome
 starts, then verify `browser(op='status')` reports `connected: true` before
 A01. Windows continues to use its registered native host.
 
+On macOS, also pass `--use-mock-keychain` to the isolated Chrome for Testing
+process. Its fresh home has no login keychain. Without this test flag, a
+`Keychain Not Found` dialog can block browser startup. Do not create or reset
+an owner keychain for this pass. Chromium documents the flag in its
+[macOS build instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/mac_build_instructions.md).
+
 C05 and C06 deliberately connect multiple agent sessions to the same isolated
 Chrome for Testing extension bridge. No independent pass shares that process,
 profile, debugging endpoint, or extension state. After evidence is committed
