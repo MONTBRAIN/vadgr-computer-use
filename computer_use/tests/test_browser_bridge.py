@@ -8,6 +8,8 @@
 
 """BrowserBridge contract: FakeBridge, status probe, session routing."""
 
+import json
+
 import pytest
 
 from computer_use.browser import bridge as B
@@ -109,6 +111,44 @@ class TestManifestProbe:
             / "NativeMessagingHosts"
             / "com.vadgr.cua.json"
         )
+
+
+class TestExtensionStateProbe:
+    @pytest.mark.parametrize("preference_name", ["Secure Preferences", "Preferences"])
+    @pytest.mark.parametrize(
+        ("entry", "expected"),
+        [
+            pytest.param({"disable_reasons": []}, "enabled", id="current-enabled"),
+            pytest.param({}, "enabled", id="current-no-disable-reasons"),
+            pytest.param({"disable_reasons": [1]}, "disabled", id="current-disabled"),
+            pytest.param(
+                {"state": 1, "disable_reasons": 0}, "enabled", id="legacy-enabled"
+            ),
+            pytest.param(
+                {"state": 0, "disable_reasons": 1}, "disabled", id="legacy-disabled"
+            ),
+            pytest.param(
+                {"state": 0, "disable_reasons": 0},
+                "disabled",
+                id="legacy-disabled-state",
+            ),
+            pytest.param(None, "missing", id="missing-entry"),
+        ],
+    )
+    def test_reads_extension_preferences(
+        self, tmp_path, monkeypatch, preference_name, entry, expected
+    ):
+        from computer_use.setup.extension_setup import EXTENSION_ID
+
+        profile = tmp_path / "Default"
+        profile.mkdir()
+        settings = {} if entry is None else {EXTENSION_ID: entry}
+        (profile / preference_name).write_text(
+            json.dumps({"extensions": {"settings": settings}}), encoding="utf-8"
+        )
+        monkeypatch.setattr(B, "_browser_profile_roots", lambda _platform: [tmp_path])
+
+        assert B.probe_extension_state() == expected
 
 
 class TestNativeMessagingBridgeStatus:

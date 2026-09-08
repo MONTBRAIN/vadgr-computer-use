@@ -300,6 +300,14 @@ after cleanup.
 
 ## Findings
 
+- A repaired-wheel macOS A01 attempt returned `extension_disabled` after a
+  verified worker stop. The unchanged-wheel repeat recovered successfully;
+  the live failure is intermittent. A separate preference-probe regression
+  consistently showed that an enabled current Chromium profile, which omits
+  the old `state` field, was classified as disabled. Four cases failed before
+  the probe repair. The repair uses disable reasons when `state` is absent and
+  preserves explicit legacy disabled states. A01-A04, B09, B10, applicable
+  B15 and E01 require the new bundle and reruns on each affected host.
 - The macOS pass found that a selected browser profile entered recovery before
   checking a known missing or disabled installation. Status returned the setup
   diagnosis, but the read returned `recovery_timed_out` with an unrelated

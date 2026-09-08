@@ -288,7 +288,11 @@ def probe_extension_state(platform: str | None = None) -> str:
                     if not isinstance(entry, dict):
                         continue
                     found = True
-                    if entry.get("state") == 1 and not entry.get("disable_reasons"):
+                    # Current Chromium derives enabled state from disable reasons
+                    # and no longer writes `state`. Honor it when older profiles
+                    # still have it, but do not mistake an idle worker for a
+                    # disabled extension merely because the field is absent.
+                    if entry.get("state", 1) == 1 and not entry.get("disable_reasons"):
                         return "enabled"
     return "disabled" if found else "missing"
 
