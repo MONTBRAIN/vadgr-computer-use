@@ -20,6 +20,8 @@ They do not drive the product, select actions, or decide a cell verdict.
   toggle in the isolated profile for A03/A04 and closes its management tab.
 - `broker_fault_relay.py` prepares B09 transport cuts for one client. It forwards
   opaque bytes between loopback sockets without reading or logging the protocol.
+- `pause_mcp.py` prepares a bounded POSIX scheduling fault for D04's explicit
+  runtime deadline. It never types or issues product requests.
 - `focus_window.ps1` verifies and focuses the exact Windows editor or Chrome for Testing window.
 
 The worker and toggle helpers require the isolated profile's `DevToolsActivePort`
@@ -64,3 +66,36 @@ Send `{"stop":true}` or close standard input after the clients finish. The
 relay closes its listener and connections and removes only the alias it created.
 It never changes the original endpoint, host networking, or another client.
 Missing isolated endpoint state blocks B09; do not use the owner's broker.
+
+## D04 scheduling fault
+
+First announce the temporary pause of the exact installed test MCP process.
+The agent must start a valid human typing plan with a caller deadline longer
+than its planned cadence. Confirm a nonzero independent editor prefix and no
+held modifiers before invoking the helper from a separate controller:
+
+```text
+python E2E/0.7.6/harness/pause_mcp.py --root <isolated-root> --pid <MCP-pid> --parent-pid <driver-pid> --seconds <bounded-duration>
+```
+
+The root must be a named `vadgr-cua-*` temporary directory. Its installed
+entry point must be `runtime/bin/vadgr-cua`, invoked by the runtime's Python
+without extra arguments. The process must belong to the current user and be
+the stated driver's direct child. Unsupported launch shapes fail closed.
+The pause must be greater than zero and no more than 120 seconds. Choose a
+duration that crosses the already accepted caller deadline, not a preflight
+refusal. Never pause the host, editor, browser, broker, or another MCP process.
+
+A detached watchdog owns both STOP and CONT. It resumes the same process
+identity after the bound even if the calling helper is terminated. It also
+resumes on its own ordinary interruption. Do not kill the watchdog: SIGKILL,
+machine shutdown, or a system scheduler failure cannot provide this guarantee.
+POSIX process identity checks are not an atomic kernel process handle; keep
+the owned process alive and do not restart it during the fault. Evidence keeps
+only PID and timing metadata, never command lines or environment values.
+
+Keep the helper's output attached to the evidence capture. Require its resumed
+event, then let the agent inspect the actual named deadline result, stable
+strict prefix, released modifiers, and absence of replay. The helper's output
+does not decide the cell verdict. Windows refuses this helper; existing native
+Windows scheduling-fault observations remain unchanged.

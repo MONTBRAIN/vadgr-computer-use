@@ -251,6 +251,12 @@ typing and one after typing. The after screenshot must visibly confirm the
 mutation. Do not save the document. Use the returned typing metadata for timing
 assertions.
 
+For a POSIX D04 runtime-deadline scheduling fault, use the exact-process
+`harness/pause_mcp.py` setup described in the harness README. Announce the
+temporary installed-MCP pause first. Confirm actual input before the pause,
+retain the independent watchdog's resumed event, and verify the deadline and
+stable prefix through the agent. Never substitute a preflight refusal.
+
 On WSL, invoke the committed foreground helper through a process-only execution
 policy override; it does not change the host policy:
 
