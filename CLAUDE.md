@@ -164,7 +164,33 @@ or commits, and the capability evidence that informed the design. Recheck
 changing facts on the implementation and e2e execution dates. If current
 evidence is unavailable, stop; memory and stale examples are not design input.
 
+## CUA E2E subscription drivers
+
+**This rule is specific to vadgr-computer-use.** Until the approved Vadgr-native
+E2E harness is production-ready, drive live CUA tests through the owner's
+existing Codex or Claude Code subscription login. Do not require, read, export
+or pass an OpenAI or Anthropic API key to run the agent driver.
+
+Use `codex --yolo exec --json` or
+`claude --dangerously-skip-permissions --print --output-format stream-json`,
+with the isolated installed `vadgr-cua` MCP entry point and the runbook's
+qualified model. Permission bypass avoids unattended approval stalls. It does
+not authorize unrelated changes, destructive work, host network changes or
+protected owner actions, and it does not replace evidence or cleanup.
+
+**Do not turn subscription usage into an invented API bill.** Do not impose
+API-list-price-equivalent dollar or token ceilings on these CLI runs, stop at
+such a ceiling, or ask the owner to approve raising it. Continue the requested
+E2E pass. Record actual usage when available, but do not treat it as an extra
+subscription charge. Real account limits, unavailable login and protected
+owner actions remain possible blockers. Do not switch to API billing, buy
+credits or enable paid extra usage without explicit owner approval.
+
 ## Billed E2E model selection
+
+The following billed-call rules apply only to separately authorized tests of
+an actual billed API. They do not apply to the subscription-authenticated CUA
+agent driver above and do not authorize replacing it with an API-key driver.
 
 **No billed model call starts from a remembered or flagship default.** On the
 execution date, inspect the provider's official model and pricing pages plus the

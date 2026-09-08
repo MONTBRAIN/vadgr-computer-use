@@ -306,7 +306,14 @@ The MCP configuration invokes the exact isolated-wheel `vadgr-cua` entry point.
 Run the command from an isolated working directory. Pipe its JSON stream through
 the runbook's redactor. The bypass prevents an unattended approval stall. It
 does not broaden the cell, approve a destructive action, waive an owner action,
-change the model ceiling, or replace the required oracle and cleanup.
+change the qualified model, or replace the required oracle and cleanup.
+
+This is a subscription-authenticated CUA driver, not an API-key client. Do not
+invent API-price-equivalent dollar or token ceilings or stop the pass to ask
+for a higher ceiling. Record actual usage when available. Respect real account
+limits; do not enable paid extra usage or switch to API billing without owner
+approval. This rule is specific to CUA and lasts until the approved native
+harness is production-ready.
 
 Record the exact command shape, CLI version, selected model, reasoning level and
 MCP entry point without recording credentials or owner-private paths. The
@@ -394,12 +401,12 @@ never appears in.
 
 ## Billed model selection
 
-> Complete this table from current official provider pages and the
-> authenticated account catalog on the execution date. Pick the least expensive
-> model that supports the exact agent task and MCP/tool-use contract. Do not
-> start a billed call with a blank ceiling or an unrecorded escalation path.
-> The table tracks an API-list-price equivalent for a subscription-authenticated
-> CLI session. It does not require an API key and does not claim an extra charge.
+> For a separately authorized test of a billed API, complete this table from
+> current official sources and declare the actual billing limit. This table
+> never authorizes an API-key replacement for the CUA subscription driver.
+> For the CUA driver, record subscription login as authentication, real account
+> limits where known, and `not applicable: subscription driver` in the price
+> and synthetic cost-ceiling fields. Do not invent API-equivalent budgets.
 
 | parts or cells | provider/auth | required capabilities | selected model | official source and date | input/output price | hard iterations/tokens/cost | escalation condition |
 |---|---|---|---|---|---|---|---|
@@ -409,7 +416,8 @@ never appears in.
 > part of the delivered user path. Repeated provider-neutral work names an
 > explicit cost-effective model. Add another model only for a distinct protocol
 > or capability class or a prewritten model-specific cell. Record actual usage
-> and cost, and stop when any ceiling is reached. Pixel or screenshot CUA
+> and any actual billed cost; stop at an explicit billed-API ceiling only for
+> those separately authorized API tests. Pixel or screenshot CUA
 > requires image input for the selected endpoint and image-bearing tool-result
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.

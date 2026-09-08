@@ -40,6 +40,13 @@ parse evidence. It cannot drive the goal or replace the real agent session.
 
 ## Where the JSON is
 
+The CUA-only subscription-driver rule in `../AGENTS.md` and `../CLAUDE.md`
+applies to every runbook here. Until the Vadgr-native harness is ready, use the
+existing subscription login with `codex --yolo exec --json` or
+`claude --dangerously-skip-permissions`. Do not use provider API keys for the
+agent driver or stop a subscription run at an API-price-equivalent budget.
+Real account limits and all safety, evidence and cleanup requirements remain.
+
 1. **The captured run stream (preferred).** Run the agent CLI headless and tee
    its stream to a file; the `claude -p` form (translate the flags for the CLI
    you have):
