@@ -143,7 +143,10 @@ class BrowserBroker:
             return state
 
     def touch(self, state: ClientState) -> None:
-        state.last_seen = time.monotonic()
+        with self._lock:
+            state.connected = True
+            state.lost_at = None
+            state.last_seen = time.monotonic()
 
     def disconnect(self, state: ClientState) -> None:
         with self._lock:

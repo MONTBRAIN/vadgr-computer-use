@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from computer_use.browser import broker as broker_module
 from computer_use.browser import broker_client
 from computer_use.browser.bridge import BridgeStatus
 from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrokerServer, BrowserBroker
@@ -363,6 +364,30 @@ def test_expired_disconnected_client_becomes_orphaned_and_reclaimable():
         broker.request(survivor, "tabs", {"op": "claim", "tab_id": 10})["ownership"]["state"]
         == "mine"
     )
+
+
+def test_heartbeat_after_host_resume_restores_connected_client(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(broker_module.time, "monotonic", lambda: now[0])
+    broker = BrowserBroker(ExtensionBridge())
+    client = broker.connect(None, None)
+    broker.request(client, "tabs", {"op": "claim", "tab_id": 10})
+
+    now[0] += broker_module.HEARTBEAT_SECONDS * broker_module.MISSED_HEARTBEATS + 1
+    broker.reap()
+    assert client.connected is False
+    assert client.lost_at == now[0]
+
+    # A suspended host can make every heartbeat appear late even though the
+    # same authenticated socket and client resume together. Activity on that
+    # socket restores the client before the old grace deadline can orphan it.
+    broker.touch(client)
+    assert client.connected is True
+    assert client.lost_at is None
+
+    now[0] += LEASE_GRACE_SECONDS + 1
+    broker.reap()
+    assert broker.request(client, "read_text", {})["value"] == "target-10"
 
 
 def test_paced_request_does_not_hold_a_profile_wide_lock():

@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Restore a connected browser client's liveness when its authenticated
+  heartbeat resumes, so a temporary heartbeat gap does not orphan its leases.
 - Detect missing Windows native-host setup from the real HKCU registration
   instead of a separate broker manifest copy.
 - Keep an explicitly selected browser profile and its owned target pinned while
