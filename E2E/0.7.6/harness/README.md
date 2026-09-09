@@ -124,6 +124,35 @@ invalid timely precondition, not a product failure. The second client's normal
 heartbeat stays active; verify its original lease and document before and
 after both cuts.
 
+On POSIX, `control_broker_fault.py` performs the cut and restoration wait in
+one setup call. Prepare a current-user-owned mode-0700 `/tmp/vadgr-cua-*`
+root, an existing FIFO connected to the relay's standard input, and its
+existing JSONL output log. Both paths and their parents must belong to the
+current user inside that root, without symlinks or hard links. Keep the FIFO's
+reader alive. The helper refuses a missing reader instead of blocking.
+
+```sh
+python E2E/0.7.6/harness/control_broker_fault.py \
+  --root /tmp/vadgr-cua-example \
+  --control /tmp/vadgr-cua-example/relay-control \
+  --events /tmp/vadgr-cua-example/logs/b09-relay.jsonl \
+  --seconds 8 --timeout 20
+```
+
+Use `--seconds 46 --timeout 55` for the expired leg. The timeout must exceed
+the cut duration and cannot exceed 60 seconds. The helper records the initial
+log offset, sends exactly one command, and reads appended events through
+partial writes. It prints the actual new cut and restoration objects, then
+their measured timestamp difference and the helper's elapsed time. Missing
+events, malformed events, another cut, log replacement or observed truncation
+fail the setup. An unfinished event already present at startup also fails.
+No other controller may send a command during this call. The helper reads
+no endpoint file, imports no product code, and makes no network or MCP call.
+Require exit zero, then perform the first client's public read immediately.
+This output proves fixture restoration only; the public read and actual relay
+connection timing still determine the B09 result. Native Windows uses the
+control handshake below instead of this POSIX FIFO helper.
+
 Send `{"stop":true}` or close standard input after the clients finish. The
 relay closes its listener and connections and removes only the alias it created.
 It never changes the original endpoint, host networking, or another client.
