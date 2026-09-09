@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Reconnect before the next browser operation when a heartbeat has already
+  detected a closed broker connection, without replaying dispatched operations.
 - Find Windows browser profiles under redirected local application data when
   reporting a disabled development extension.
 - Preserve Windows broker deployment paths containing spaces or shell syntax

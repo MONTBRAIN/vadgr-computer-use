@@ -14,6 +14,87 @@ from computer_use.browser.ownership import OwnershipConflict
 from computer_use.browser.protocol import BrowserError
 
 
+def test_heartbeat_eof_reconnects_before_the_next_operation(monkeypatch):
+    client = broker_client.BrokerClient()
+    stale = io.BytesIO()
+    transport = io.BytesIO()
+    replacement = object()
+    client._file, client._transport = stale, transport
+    client._client_id, client._secret = "fixture-client", "fixture-secret"
+    writes = []
+    connects = []
+
+    class ImmediateHeartbeat:
+        def clear(self):
+            pass
+
+        def wait(self, _seconds):
+            return False
+
+    client._heartbeat_stop = ImmediateHeartbeat()
+    original_read = client._read
+    monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
+    monkeypatch.setattr(
+        client, "_read",
+        lambda file: original_read(file) if file is stale else {"ok": True, "result": 7},
+    )
+
+    def reconnect():
+        assert client._client_id == "fixture-client"
+        assert client._secret == "fixture-secret"
+        connects.append(True)
+        client._file = replacement
+
+    monkeypatch.setattr(client, "_connect", reconnect)
+    client._start_heartbeat()
+    client._heartbeat_thread.join(timeout=1)
+    assert not client._heartbeat_thread.is_alive()
+    assert client._file is None
+    assert client._transport is None
+    assert stale.closed and transport.closed
+    assert client.send("read_text") == 7
+    assert connects == [True]
+    assert writes == [
+        (stale, {"type": "heartbeat"}),
+        (replacement, {"id": 1, "op": "read_text", "params": {}}),
+    ]
+
+
+@pytest.mark.parametrize("failure", ["eof", "error"])
+def test_broker_client_does_not_replay_after_operation_dispatch(monkeypatch, failure):
+    client = broker_client.BrokerClient()
+    stale = io.BytesIO()
+    replacement = object()
+    client._file = stale
+    writes = []
+    connects = []
+    monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
+
+    def read(file):
+        if file is replacement:
+            return {"ok": True, "result": 7}
+        if failure == "error":
+            raise OSError("fixture connection lost")
+        return None
+
+    def reconnect():
+        connects.append(True)
+        client._file = replacement
+
+    monkeypatch.setattr(client, "_read", read)
+    monkeypatch.setattr(client, "_connect", reconnect)
+    with pytest.raises(BrowserError) as captured:
+        client.send("click", selector="#fixture")
+    assert captured.value.code.value == "not_connected"
+    assert connects == []
+    assert client._file is None
+    assert stale.closed
+    assert writes == [(stale, {"id": 1, "op": "click", "params": {"selector": "#fixture"}})]
+    assert client.send("read_text") == 7
+    assert connects == [True]
+    assert [message["op"] for _, message in writes] == ["click", "read_text"]
+
+
 def test_broker_client_eof_cancels_an_active_request():
     server = object.__new__(BrokerServer)
     server.broker = type("BlockingBroker", (), {})()

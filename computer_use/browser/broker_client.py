@@ -280,6 +280,7 @@ class BrokerClient:
                             return
                         self._write(self._file, {"type": "heartbeat"})
                         if not self._read(self._file):
+                            self._close()
                             return
                 except (OSError, ValueError):
                     self._close()
