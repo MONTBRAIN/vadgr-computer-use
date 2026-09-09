@@ -44,6 +44,15 @@ They do not drive the product, select actions, or decide a cell verdict.
   oracle objects directly from `browser_eval`, not JSON-stringified objects.
   String-valued fields are deliberately redacted; a hidden value's length is
   not evidence that a hash or boolean matched.
+  A Codex stream and a Claude stream are not the same shape, and sealing has to
+  know it. Claude carries each tool result twice, once as a bare string under
+  `content` inside `message.content` and once under `tool_use_result` at the top
+  of the row, and it puts shell output in both. A sealer that keys on `stdout`,
+  `stderr` or `aggregated_output` alone matches neither copy and still reports
+  the output removed. Map each result to its `tool_use` name, keep it only when
+  the call was an `mcp__` product call, and replace every other output with its
+  length. `command` is already a sensitive key here, so shell bodies are removed
+  at ingestion on either shape.
 - `lifecycle_control.py` prepares and verifies the Chrome lifecycle states required by C07.
 - `stop_extension_worker.py` stops the exact isolated extension worker for A01,
   confirms the stopped event, and disconnects DevTools before the product call.
@@ -81,6 +90,10 @@ its original endpoint. Start the relay with `--root`, `--endpoint`, and `--alias
 All paths must stay inside a named `vadgr-cua-*` root below the system temporary
 directory. The alias must not exist. Its parent directory must already exist.
 The original endpoint must name `127.0.0.1` and a valid port.
+Verify that its test-owned broker is still alive and reachable before copying
+the endpoint. A stale endpoint can cause the two clients to start separate
+brokers. Require matching complete public broker identities and a real relay
+connection before applying either fault.
 
 The relay creates a mode-0600 endpoint alias with its own loopback port. Set
 `VADGR_CUA_BROKER_ENDPOINT` to that alias for only the first installed MCP
@@ -98,6 +111,16 @@ which would replace the intended reconnect experiment.
 The agent still performs every product action and checks every cell oracle
 through its installed MCP server. A relay event alone is not a cell verdict.
 
+Prepare the timed sequence before starting a cut. For the timely leg, request
+the cut and wait for restoration inside one bounded setup call, then make the
+first client's public read immediately. Do not spend intervening agent turns
+polling metadata or writing notes. Measure actual `connection_opened` minus
+`cut`, not just `restored` minus `cut`: the reconnect must occur inside the
+30-second grace period and retain its lease. A late driver request is an
+invalid timely precondition, not a product failure. The second client's normal
+heartbeat stays active; verify its original lease and document before and
+after both cuts.
+
 Send `{"stop":true}` or close standard input after the clients finish. The
 relay closes its listener and connections and removes only the alias it created.
 It never changes the original endpoint, host networking, or another client.
@@ -110,6 +133,11 @@ print its contents. Mount the alias for the first fresh installed MCP client
 and the original endpoint for the second. Use the same 8-second and 46-second
 cuts. Do not substitute a process scheduling pause: missed heartbeat accounting
 alone does not prove the socket was closed and reconnected.
+For a file-based control handshake under Windows PowerShell 5, use the
+two-argument `File.Move` only when the destination is absent and `File.Replace`
+when it already exists. Its .NET Framework does not provide the three-argument
+`File.Move` overwrite overload. Write JSON without a UTF-8 byte-order mark and
+fail a setup command immediately if its atomic replacement fails.
 
 ## A04 Windows registration fault
 
@@ -132,6 +160,11 @@ private state. Never print, commit or include it in evidence. Keep it for the
 parent's cleanup or recovery; this helper does not delete it.
 
 Start the helper as a separate hidden setup process and wait for its ready file.
+Pass executable and argument paths as data, for example through a Python
+`subprocess.Popen` argument list with `CREATE_NO_WINDOW`. Windows PowerShell
+`Start-Process -ArgumentList` joins its array into a command line; an unquoted
+path containing spaces can fail before the helper starts. Preserve that launch
+failure and use fresh control files for the accepted attempt.
 The agent then requests the public status and read errors through the installed
 MCP. Create the done file after those read-backs. The helper restores defaults
 in `finally`, whether done arrives, its three-minute bound expires, or an
