@@ -307,7 +307,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
 | E: packaged and clean delivery | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | pass: repaired installed identity and default-profile load observed; both unaffected long-input paths retained |
-| overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | partial: A02 coordinated sleep/wake and final cleanup remain |
+| overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | partial: only A02 coordinated sleep/wake remains; isolated cleanup completed |
 
 ## Evidence
 
@@ -325,6 +325,12 @@ by this pass. Close only test windows and tabs. Remove only the recorded fresh
 environment and temporary root. Preserve browser owner state and every unrelated
 process. Run the build system's standard clean command. Record space before and
 after cleanup.
+
+The latest macOS cleanup stopped the exact test processes, verified their
+ports free and moved all six isolated test roots plus the pass's gate root
+and two diagnostic samples to recoverable Trash. Owner processes and
+repository build state were preserved. Moving files to Trash is not a claim
+of freed disk space. This cleanup does not close A02.
 
 ## Findings
 
