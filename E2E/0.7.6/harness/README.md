@@ -66,6 +66,9 @@ They do not drive the product, select actions, or decide a cell verdict.
 - `registration_fault_windows.py` removes only the two current-user CUA native
   registration default values for a bounded A04 fault, then restores their exact
   values and registry types. It never drives a product request.
+- `registration_fault_linux.py` removes only the three isolated Linux CUA native
+  manifests for a bounded A04 fault, then restores their exact bytes and modes.
+  It never drives a product request.
 
 The worker and toggle helpers require the isolated profile's `DevToolsActivePort`
 file and the `websockets` package. The worker helper also requires the exact
@@ -138,6 +141,49 @@ two-argument `File.Move` only when the destination is absent and `File.Replace`
 when it already exists. Its .NET Framework does not provide the three-argument
 `File.Move` overwrite overload. Write JSON without a UTF-8 byte-order mark and
 fail a setup command immediately if its atomic replacement fails.
+
+## A04 Linux registration fault
+
+Prepare the isolated browser and installed MCP clients before this fault.
+Use a current-user-owned, mode-0700 `vadgr-cua-*` directory directly below `/tmp`.
+The three original `com.vadgr.cua.json` manifests must already exist beneath
+`home/.config/{google-chrome,chromium,microsoft-edge}/NativeMessagingHosts/`
+inside that root. The helper refuses symlinks, hard-linked manifests, missing
+originals and paths owned by another user. It does not change owner files,
+ownership, browser settings or host networking.
+
+```sh
+python E2E/0.7.6/harness/registration_fault_linux.py \
+  --root /tmp/vadgr-cua-example \
+  --backup /tmp/vadgr-cua-example/a04-backup \
+  --ready /tmp/vadgr-cua-example/a04-ready \
+  --done /tmp/vadgr-cua-example/a04-done --seconds 180
+```
+
+The backup directory and both control files must be fresh, distinct direct
+children of the isolated root. Use unique names for each attempt. The helper
+creates a mode-0700 backup directory with three mode-0600 exact copies and
+verifies their bytes before removing any manifest. Backups contain private
+state: retain them for recovery and final isolated-root cleanup, and never
+print, commit or include them in evidence. Do not run an installer or modify
+the manifests or their parent directories while the fault is active.
+
+Start the helper as a separate setup process and wait for the ready file.
+The agent requests the public status and read errors through its installed MCP.
+Create the done file after those read-backs. The helper restores in `finally`
+on done, timeout, ordinary exceptions, keyboard interruption or SIGTERM.
+It verifies exact bytes, hashes and file modes. Output contains only hashes,
+counts, booleans, PID and timestamps. Require exit zero and `restored: true`
+with `verified: true` before accepting the setup and making the recovery read.
+A timeout restores files but exits nonzero, so it cannot pass as a completed
+handshake. The ready file is not a cell verdict. SIGKILL or host shutdown cannot
+run restoration; never forcibly terminate an active fault. An occupied restore
+destination is refused and all other removed manifests still receive a restore
+attempt. Retain the backups if restoration fails.
+
+This helper requires Linux and Python 3.10 or later. Windows uses its registry
+helper; macOS and a WSL browser hosted on Windows require their native setup.
+Missing isolated manifests block this Linux A04 setup.
 
 ## A04 Windows registration fault
 
