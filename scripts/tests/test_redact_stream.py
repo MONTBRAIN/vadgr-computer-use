@@ -140,7 +140,7 @@ def test_redacts_credentials_in_structured_tool_result():
         "target_restricted",
     ],
 )
-@pytest.mark.parametrize("tool", ["browser", "browser_eval"])
+@pytest.mark.parametrize("tool", ["browser", "browser_eval", "tabs", "windows", "profiles"])
 def test_preserves_public_browser_codes_needed_by_remaining_cells(code, tool):
     message = f"Error executing tool {tool}: [{code}] private page or input detail"
     assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
@@ -148,6 +148,20 @@ def test_preserves_public_browser_codes_needed_by_remaining_cells(code, tool):
         "length": len(message),
         "error_code": code,
     }
+
+
+@pytest.mark.parametrize("tool", ["tabs", "windows", "profiles"])
+@pytest.mark.parametrize("code", ["target_owned_by_another_client", "unknown_private_code"])
+def test_target_errors_keep_only_allowlisted_code_not_private_details(tool, code):
+    message = (
+        f"Error executing tool {tool}: [{code}] "
+        r"private target C:\fixture-private\page.txt token=synthetic-credential"
+    )
+    result = MODULE.redact({"type": "text", "text": message}, ())
+    expected = {"redacted": True, "length": len(message)}
+    if code == "target_owned_by_another_client":
+        expected["error_code"] = code
+    assert result == {"type": "text", "text": expected}
 
 
 @pytest.mark.parametrize(
