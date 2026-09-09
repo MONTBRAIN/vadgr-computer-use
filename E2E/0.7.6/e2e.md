@@ -202,6 +202,13 @@ independent oracle and cleanup.
 
 ## Part B: shared broker and target ownership
 
+For B06, a streaming CLI may finish the first claim before emitting the second
+claim in the same message. That is not overlapping dispatch. The POSIX claim
+barrier in `harness/README.md` can pause only the two exact installed MCP
+children while the agent emits both public requests. Announce the temporary
+pause first. Preserve both call timestamps, automatic resumes, real conflict
+results and broker identity; a sequential attempt cannot receive a pass.
+
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | B01 | One profile; two independent MCP clients | Attach both clients and list profiles, windows, and tabs | Both remain connected through one broker and see one complete registry | Both JSON streams and broker identity | not run: target-label repair rerun owed; prior functional observations retained | not run: target-label repair rerun owed; prior functional observations retained | not run: target-label repair rerun owed; prior functional observations retained | partial: functional routing observed; corrected target-label rerun owed |
