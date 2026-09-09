@@ -196,7 +196,7 @@ independent oracle and cleanup.
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: verified worker stop recovered once on the same target at a1c24f3 |
-| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | blocked: no contemporaneous sleep/wake event was verified |
+| A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: b8a5513 retained the same document, tab and revision after verified 36-second sleep; one post-wake read returned counter 1 |
 | A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: two immediate and two settled disabled reads returned the named error at a1c24f3 |
 | A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
 
@@ -302,12 +302,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | partial: A01, A03 and A04 passed on the repaired wheel; coordinated sleep/wake remains |
+| A: recovery and setup diagnosis | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
 | B: shared broker and target ownership | incomplete: rerun B09, B10 and B15 after the repair | incomplete: rerun B09 and B10 after the repair | incomplete: rerun B09, B10 and B15 after the repair | pass: all applicable ownership, race, reconnect and restart cells observed |
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
 | E: packaged and clean delivery | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | incomplete: E01 identity on the repaired package | pass: repaired installed identity and default-profile load observed; both unaffected long-input paths retained |
-| overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | partial: only A02 coordinated sleep/wake remains; isolated cleanup completed |
+| overall | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | incomplete: setup and recovery reruns remain | pass: every applicable macOS cell has an observed passing result |
 
 ## Evidence
 
@@ -330,10 +330,19 @@ The latest macOS cleanup stopped the exact test processes, verified their
 ports free and moved all six isolated test roots plus the pass's gate root
 and two diagnostic samples to recoverable Trash. Owner processes and
 repository build state were preserved. Moving files to Trash is not a claim
-of freed disk space. This cleanup does not close A02.
+of freed disk space. The later A02 rerun used a separate fresh isolated root.
 
 ## Findings
 
+- The final macOS A02 rerun at
+  `b8a5513c17af77cb58e6d1b99eb40087a1af59b6` passes. Its fresh wheel SHA256 is
+  `34207677cda886872962c05fed480291b2d6a0429ab49aa87e567101520d54b6`.
+  A01 first passed again on this installed artifact. Power logs then recorded
+  sleep at 2026-09-08 21:59:46 -0500 and full wake at 22:00:22. The live client
+  issued one post-wake DOM read. Its counter was one, with the same document
+  time origin, window, tab and ownership revision. A preceding driver exited
+  before sleep and another setup encountered duplicate fixture URLs; neither
+  contributes to A02's pass. No product change was needed for this rerun.
 - Two independent macOS D04 attempts in fresh TextEdit windows returned seven
   completed units and four fallbacks but produced the same truncated output:
   25 UTF-8 bytes instead of 40. The native Unicode setter received Python
@@ -401,8 +410,8 @@ of freed disk space. This cleanup does not close A02.
   E01 on earlier hosts. Positive content and pixel paths are unchanged.
 - The macOS A02 driver used an older sleep/wake pair when reporting its result.
   Those events predate this pass and do not prove the requested suspension.
-  The same-target read succeeded, but A02 remains blocked until a coordinated
-  attempt records contemporaneous power events. A later owner-coordinated
+  The same-target read succeeded, but that attempt left A02 blocked pending
+  contemporaneous power events. A later owner-coordinated
   `pmset sleepnow` returned zero but no actual sleep/wake pair followed. That
   setup attempt is rejected too; its driver sent no post-wake DOM read.
 - The Linux VM save/resume rerun completed one DOM read on the same window,
@@ -425,7 +434,7 @@ of freed disk space. This cleanup does not close A02.
   `d9713151b8ced7bfcaf0a78c7f542f271025b3f4ffb3fd67ab99e6f063372450`.
   Rerun A02 and B09 on previously passing Windows and WSL hosts, and verify
   E01 packaged identity before those cells. The macOS native matrix now has
-  observed results; its coordinated A02 sleep/wake remains owed.
+  observed results; the later b8a5513 run closes its coordinated A02 sleep/wake.
 - The native Windows pass first tested product commit
   `b87685b5e621265b7b67bbfe079b4951b561e4b8`. D04 and E02 tested final product
   commit `d8276071fcec953d5aeab43622fa7326fc4f1aca`. Its final isolated wheel has
