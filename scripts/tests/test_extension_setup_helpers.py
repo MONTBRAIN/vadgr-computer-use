@@ -53,7 +53,8 @@ def test_toggle_expression_resolves_requested_state(monkeypatch, enabled, failur
         setup = """
 let elapsed = 0;
 global.performance = {now: () => elapsed};
-global.requestAnimationFrame = callback => { elapsed += 1000; callback(); };
+global.requestAnimationFrame = () => { throw Error('hidden page has no frame'); };
+global.setTimeout = (callback, delay) => { elapsed += delay; callback(); };
 const control = {checked: INITIAL, click() { this.checked = !this.checked; }};
 const item = {shadowRoot: {querySelector(s) {
   if (s !== '#enableToggle') throw Error('wrong control'); return control;

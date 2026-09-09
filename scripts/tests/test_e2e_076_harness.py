@@ -23,6 +23,43 @@ def test_overlay_geometry_applies_inside_shadow_roots():
     assert 'overlay(shadow.querySelector(".slot"))' in source
 
 
+def test_extension_toggle_polling_does_not_require_a_visible_frame(monkeypatch):
+    monkeypatch.syspath_prepend(str(PAGE.parent))
+    spec = importlib.util.spec_from_file_location("e2e_toggle", PAGE.with_name("toggle_extension.py"))
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class HiddenPage:
+        closed = False
+
+        def create(self, url):
+            assert url == "chrome://extensions/"
+            return {"id": "isolated-management-page"}
+
+        def evaluate(self, target, expression):
+            assert "requestAnimationFrame" not in expression
+            assert "setTimeout(probe, 50)" in expression
+            assert "setTimeout(verify, 50)" in expression
+            return {"enabled": False}
+
+        def json(self, path):
+            assert path == "/json/version"
+            return {}
+
+        def command(self, browser, method, params):
+            assert method == "Target.closeTarget"
+            assert params == {"targetId": "isolated-management-page"}
+            self.closed = True
+            return {"success": True}
+
+    page = HiddenPage()
+    assert module.toggle(page, False) == {
+        "enabled": False, "temporary_extensions_page_closed": True,
+    }
+    assert page.closed
+
+
 def test_lifecycle_row_matches_only_the_exact_url():
     expression = _lifecycle().row_expression(
         "http://127.0.0.1/page.html?case=exact",

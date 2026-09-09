@@ -130,7 +130,12 @@ def redact(value: Any, literals: tuple[str, ...], key: str | None = None) -> Any
                 if interruption:
                     result["error_code"] = interruption[1]
                     result["completed_units"] = int(interruption[2])
-                message = value.removeprefix("Error executing tool browser: ")
+                message = value
+                for tool in ("browser", "browser_eval"):
+                    prefix = f"Error executing tool {tool}: "
+                    if message.startswith(prefix):
+                        message = message.removeprefix(prefix)
+                        break
                 for code in BROWSER_ERROR_CODES:
                     if message.startswith(f"[{code}] "):
                         result["error_code"] = code

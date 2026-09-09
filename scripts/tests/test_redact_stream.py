@@ -140,8 +140,9 @@ def test_redacts_credentials_in_structured_tool_result():
         "target_restricted",
     ],
 )
-def test_preserves_public_browser_codes_needed_by_remaining_cells(code):
-    message = f"Error executing tool browser: [{code}] private page or input detail"
+@pytest.mark.parametrize("tool", ["browser", "browser_eval"])
+def test_preserves_public_browser_codes_needed_by_remaining_cells(code, tool):
+    message = f"Error executing tool {tool}: [{code}] private page or input detail"
     assert MODULE.redact({"type": "text", "text": message}, ())["text"] == {
         "redacted": True,
         "length": len(message),

@@ -41,6 +41,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Preserve named browser-evaluation errors in diagnostic redaction without
+  retaining private page details.
+- Keep browser test setup responsive when its management tab is hidden.
 - Preserve supplementary Unicode characters and joined emoji in macOS pixel
   typing by passing their complete UTF-16 length to the native event API.
 - Keep macOS synthetic keyboard state in a private event source and balance

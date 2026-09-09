@@ -27,11 +27,11 @@ new Promise((resolve, reject) => {
       const verify = () => {
         if (!!toggle.checked === ENABLED) resolve({enabled: !!toggle.checked});
         else if (performance.now() >= deadline) reject(new Error('toggle timed out'));
-        else requestAnimationFrame(verify);
+        else setTimeout(verify, 50);
       };
       verify();
     } else if (performance.now() >= deadline) reject(new Error('toggle not found'));
-    else requestAnimationFrame(probe);
+    else setTimeout(probe, 50);
   };
   probe();
 })
