@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Preserve supplementary Unicode characters and joined emoji in macOS pixel
+  typing by passing their complete UTF-16 length to the native event API.
 - Keep macOS synthetic keyboard state in a private event source and balance
   modifier presses and releases, including interrupted typing and key chords.
 - Report missing or disabled browser setup for an already selected profile,

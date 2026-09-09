@@ -497,6 +497,41 @@ class TestMacOSActionExecutorKeyboard:
         chars_typed = [c.args[2] for c in quartz.CGEventKeyboardSetUnicodeString.call_args_list]
         assert "é" in chars_typed
 
+    @pytest.mark.parametrize("human", [False, True], ids=["fast", "human"])
+    @pytest.mark.parametrize(
+        "text,utf16_units",
+        [
+            ("\u00e9", 1),
+            ("e\u0301", 2),
+            ("\U0001f600", 2),
+            ("\U0001f44d\U0001f3fd", 4),
+            ("\U0001f1e8\U0001f1f4", 4),
+            ("\U0001f469\u200d\U0001f4bb", 5),
+        ],
+        ids=["bmp", "combining", "astral", "skin-tone", "flag", "joined"],
+    )
+    def test_unicode_events_use_utf16_array_length(
+        self, macos_mod, quartz, human, text, utf16_units
+    ):
+        from computer_use.core.typing import TypingPlan, TypingUnit
+
+        executor = macos_mod.MacOSActionExecutor()
+        if human:
+            plan = TypingPlan(True, "test", 40, (TypingUnit(text, 0),), 0)
+            assert executor.type_text_plan(plan) == 1
+        else:
+            executor.type_text(text)
+
+        unicode_calls = quartz.CGEventKeyboardSetUnicodeString.call_args_list
+        assert unicode_calls
+        # Quartz counts UniChar array elements, not Python Unicode code points.
+        for event_call in unicode_calls:
+            _, count, payload = event_call.args
+            assert count == len(payload.encode("utf-16-le")) // 2
+        if human:
+            assert len(unicode_calls) == 2
+            assert all(c.args[1:] == (utf16_units, text) for c in unicode_calls)
+
     def test_human_ascii_uses_physical_keycode_and_shift(self, macos_mod, quartz):
         from computer_use.core.typing import TypingPlan, TypingUnit
 

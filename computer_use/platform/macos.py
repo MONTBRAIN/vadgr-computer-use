@@ -455,7 +455,9 @@ class MacOSActionExecutor(ActionExecutor):
                 raise ActionError("Unable to create keyboard event")
             _Quartz.CGEventSetFlags(result, event_flags)
             if text is not None:
-                _Quartz.CGEventKeyboardSetUnicodeString(result, len(text), text)
+                # Quartz counts UTF-16 UniChar elements, not Python code points.
+                utf16_units = len(text.encode("utf-16-le")) // 2
+                _Quartz.CGEventKeyboardSetUnicodeString(result, utf16_units, text)
             return result
 
         with ExitStack() as releases:
