@@ -153,43 +153,43 @@
   "source_files": [
     {
       "path": "computer_use/__init__.py",
-      "sha256": "f74266546b4cc0af021ee693de36bde43af475e8d831571cd78a2d099c7952ca"
+      "sha256": "27f53769f929f8437a873de948cd34c6912e0160bab71e5c50de5ac3fb8f5dd4"
     },
     {
       "path": "computer_use/browser/bridge.py",
-      "sha256": "e8d7d5920ea89e4f6552871ebe9ce198e0e87015af8314406504631375dd9a76"
+      "sha256": "5c360d25f1a663be7353a94b6394a94e1276bd527acdcd2d8a26e2343ed73434"
     },
     {
       "path": "computer_use/browser/broker.py",
-      "sha256": "47f0b7221fabd6cadaa44ef6bc2ccb41f43f31355186c4dc960ed85aceaeb043"
+      "sha256": "cc52442918e6d7dc2563b002ddb5173cc8dd6874da432e01f4d819e83009db98"
     },
     {
       "path": "computer_use/browser/native_host.py",
-      "sha256": "37da6396c150371bf298a7737018c8ee52d85ed592243ffc6c56b568eaf4b24a"
+      "sha256": "a1d2dc2e53df1c12ed4d990758bbc00e96d138b35430f86541d97e5c254e50bf"
     },
     {
       "path": "computer_use/browser/ownership.py",
-      "sha256": "828d0a675a1821b3262945a547c45988a7cad1bb41f7eb6c182478da65e97256"
+      "sha256": "b905ad65e1895677e9d3afd8ca0a8684f1424bce8d151797c2f60819f0255077"
     },
     {
       "path": "computer_use/browser/protocol.py",
-      "sha256": "41d0beb4e83cf00f48ce5c0dbe92d2646e0ae3a754b6bcb60eb3642040a9e7f2"
+      "sha256": "68461563fd0eff3f9afd28dfa517e64b18d3e28fd914f000a2d7139889eab7bb"
     },
     {
       "path": "computer_use/browser/server.py",
-      "sha256": "e494697a6908dbbcbd178ecdf3a2c7ed1fbbb7f88344fb470a8addac2e83daf6"
+      "sha256": "8b3ed3b4a9a003c24f9cedfca4b59552fac2b05910425c73d5de233d10c06f35"
     },
     {
       "path": "computer_use/browser/windows_acl.py",
-      "sha256": "b5c3fdda3871c60add8a8bbb036744f90cd070674e571f886ba00a162f9cb460"
+      "sha256": "b8143ec70f9bbc983cebc07724bef7066b641be28c313eca733847a36837789d"
     },
     {
       "path": "computer_use/browser/windows_broker_entry.py",
-      "sha256": "1676ab3ccae7ec0522d025df7625c20d95ff7b03c883b1e8aff7587bb3f3aea3"
+      "sha256": "a51979d4197da19ab94dcff935980beef8b946c532ebd31b4fafa2d3ea6bb3ed"
     },
     {
       "path": "computer_use/setup/extension_setup.py",
-      "sha256": "66e3197627eacebc5d8ddba93b669a7f97d5cacc8dbab0e4c0ef458989804a5c"
+      "sha256": "2ba554ceab02afdda30996264d65245bd3169b3b22b9f6abd6cc94ce230cb61d"
     }
   ],
   "target": "x86_64-pc-windows-msvc",
