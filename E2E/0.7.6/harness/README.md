@@ -15,6 +15,13 @@ the exit code. Quartz must be available in the observing interpreter.
 After the public driver creates the test window, use its recorded PID and
 window ID, not the front document or a window title:
 
+Before input, save the new empty plain-text document to a unique file inside
+the isolated root. Verify its exact document path and zero-byte state. An
+untitled TextEdit document can autosave into the owner's default cloud folder
+even when later closed with saving disabled. Do not change TextEdit or cloud
+preferences. Observe only this test document and retain its file for final
+isolated-root cleanup. Each fresh-input leg uses a new empty file and window.
+
 ```sh
 python E2E/0.7.6/harness/observe_textedit.py \
   --root /tmp/vadgr-cua-example --pid 1234 --window-id 5678 \

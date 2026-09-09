@@ -28,6 +28,7 @@ import random
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 
 from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError, ScreenCaptureError
@@ -342,6 +343,9 @@ class MacOSActionExecutor(ActionExecutor):
     def __init__(self):
         if _Quartz is None:
             raise ActionError("Quartz not available. Run: pip install vadgr-computer-use")
+        self._keyboard_source = _Quartz.CGEventSourceCreate(_Quartz.kCGEventSourceStatePrivate)
+        if self._keyboard_source is None:
+            raise ActionError("Unable to create private keyboard event source")
         self._tracker = CursorTracker()
         self._sync_tracker_with_system()
 
@@ -424,25 +428,51 @@ class MacOSActionExecutor(ActionExecutor):
         special = {"\n": "enter", "\r": "enter", "\t": "tab"}
         if char in special:
             keycode = _CGKEYCODE[special[char]]
-            for down in (True, False):
-                event = _Quartz.CGEventCreateKeyboardEvent(None, keycode, down)
-                _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, event)
+            self._keyboard_chord([keycode], 0)
             return False
         shifted = char.isupper() or char in _SHIFTED_ASCII
         base = _SHIFTED_ASCII.get(char, char.lower() if char.isupper() else char)
         keycode = _CGKEYCODE.get(base)
         fallback = keycode is None
-        ev_down = _Quartz.CGEventCreateKeyboardEvent(None, keycode or 0, True)
-        if shifted and not fallback:
-            _Quartz.CGEventSetFlags(ev_down, _Quartz.kCGEventFlagMaskShift)
-        _Quartz.CGEventKeyboardSetUnicodeString(ev_down, len(char), char)
-        _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev_down)
-        ev_up = _Quartz.CGEventCreateKeyboardEvent(None, keycode or 0, False)
-        if shifted and not fallback:
-            _Quartz.CGEventSetFlags(ev_up, _Quartz.kCGEventFlagMaskShift)
-        _Quartz.CGEventKeyboardSetUnicodeString(ev_up, len(char), char)
-        _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev_up)
+        flags = _Quartz.kCGEventFlagMaskShift if shifted and not fallback else 0
+        self._keyboard_chord([keycode or 0], flags, char)
         return fallback
+
+    def _keyboard_chord(self, keycodes: list[int], flags: int, char: str | None = None) -> None:
+        # Keep synthetic key state separate from the owner's physical keyboard.
+        # Register each private key-up before posting its matching key-down so
+        # an interrupted/failed post still unwinds every key this call owns.
+        modifiers = (
+            (59, _Quartz.kCGEventFlagMaskControl),
+            (58, _Quartz.kCGEventFlagMaskAlternate),
+            (56, _Quartz.kCGEventFlagMaskShift),
+            (55, _Quartz.kCGEventFlagMaskCommand),
+        )
+
+        def event(keycode: int, down: bool, event_flags: int, text: str | None = None):
+            result = _Quartz.CGEventCreateKeyboardEvent(self._keyboard_source, keycode, down)
+            if result is None:
+                raise ActionError("Unable to create keyboard event")
+            _Quartz.CGEventSetFlags(result, event_flags)
+            if text is not None:
+                _Quartz.CGEventKeyboardSetUnicodeString(result, len(text), text)
+            return result
+
+        with ExitStack() as releases:
+            active_flags = 0
+            for keycode, mask in modifiers:
+                if not flags & mask:
+                    continue
+                up = event(keycode, False, active_flags)
+                active_flags |= mask
+                down = event(keycode, True, active_flags)
+                releases.callback(_Quartz.CGEventPost, _Quartz.kCGHIDEventTap, up)
+                _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, down)
+            for keycode in keycodes:
+                up = event(keycode, False, active_flags, char)
+                down = event(keycode, True, active_flags, char)
+                releases.callback(_Quartz.CGEventPost, _Quartz.kCGHIDEventTap, up)
+                _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, down)
 
     def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
         _require_accessibility()
@@ -470,14 +500,8 @@ class MacOSActionExecutor(ActionExecutor):
                 continue
             keycodes.append(kc)
 
-        for kc in keycodes:
-            ev = _Quartz.CGEventCreateKeyboardEvent(None, kc, True)
-            _Quartz.CGEventSetFlags(ev, flags)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
-        for kc in reversed(keycodes):
-            ev = _Quartz.CGEventCreateKeyboardEvent(None, kc, False)
-            _Quartz.CGEventSetFlags(ev, flags)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
+        if keycodes:
+            self._keyboard_chord(keycodes, flags)
 
     def scroll(self, x: int, y: int, amount: int) -> None:
         _require_accessibility()

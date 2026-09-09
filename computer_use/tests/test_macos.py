@@ -328,6 +328,156 @@ class TestMacOSActionExecutorMouse:
 
 
 class TestMacOSActionExecutorKeyboard:
+    @pytest.mark.parametrize("text", ["A", "Aa\n\té", "!"])
+    def test_keyboard_private_source_balances_owned_modifiers(self, macos_mod, quartz, text):
+        source = object()
+        quartz.CGEventSourceCreate.return_value = source
+        events = []
+        quartz.CGEventCreateKeyboardEvent.side_effect = lambda src, key, down: {
+            "source": src,
+            "key": key,
+            "down": down,
+            "flags": None,
+        }
+        quartz.CGEventSetFlags.side_effect = lambda event, flags: event.update(flags=flags)
+        quartz.CGEventPost.side_effect = lambda tap, event: events.append(event.copy())
+
+        macos_mod.MacOSActionExecutor().type_text(text)
+
+        quartz.CGEventSourceCreate.assert_called_once_with(quartz.kCGEventSourceStatePrivate)
+        assert all(event["source"] is source for event in events)
+        assert all(event["flags"] is not None for event in events)
+        owned_down = set()
+        for event in events:
+            if event["down"]:
+                owned_down.add(event["key"])
+            else:
+                assert event["key"] in owned_down
+                owned_down.remove(event["key"])
+        assert not owned_down
+        assert events[-1]["flags"] == 0
+        assert any(event["key"] == 56 and event["down"] for event in events)
+        quartz.CGEventSourceKeyState.assert_not_called()
+
+    @pytest.mark.parametrize("stop_kind", ["cancel", "deadline"])
+    def test_keyboard_human_boundary_stops_after_private_shift_release(
+        self, macos_mod, quartz, stop_kind
+    ):
+        from computer_use.core.typing import (
+            TypingCancelled,
+            TypingDeadlineExceeded,
+            TypingPlan,
+            TypingUnit,
+        )
+
+        quartz.CGEventCreateKeyboardEvent.side_effect = lambda src, key, down: {
+            "key": key,
+            "down": down,
+            "flags": None,
+        }
+        quartz.CGEventSetFlags.side_effect = lambda event, flags: event.update(flags=flags)
+        events = []
+        quartz.CGEventPost.side_effect = lambda tap, event: events.append(event.copy())
+        plan = TypingPlan(True, "test", 40, (TypingUnit("A", 0), TypingUnit("b", 0)), 0)
+        executor = macos_mod.MacOSActionExecutor()
+        exception = TypingCancelled if stop_kind == "cancel" else TypingDeadlineExceeded
+        with patch(
+            "computer_use.core.actions.time.monotonic", side_effect=lambda: int(bool(events))
+        ):
+            with pytest.raises(exception) as stopped:
+                executor.type_text_plan(
+                    plan,
+                    cancelled=(lambda: bool(events)) if stop_kind == "cancel" else None,
+                    deadline=0.5 if stop_kind == "deadline" else None,
+                )
+        assert stopped.value.completed_units == 1
+        assert [(event["key"], event["down"]) for event in events] == [
+            (56, True),
+            (0, True),
+            (0, False),
+            (56, False),
+        ]
+        assert events[-1]["flags"] == 0
+
+    def test_keyboard_modifier_release_restores_private_flag_stack(self, macos_mod, quartz):
+        quartz.CGEventCreateKeyboardEvent.side_effect = lambda src, key, down: {
+            "key": key,
+            "down": down,
+            "flags": None,
+        }
+        quartz.CGEventSetFlags.side_effect = lambda event, flags: event.update(flags=flags)
+        events = []
+        quartz.CGEventPost.side_effect = lambda tap, event: events.append(event.copy())
+        macos_mod.MacOSActionExecutor().key_press(["ctrl", "shift", "a"])
+        control = quartz.kCGEventFlagMaskControl
+        combined = control | quartz.kCGEventFlagMaskShift
+        assert [event["flags"] for event in events] == [
+            control,
+            combined,
+            combined,
+            combined,
+            control,
+            0,
+        ]
+        assert any(event["key"] == 56 and event["down"] for event in events)
+        quartz.CGEventSourceKeyState.assert_not_called()
+
+    def test_keyboard_failed_post_releases_only_private_owned_keys(self, macos_mod, quartz):
+        source = object()
+        quartz.CGEventSourceCreate.return_value = source
+        quartz.CGEventCreateKeyboardEvent.side_effect = lambda src, key, down: {
+            "source": src,
+            "key": key,
+            "down": down,
+            "flags": None,
+        }
+        quartz.CGEventSetFlags.side_effect = lambda event, flags: event.update(flags=flags)
+        posted = []
+
+        def post(tap, event):
+            posted.append(event.copy())
+            if event["key"] == 0 and event["down"]:
+                raise RuntimeError("injected post failure")
+
+        quartz.CGEventPost.side_effect = post
+        with pytest.raises(RuntimeError, match="injected post failure"):
+            macos_mod.MacOSActionExecutor()._type_char("A")
+        assert [(event["key"], event["down"]) for event in posted] == [
+            (56, True),
+            (0, True),
+            (0, False),
+            (56, False),
+        ]
+        assert all(event["source"] is source for event in posted)
+        assert posted[-1]["flags"] == 0
+        quartz.CGEventSourceKeyState.assert_not_called()
+
+    def test_keyboard_chord_balances_deduplicated_modifiers(self, macos_mod, quartz):
+        quartz.CGEventCreateKeyboardEvent.side_effect = lambda src, key, down: {
+            "key": key,
+            "down": down,
+            "flags": None,
+        }
+        quartz.CGEventSetFlags.side_effect = lambda event, flags: event.update(flags=flags)
+        events = []
+        quartz.CGEventPost.side_effect = lambda tap, event: events.append(event.copy())
+        macos_mod.MacOSActionExecutor().key_press(["ctrl", "control", "shift", "a"])
+        assert [(event["key"], event["down"]) for event in events] == [
+            (59, True),
+            (56, True),
+            (0, True),
+            (0, False),
+            (56, False),
+            (59, False),
+        ]
+        assert events[-1]["flags"] == 0
+
+    def test_keyboard_private_source_failure_is_closed(self, macos_mod, quartz):
+        quartz.CGEventSourceCreate.return_value = None
+        with pytest.raises(Exception, match="keyboard event source"):
+            macos_mod.MacOSActionExecutor()
+        quartz.CGEventPost.assert_not_called()
+
     def test_type_text_posts_one_unicode_pair_per_character(self, macos_mod, quartz):
         ex = macos_mod.MacOSActionExecutor()
         ex.type_text("hi")
@@ -354,7 +504,10 @@ class TestMacOSActionExecutorKeyboard:
         fallback = macos_mod.MacOSActionExecutor().type_text_plan(plan)
 
         assert fallback == 0
-        assert quartz.CGEventCreateKeyboardEvent.call_args_list[0].args[1] == 0
+        assert any(
+            event_call.args[1:] == (0, True)
+            for event_call in quartz.CGEventCreateKeyboardEvent.call_args_list
+        )
         assert any(
             event_call.args[1] & quartz.kCGEventFlagMaskShift
             for event_call in quartz.CGEventSetFlags.call_args_list
