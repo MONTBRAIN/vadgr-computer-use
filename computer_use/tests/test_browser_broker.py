@@ -217,6 +217,74 @@ def test_two_clients_get_distinct_owned_windows_and_exact_routing():
     assert broker.request(two, "read_text", {})["value"] == f"target-{target_two['tab_id']}"
 
 
+@pytest.mark.parametrize(
+    "action",
+    ["close-window", "close-tab", "close-other-tab", "focus", "switch", "open-window", "open-tab"],
+)
+def test_mutation_target_envelope_is_caller_specific(action):
+    class GlobalTargetBridge(ExtensionBridge):
+        foreign = {"window_id": 99, "tab_id": 999, "url": "https://foreign.test"}
+        last_result = None
+
+        def send(self, op, /, **params):
+            sub = params.get("op")
+            if op == "windows" and sub == "focus":
+                result = {"focused": True, "window_id": params["window_id"]}
+            elif op == "tabs" and sub in ("switch", "close"):
+                result = {"tab_id": params["tab_id"]}
+                if sub == "close":
+                    for window in self.windows:
+                        window["tabs"] = [tab for tab in window["tabs"] if tab["tab_id"] != params["tab_id"]]
+                    result["closed"] = True
+            else:
+                result = super().send(op, **params)
+            if op != "profiles" and not (op == "tabs" and sub == "list"):
+                result["target"] = dict(self.foreign)
+                self.last_result = result
+            return result
+
+    extension = GlobalTargetBridge()
+    broker = BrowserBroker(extension)
+    one = broker.connect(None, None)
+    two = broker.connect(None, None)
+    first = broker.request(one, "use_target", {"mode": "owned"})
+    other = broker.request(two, "use_target", {"mode": "owned"})
+    second = broker.request(one, "tabs", {"op": "open", "window_id": first["window_id"]})
+    extension.foreign = {
+        "window_id": other["window_id"], "tab_id": other["tab_id"], "url": "https://foreign.test",
+    }
+    peer_before = (two.window_id, two.tab_id, two.revision)
+    actions = {
+        "close-window": ("windows", {"op": "close", "window_id": first["window_id"]}),
+        "close-tab": ("tabs", {"op": "close", "tab_id": second["tab_id"]}),
+        "close-other-tab": ("tabs", {"op": "close", "tab_id": first["tab_id"]}),
+        "focus": ("windows", {"op": "focus", "window_id": first["window_id"]}),
+        "switch": ("tabs", {"op": "switch", "tab_id": first["tab_id"]}),
+        "open-window": ("windows", {"op": "open"}),
+        "open-tab": ("tabs", {"op": "open", "window_id": first["window_id"]}),
+    }
+    operation, params = actions[action]
+    result = broker.request(one, operation, params)
+
+    if action in ("close-window", "close-tab"):
+        assert "target" not in result
+    else:
+        assert result["target"] == {"window_id": one.window_id, "tab_id": one.tab_id}
+    assert extension.last_result["target"] == extension.foreign
+    assert (two.window_id, two.tab_id, two.revision) == peer_before
+
+
+def test_client_result_preserves_only_matching_target_url():
+    state = SimpleNamespace(window_id=1, tab_id=10)
+    source = {"target": {"window_id": 1, "tab_id": 10, "url": "https://one.test"}}
+    assert BrowserBroker._client_result(state, source) == source
+    assert "url" not in BrowserBroker._client_result(
+        state, {"target": {"window_id": 1, "tab_id": 11, "url": "https://other.test"}}
+    )["target"]
+    without_target = {"closed": True}
+    assert BrowserBroker._client_result(state, without_target) is without_target
+
+
 def test_use_target_inline_profile_selects_before_ambiguity_check():
     class TwoProfileBridge(ExtensionBridge):
         def send(self, op, /, **params):

@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Keep browser mutation response targets local to the requesting client,
+  including when a window or tab closes while another client remains active.
 - Preserve named browser-evaluation errors in diagnostic redaction without
   retaining private page details.
 - Keep browser test setup responsive when its management tab is hidden.

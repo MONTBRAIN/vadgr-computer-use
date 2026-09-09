@@ -320,6 +320,25 @@ class BrowserBroker:
         result = self._send_profile(profile_id, "tabs", op="list")
         return self._decorate_tabs(state, profile_id, result)
 
+    @staticmethod
+    def _client_result(state: ClientState, result: dict[str, Any]) -> dict[str, Any]:
+        """Do not expose the extension's shared selection in a client reply."""
+        if "target" not in result:
+            return result
+        result = dict(result)
+        previous = result.pop("target")
+        if state.window_id is not None and state.tab_id is not None:
+            target: dict[str, Any] = {"window_id": state.window_id, "tab_id": state.tab_id}
+            if (
+                isinstance(previous, dict)
+                and previous.get("window_id") == state.window_id
+                and previous.get("tab_id") == state.tab_id
+                and isinstance(previous.get("url"), str)
+            ):
+                target["url"] = previous["url"]
+            result["target"] = target
+        return result
+
     def _select(
         self, state: ClientState, profile_id: str, target: dict[str, Any], scope: str
     ) -> dict[str, Any]:
@@ -338,7 +357,7 @@ class BrowserBroker:
         result["ownership"] = self.ownership.describe(
             profile_id, window_id, tab_id, state.client_id
         )
-        return result
+        return self._client_result(state, result)
 
     def _ensure_target(self, state: ClientState, profile_id: str) -> None:
         if state.needs_explicit_target:
@@ -529,7 +548,7 @@ class BrowserBroker:
             result = self._send_profile(profile_id, op, **params)
             if sub == "close" and state.window_id == window_id:
                 state.window_id = state.tab_id = state.revision = None
-            return result
+            return self._client_result(state, result)
         if op == "tabs" and sub in ("switch", "close"):
             tab_id = int(params["tab_id"])
             listed = self._list_tabs(state, profile_id)
@@ -553,7 +572,7 @@ class BrowserBroker:
                 state.window_id, state.tab_id, state.revision = window_id, tab_id, lease.revision
             elif state.tab_id == tab_id:
                 state.window_id = state.tab_id = state.revision = None
-            return result
+            return self._client_result(state, result)
         if op == "use_target":
             mode = str(params.get("mode", "owned"))
             if mode not in ("owned", "attach"):
