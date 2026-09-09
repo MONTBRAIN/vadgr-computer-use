@@ -198,7 +198,7 @@ independent oracle and cleanup.
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: stopped worker recovered once with unchanged target, revision and document at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: verified worker stop recovered once on the same target at a1c24f3 |
 | A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: verified Windows sleep and wake retained the same document and one read at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: b8a5513 retained the same document, tab and revision after verified 36-second sleep; one post-wake read returned counter 1 |
 | A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: persisted disabled setup returned extension_disabled for status and read; restored at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: two immediate and two settled disabled reads returned the named error at a1c24f3 |
-| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | blocked: permission is required to remove and restore the shared Windows native-host registration | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
+| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: absent registrations returned not_set_up; both original values restored and browser recovered at 63e65bb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
 
 ## Part B: shared broker and target ownership
 
@@ -302,12 +302,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | partial: A01-A03 passed; A04 needs registration-fault permission | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
+| A: recovery and setup diagnosis | pass: A01-A04 observed; registration fault restored exactly | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
 | B: shared broker and target ownership | pass: repaired-artifact reruns observed at 5d4f873 | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
 | E: packaged and clean delivery | pass: repaired-artifact reruns observed at 5d4f873 | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
-| overall | partial: only A04 registration-fault permission remains owed on WSL | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
+| overall | pass: all required WSL cells observed; final A04 passed at 63e65bb | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 
 ## Evidence
 
@@ -352,9 +352,12 @@ was removed. Every applicable macOS cell and its cleanup are now complete.
   windows and interleaved DOM read-backs remained isolated. No cross-client
   input was observed. B03 fails
   on that earlier artifact. The repaired WSL rerun verifies caller-specific
-  metadata. A04 still prevents a completed host pass.
-- The WSL A04 rerun needs permission to remove and restore two shared Windows
-  native-host registration entries. No registration was changed without it.
+  metadata. The later A04 observation completes the WSL host pass.
+- The owner approved the WSL A04 registration fault. Both public requests
+  returned `not_set_up` while the two registration values were absent.
+  Both original values and types were restored exactly. The isolated browser
+  then reconnected. Registry keys, permissions and owner browser data stayed
+  unchanged. No registration was changed before permission was granted.
 - The WSL A03 immediate status reported `waking` before the browser persisted
   its disabled preference. The subsequent read reported `extension_disabled`.
   The accepted rerun verified persisted disabled setup before both assertions.
