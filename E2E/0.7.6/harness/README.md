@@ -66,10 +66,12 @@ an untracked mode-0600 file below the isolated test root.
 
 ## B09 transport fault
 
-This relay supports POSIX hosts only. Native Windows refuses alias creation
-before writing a credential because an owner-only Windows ACL implementation
-is not present. A POSIX mode bit is not a Windows privacy guarantee. Existing
-Windows B09 observations use their own recorded setup and remain unchanged.
+The relay supports POSIX and native Windows. POSIX creates the alias with mode
+0600. Windows creates the empty alias atomically with a protected DACL granting
+only the current user full control, then verifies that DACL through the open
+file handle before writing any credential bytes. Existing aliases are never
+overwritten. A permission or write failure removes only the new alias and
+preserves the original endpoint. No account identifier enters helper output.
 
 Start the installed broker normally. Keep the second installed MCP client on
 its original endpoint. Start the relay with `--root`, `--endpoint`, and `--alias`.
@@ -97,6 +99,14 @@ Send `{"stop":true}` or close standard input after the clients finish. The
 relay closes its listener and connections and removes only the alias it created.
 It never changes the original endpoint, host networking, or another client.
 Missing isolated endpoint state blocks B09; do not use the owner's broker.
+
+On Windows, put the per-cell root below the system temporary directory and
+keep its name prefixed with `vadgr-cua-`. If the pass root is elsewhere, prepare
+a private copy of only the test-owned endpoint in this per-cell root. Never
+print its contents. Mount the alias for the first fresh installed MCP client
+and the original endpoint for the second. Use the same 8-second and 46-second
+cuts. Do not substitute a process scheduling pause: missed heartbeat accounting
+alone does not prove the socket was closed and reconnected.
 
 ## B06 claim barrier
 

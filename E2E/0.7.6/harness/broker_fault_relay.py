@@ -44,18 +44,120 @@ def read_endpoint(root: Path, path: Path) -> dict:
 
 
 def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int) -> Path:
-    if sys.platform == "win32":
-        raise ValueError("relay alias requires an owner-only Windows ACL implementation")
     destination = isolated_path(root, alias)
     if destination == isolated_path(root, source):
         raise ValueError("alias must not replace the original endpoint")
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("relay port is invalid")
     payload = dict(endpoint, port=port)
-    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as stream:
-        json.dump(payload, stream)
+    fd = (
+        windows_private_fd(destination) if sys.platform == "win32"
+        else os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    )
+    identity = os.fstat(fd).st_ino
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream)
+    except BaseException:
+        if destination.exists() and destination.stat().st_ino == identity:
+            destination.unlink()
+        raise
     return destination
+
+
+def windows_private_fd(destination: Path) -> int:
+    """Create an exclusive empty file with a protected owner-only DACL."""
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    security = ctypes.WinDLL("advapi32", use_last_error=True)
+    pointer = ctypes.c_void_p
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.LocalFree.argtypes = [pointer]
+    kernel.LocalFree.restype = pointer
+    security.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                         ctypes.POINTER(wintypes.HANDLE)]
+    security.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, pointer,
+                                            wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    security.ConvertSidToStringSidW.argtypes = [pointer, ctypes.POINTER(pointer)]
+    security.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(pointer), pointer,
+    ]
+    security.GetSecurityInfo.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.DWORD,
+                                        pointer, pointer, pointer, pointer, ctypes.POINTER(pointer)]
+    security.GetSecurityInfo.restype = wintypes.DWORD
+    security.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
+        pointer, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(pointer), pointer,
+    ]
+
+    class SecurityAttributes(ctypes.Structure):
+        _fields_ = [("length", wintypes.DWORD), ("descriptor", pointer),
+                    ("inherit", wintypes.BOOL)]
+
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.POINTER(SecurityAttributes), wintypes.DWORD,
+                                  wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    token = wintypes.HANDLE()
+    sid_text = pointer()
+    descriptor = pointer()
+    observed = pointer()
+    observed_text = pointer()
+    handle = None
+    created = False
+    try:
+        if not security.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+            raise ValueError("cannot identify the file owner")
+        size = wintypes.DWORD()
+        security.GetTokenInformation(token, 1, None, 0, ctypes.byref(size))
+        user = ctypes.create_string_buffer(size.value)
+        if not security.GetTokenInformation(token, 1, user, size, ctypes.byref(size)):
+            raise ValueError("cannot identify the file owner")
+        sid = ctypes.cast(user, ctypes.POINTER(pointer))[0]
+        if not security.ConvertSidToStringSidW(sid, ctypes.byref(sid_text)):
+            raise ValueError("cannot identify the file owner")
+        # P disables inherited ACEs. The single allow ACE gives only this user
+        # full control. No credential bytes exist before this DACL is attached.
+        expected = "D:P(A;;FA;;;" + ctypes.wstring_at(sid_text) + ")"
+        if not security.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            expected, 1, ctypes.byref(descriptor), None,
+        ):
+            raise ValueError("cannot prepare a private alias")
+        attributes = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
+        handle = kernel.CreateFileW(str(destination), 0x40000000 | 0x00020000,
+                                    0, ctypes.byref(attributes), 1, 0x80, None)
+        if handle == wintypes.HANDLE(-1).value:
+            handle = None
+            if ctypes.get_last_error() in (80, 183):
+                raise FileExistsError("alias already exists")
+            raise ValueError("cannot create a private alias")
+        created = True
+        if security.GetSecurityInfo(handle, 1, 4, None, None, None, None,
+                                    ctypes.byref(observed)):
+            raise ValueError("cannot verify the alias DACL")
+        if not security.ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            observed, 1, 4, ctypes.byref(observed_text), None,
+        ) or ctypes.wstring_at(observed_text) != expected:
+            raise ValueError("alias DACL is not owner-only")
+        fd = msvcrt.open_osfhandle(handle, os.O_WRONLY)
+        handle = None
+        return fd
+    except BaseException:
+        if handle is not None:
+            kernel.CloseHandle(handle)
+            handle = None
+        if created:
+            destination.unlink()
+        raise
+    finally:
+        if token:
+            kernel.CloseHandle(token)
+        for allocated in (sid_text, descriptor, observed, observed_text):
+            if allocated:
+                kernel.LocalFree(allocated)
 
 
 def duration(command: dict) -> float:

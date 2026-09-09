@@ -118,11 +118,14 @@ def launch_windows_broker() -> None:
     """Start the Windows broker detached; its held lock elects one winner."""
     bundle, _manifest = deployed_bundle()
     executable = f"{bundle}\\{BROKER_EXECUTABLE}"
+    # Windows PowerShell reparses trailing -Command arguments as source. Send
+    # paths as ASCII JSON on stdin so spaces, quotes and Unicode stay data on
+    # native Windows and through WSL's executable boundary.
     command = (
-        "& { param([string]$Executable, [string]$Directory) "
-        "if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { exit 2 }; "
-        "Start-Process -FilePath $Executable -ArgumentList @('serve') "
-        "-WorkingDirectory $Directory -WindowStyle Hidden }"
+        "$Launch = [Console]::In.ReadToEnd() | ConvertFrom-Json; "
+        "if (-not (Test-Path -LiteralPath $Launch.executable -PathType Leaf)) { exit 2 }; "
+        "Start-Process -FilePath $Launch.executable -ArgumentList @('serve') "
+        "-WorkingDirectory $Launch.directory -WindowStyle Hidden -ErrorAction Stop"
     )
     result = subprocess.run(
         [
@@ -131,10 +134,9 @@ def launch_windows_broker() -> None:
             "-NonInteractive",
             "-Command",
             command,
-            executable,
-            bundle,
         ],
-        stdin=subprocess.DEVNULL,
+        input=json.dumps({"executable": executable, "directory": bundle}),
+        text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         timeout=10,

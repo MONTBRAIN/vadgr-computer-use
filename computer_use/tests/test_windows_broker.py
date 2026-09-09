@@ -1,6 +1,9 @@
 import hashlib
 import json
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -76,3 +79,71 @@ def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
         "stderr": windows_broker.subprocess.DEVNULL,
         "close_fds": True,
     }
+
+
+def test_launch_paths_travel_as_data_not_powershell_source(monkeypatch):
+    bundle = "C:\\test spaces\\O'Brien $([int]7) `literal` é\\bundle"
+    monkeypatch.setattr(windows_broker, "deployed_bundle", lambda: (bundle, {}))
+    captured = {}
+
+    def capture(command, **kwargs):
+        captured.update(command=command, options=kwargs)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(windows_broker.subprocess, "run", capture)
+    windows_broker.launch_windows_broker()
+    assert len(captured["command"]) == 5
+    assert captured["command"][:4] == [
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+    ]
+    assert bundle not in captured["command"][-1]
+    assert json.loads(captured["options"]["input"]) == {
+        "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
+        "directory": bundle,
+    }
+    assert captured["options"]["input"].isascii()
+    assert captured["options"]["text"] is True
+    assert "stdin" not in captured["options"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real native PowerShell parsing")
+@pytest.mark.parametrize("start_fails", [False, True])
+def test_native_launch_path_roundtrip_without_launching_a_process(monkeypatch, start_fails):
+    bundle = "C:\\test spaces\\O'Brien $([int]7) `literal` é\\bundle"
+    monkeypatch.setattr(windows_broker, "deployed_bundle", lambda: (bundle, {}))
+    real_run = subprocess.run
+    observed = {}
+    # These in-process functions replace both filesystem probing and launch.
+    # The real PowerShell parser still receives the exact product command/data.
+    replacements = (
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); "
+        "function Test-Path { [CmdletBinding()] param($LiteralPath,$PathType) return $true }; "
+        "function Start-Process { [CmdletBinding()] "
+        "param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle) "
+    )
+    replacements += (
+        "throw 'fixture launch failure' }; " if start_fails else
+        "@{executable=$FilePath;directory=$WorkingDirectory;"
+        "arguments=@($ArgumentList);window=$WindowStyle}|ConvertTo-Json -Compress }; "
+    )
+
+    def probe(command, **kwargs):
+        amended = list(command)
+        amended[4] = replacements + amended[4]
+        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
+        result = real_run(amended, **kwargs)
+        observed["result"] = result
+        return result
+
+    monkeypatch.setattr(windows_broker.subprocess, "run", probe)
+    if start_fails:
+        with pytest.raises(OSError, match="failed to launch"):
+            windows_broker.launch_windows_broker()
+        assert observed["result"].returncode != 0
+    else:
+        windows_broker.launch_windows_broker()
+        assert observed["result"].returncode == 0
+        assert json.loads(observed["result"].stdout) == {
+            "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
+            "directory": bundle, "arguments": ["serve"], "window": "Hidden",
+        }

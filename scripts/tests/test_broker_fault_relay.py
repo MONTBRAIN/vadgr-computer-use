@@ -29,14 +29,11 @@ def test_alias_is_private_and_preserves_original(isolated):
     endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret", "pid": 7}
     source.write_text(json.dumps(endpoint))
     alias = isolated / "alias.json"
-    if sys.platform == "win32":
-        with pytest.raises(ValueError, match="owner-only Windows ACL"):
-            relay_module.write_alias(isolated, source, alias, endpoint, 23456)
-        assert not alias.exists()
-        assert json.loads(source.read_text()) == endpoint
-        return
     relay_module.write_alias(isolated, source, alias, endpoint, 23456)
-    assert stat.S_IMODE(alias.stat().st_mode) == 0o600
+    if sys.platform == "win32":
+        assert_windows_owner_only(alias)
+    else:
+        assert stat.S_IMODE(alias.stat().st_mode) == 0o600
     assert json.loads(alias.read_text()) == dict(endpoint, port=23456)
     assert json.loads(source.read_text()) == endpoint
     with pytest.raises(FileExistsError):
@@ -58,7 +55,15 @@ def test_rejects_non_loopback_and_invalid_ports(isolated, host, port):
 def test_rejects_outside_paths_and_symlinks(isolated):
     with pytest.raises(ValueError):
         relay_module.isolated_path(isolated, isolated.parent / "outside.json")
-    (isolated / "escape").symlink_to(isolated.parent, target_is_directory=True)
+    escape = isolated / "escape"
+    if sys.platform == "win32":
+        # A junction exercises resolved-path containment without symlink privileges.
+        subprocess.run(
+            ["cmd.exe", "/c", "mklink", "/J", str(escape), str(isolated.parent)],
+            check=True, capture_output=True,
+        )
+    else:
+        escape.symlink_to(isolated.parent, target_is_directory=True)
     with pytest.raises(ValueError):
         relay_module.isolated_path(isolated, isolated / "escape/endpoint.json")
     with pytest.raises(ValueError):
@@ -145,12 +150,6 @@ def test_cli_eof_cleans_alias_without_logging_credentials(isolated):
         capture_output=True,
         timeout=5,
     )
-    if sys.platform == "win32":
-        assert result.returncode != 0
-        assert "owner-only Windows ACL" in result.stderr
-        assert not alias.exists()
-        assert "fixture-credential" not in result.stdout + result.stderr
-        return
     assert result.returncode == 0, result.stderr
     assert not alias.exists()
     assert json.loads(original.read_text()) == endpoint
@@ -160,13 +159,97 @@ def test_cli_eof_cleans_alias_without_logging_credentials(isolated):
     assert events[-1]["event"] == "stopped"
 
 
-def test_windows_refuses_before_creating_credential_alias(isolated, monkeypatch):
+def test_windows_acl_failure_never_writes_credential(isolated, monkeypatch):
     source = isolated / "original.json"
     alias = isolated / "alias.json"
     endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret"}
     source.write_text(json.dumps(endpoint))
     monkeypatch.setattr(sys, "platform", "win32")
-    with pytest.raises(ValueError, match="owner-only Windows ACL"):
+
+    def unavailable(path):
+        raise ValueError("owner-only Windows ACL unavailable")
+
+    monkeypatch.setattr(relay_module, "windows_private_fd", unavailable)
+    with pytest.raises(ValueError, match="Windows ACL unavailable"):
+        relay_module.write_alias(isolated, source, alias, endpoint, 23456)
+    assert not alias.exists()
+    assert json.loads(source.read_text()) == endpoint
+
+
+def assert_windows_owner_only(path):
+    # Independent .NET ACL read-back emits no SID or owner-private path.
+    script = (
+        "$a=Get-Acl -LiteralPath $args[0];"
+        "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User;"
+        "$rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));"
+        "@{protected=$a.AreAccessRulesProtected;count=$rules.Count;"
+        "owner_only=($rules.Count -eq 1 -and $rules[0].IdentityReference -eq $sid "
+        "-and $rules[0].AccessControlType -eq 'Allow' "
+        "-and $rules[0].FileSystemRights -eq 'FullControl')}|ConvertTo-Json -Compress"
+    )
+    # Feed the path as data, without interpolating it into executable shell text.
+    encoded = json.dumps(str(path))
+    script = "$target=ConvertFrom-Json ([Console]::In.ReadToEnd());" + script.replace(
+        "$args[0]", "$target"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+        input=encoded, text=True, capture_output=True, timeout=10, check=True,
+    )
+    assert json.loads(result.stdout) == {"protected": True, "count": 1, "owner_only": True}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows ACL")
+def test_native_private_file_is_empty_when_dacl_verification_finishes(isolated):
+    import os
+
+    alias = isolated / "empty.json"
+    fd = relay_module.windows_private_fd(alias)
+    try:
+        assert os.fstat(fd).st_size == 0
+    finally:
+        os.close(fd)
+    assert_windows_owner_only(alias)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows ACL")
+def test_native_dacl_verification_failure_removes_empty_alias(isolated, monkeypatch):
+    import ctypes
+    from unittest.mock import Mock
+
+    original_loader = ctypes.WinDLL
+    source = isolated / "original.json"
+    alias = isolated / "alias.json"
+    endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret"}
+    source.write_text(json.dumps(endpoint))
+    writes = Mock()
+
+    def fail_verification(name, **kwargs):
+        library = original_loader(name, **kwargs)
+        if name == "advapi32":
+            library.GetSecurityInfo = Mock(return_value=5)
+        return library
+
+    monkeypatch.setattr(ctypes, "WinDLL", fail_verification)
+    monkeypatch.setattr(relay_module.json, "dump", writes)
+    with pytest.raises(ValueError, match="verify the alias DACL"):
+        relay_module.write_alias(isolated, source, alias, endpoint, 23456)
+    writes.assert_not_called()
+    assert not alias.exists()
+    assert json.loads(source.read_text()) == endpoint
+
+
+def test_failed_write_removes_only_new_alias(isolated, monkeypatch):
+    source = isolated / "original.json"
+    alias = isolated / "alias.json"
+    endpoint = {"host": "127.0.0.1", "port": 12345, "token": "test-secret"}
+    source.write_text(json.dumps(endpoint))
+
+    def fail(*args):
+        raise OSError("fixture write failure")
+
+    monkeypatch.setattr(relay_module.json, "dump", fail)
+    with pytest.raises(OSError, match="fixture write failure"):
         relay_module.write_alias(isolated, source, alias, endpoint, 23456)
     assert not alias.exists()
     assert json.loads(source.read_text()) == endpoint

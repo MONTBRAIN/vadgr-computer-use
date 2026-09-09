@@ -230,7 +230,7 @@ results and broker identity; a sequential attempt cannot receive a pass.
 | B12 | Windows and WSL clients share one broker | Exit only the Windows client, then operate from WSL | WSL continues through the proxy and the same Windows PID and epoch | WSL stream and broker identity | pass | Not-Needed: no cross-OS seam | pass | Not-Needed: no cross-OS seam |
 | B13 | WSL client disconnected; Windows broker has a live Windows client or extension | Terminate only the test WSL distribution session | The Windows broker remains alive and usable | Windows process and operation read-back | pass: disposable distro stopped; native client kept the same broker | Not-Needed: no cross-OS seam | pass: a disposable distro stopped while the native client retained the same live broker PID, start identity, epoch, and bundle hash | Not-Needed: no cross-OS seam |
 | B14 | Fresh verified bundle and endpoint | Corrupt isolated copies of the endpoint token and bundle | Bad authentication is refused and altered payload fails before execution | Named errors and unchanged live bundle hash; delete isolated copies | pass | Not-Needed: Windows-only packaging seam | pass: bad authentication was refused and an isolated tampered bundle was rejected before execution | Not-Needed: Windows-only packaging seam |
-| B15 | Broker running with owned resources | Terminate only that broker process and reconnect both clients | One new Windows PID and epoch appear; rediscovered leases are orphaned | Before/after identity and registry | pass: two clients share one new Windows PID and epoch; both old leases are orphaned at 5d4f873 | Not-Needed: no cross-OS seam | not run: mutation-response metadata repair rerun owed; prior observation retained | Not-Needed: no cross-OS seam |
+| B15 | Broker running with owned resources | Terminate only that broker process and reconnect both clients | One new Windows PID and epoch appear; rediscovered leases are orphaned | Before/after identity and registry | not run: rerun normal replacement startup after the spaced-path launcher repair; prior 5d4f873 pass retained | Not-Needed: no cross-OS seam | not run: mutation-response metadata repair rerun owed; prior observation retained | Not-Needed: no cross-OS seam |
 | B16 | Isolated stale and corrupt endpoint copies | Start both clients through the normal launcher | Startup rejects corrupt identity and safely recovers stale state without trusting its token | Named result, one Windows process and clean identity | pass | Not-Needed: Windows-only packaging seam | pass: corrupt identity was rejected and stale state safely replaced | Not-Needed: Windows-only packaging seam |
 | B17 | Isolated WSL environment with Windows interop unavailable | Request browser status | A named interop remedy returns and no Linux/WSL broker starts | Error stream and process listing | pass: rerun after repair | Not-Needed: WSL-only negative seam | Not-Needed: proved by paired WSL row | Not-Needed: WSL-only negative seam |
 
@@ -293,21 +293,37 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$FOCUS_SCRIPT" \
 
 ## Part E: packaged and clean delivery
 
+E03 is the Windows broker-launch regression, including its WSL caller.
+Use the subscription driver, installed wheel, isolated Chrome for Testing
+and local fixture from setup. Put the Windows bundle's deployment parent in
+a test-owned path containing spaces. No broker for that isolated root may
+already be running. Request browser readiness through the public MCP entry
+point, then open an owned fixture target and read it. Do not manually start
+the broker: that would bypass the launcher under test. Record the installed
+wheel and bundle hashes, the absence of a prior test broker, the newly
+created broker identity and the successful public read. Record path-shape
+booleans rather than owner-private paths. Stop only that test broker and
+browser after filing evidence and restore temporary native registrations.
+No host suspend, network change, additional account, elevation, or API
+billing is required. Native Linux and macOS do not execute this launcher.
+
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | pass: fresh wheel payload and installed resources match; public WSL readiness succeeds at 5d4f873 | not run: mutation-response metadata repair rerun owed; prior observation retained | not run: mutation-response metadata repair rerun owed; prior observation retained | not run: mutation-response metadata repair rerun owed; prior observation retained |
+| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: fresh launcher-repair wheel identity required; prior 5d4f873 pass retained | not run: mutation-response metadata repair rerun owed; prior observation retained | not run: mutation-response metadata repair rerun owed; prior observation retained | not run: mutation-response metadata repair rerun owed; prior observation retained |
 | E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | pass: the installed wheel completed 520 browser units in 89.730 seconds and 520 gedit units in 88.632 seconds without an implicit deadline | pass: the installed wheel completed a 980-unit browser type in 149.8 seconds and a 980-unit Notepad type in 164.719 seconds without an implicit deadline | pass: browser long-input proof retained; b208cf7 completed 505 pixel units in 95.628 seconds with exact read-back and no implicit deadline |
+
+| E03 | Fresh installed wheel; spaced Windows deployment parent; no test broker running | Request public readiness, open the fixture and read it without manually launching the broker | Normal startup creates one verified broker and the public read succeeds | Path-shape booleans, wheel and bundle hashes, broker identity and MCP results; restore registrations and stop only test processes | not run: new Windows-launch regression also requires the WSL caller | Not-Needed: native Linux does not execute the Windows launcher | not run: Windows spaced-path launch defect reproduced; repair and fresh-wheel rerun in progress | Not-Needed: native macOS does not execute the Windows launcher |
 
 ## Per-OS results
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
 | A: recovery and setup diagnosis | pass: A01-A04 observed; registration fault restored exactly | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
-| B: shared broker and target ownership | pass: repaired-artifact reruns observed at 5d4f873 | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
+| B: shared broker and target ownership | incomplete: B15 requires the spaced-path launcher repair | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
-| E: packaged and clean delivery | pass: repaired-artifact reruns observed at 5d4f873 | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
-| overall | pass: all required WSL cells observed; final A04 passed at 63e65bb | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
+| E: packaged and clean delivery | incomplete: fresh launcher-artifact E01 and new E03 are owed | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
+| overall | incomplete: launcher repair requires E01, E03 and B15; prior observations retained | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 
 ## Evidence
 
@@ -337,6 +353,14 @@ were moved to recoverable Trash. No unrelated process or repository build state
 was removed. Every applicable macOS cell and its cleanup are now complete.
 
 ## Findings
+
+- Native Windows installed readiness failed with its bundle below a path
+  containing spaces. The launcher passed paths after PowerShell's `-Command`,
+  which reparsed them as source. A no-launch parser probe reproduced split
+  arguments. Paths now travel as ASCII JSON on standard input, with regressions
+  for spaces, quotes, shell syntax, Unicode and launch failure. The broker
+  bundle itself is unchanged. Windows and WSL owe E03, fresh-wheel E01 and
+  replacement-startup B15; the prior observations remain historical evidence.
 
 - Source repair `7d5c7bf` replaces shared mutation target annotations with the
   requesting client's selection and clears them when that selection closes.
