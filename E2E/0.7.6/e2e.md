@@ -354,6 +354,15 @@ was removed. Every applicable macOS cell and its cleanup are now complete.
 
 ## Findings
 
+- Native Windows A03 twice reported `waking` and `recovery_timed_out` while
+  the isolated Chrome profile recorded disable reason 1. The Windows profile
+  lookup ignored `LOCALAPPDATA` and inspected the home-directory fallback.
+  The lookup now honors redirected local application data, with Chrome and
+  Edge regressions. Rebuild the Windows broker and wheel. Windows and WSL
+  require A03, E01 and B15 observations against the new bundle. Native Linux
+  and macOS profile-root behavior is unchanged. A02 remains owner-deferred
+  on Windows and requires explicit owner approval before execution.
+
 - Native Windows installed readiness failed with its bundle below a path
   containing spaces. The launcher passed paths after PowerShell's `-Command`,
   which reparsed them as source. A no-launch parser probe reproduced split

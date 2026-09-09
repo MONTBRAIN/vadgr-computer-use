@@ -252,7 +252,8 @@ def _browser_profile_roots(platform: str | None = None) -> list[Path]:
             local / "Microsoft" / "Edge" / "User Data",
         ]
     if plat.startswith("win"):
-        local = home / "AppData" / "Local"
+        local_override = os.environ.get("LOCALAPPDATA")
+        local = Path(local_override) if local_override else home / "AppData" / "Local"
         return [
             local / "Google" / "Chrome" / "User Data",
             local / "Microsoft" / "Edge" / "User Data",

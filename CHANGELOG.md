@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Find Windows browser profiles under redirected local application data when
+  reporting a disabled development extension.
 - Preserve Windows broker deployment paths containing spaces or shell syntax
   when native Windows and WSL launch the broker through PowerShell.
 - Keep browser mutation response targets local to the requesting client,

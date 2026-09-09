@@ -114,6 +114,43 @@ class TestManifestProbe:
 
 
 class TestExtensionStateProbe:
+    @pytest.mark.parametrize("browser_directory", ["Google/Chrome", "Microsoft/Edge"])
+    def test_windows_redirected_appdata_controls_disabled_diagnosis(
+        self, tmp_path, monkeypatch, browser_directory,
+    ):
+        from computer_use.setup.extension_setup import EXTENSION_ID
+
+        home = tmp_path / "home"
+        redirected = tmp_path / "redirected local data"
+        for local, entry in ((home / "AppData/Local", {}),
+                             (redirected, {"disable_reasons": [1]})):
+            profile = local / browser_directory / "User Data/Default"
+            profile.mkdir(parents=True)
+            (profile / "Secure Preferences").write_text(
+                json.dumps({"extensions": {"settings": {EXTENSION_ID: entry}}}),
+                encoding="utf-8",
+            )
+        monkeypatch.setattr(B.Path, "home", lambda: home)
+        monkeypatch.setenv("LOCALAPPDATA", str(redirected))
+        monkeypatch.setattr(B, "_browser_platform", lambda platform=None: "win32")
+        bridge = B.NativeMessagingBridge()
+        monkeypatch.setattr(bridge, "_probe_setup", lambda: ["chrome"])
+        assert bridge.status().reason == "extension_disabled"
+
+    @pytest.mark.parametrize("local_override", [None, ""])
+    def test_windows_profile_root_falls_back_when_appdata_is_unset(
+        self, tmp_path, monkeypatch, local_override,
+    ):
+        monkeypatch.setattr(B.Path, "home", lambda: tmp_path)
+        if local_override is None:
+            monkeypatch.delenv("LOCALAPPDATA", raising=False)
+        else:
+            monkeypatch.setenv("LOCALAPPDATA", local_override)
+        assert B._browser_profile_roots("win32") == [
+            tmp_path / "AppData/Local/Google/Chrome/User Data",
+            tmp_path / "AppData/Local/Microsoft/Edge/User Data",
+        ]
+
     @pytest.mark.parametrize("preference_name", ["Secure Preferences", "Preferences"])
     @pytest.mark.parametrize(
         ("entry", "expected"),
