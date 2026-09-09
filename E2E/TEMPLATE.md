@@ -162,6 +162,13 @@ present in a given runbook, the entry is all there is.
     each live task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
+23. **The driver is the CLI whose session is driving the pass.** A pass running
+    under Claude Code launches its drivers with `claude`, under Codex with
+    `codex`, each with the login and bypass rule 22 describes. Not the other
+    one: a driver on an account this session cannot see is one it cannot check,
+    top up, or read the state of when it stops.
+    [The approach: a headless agent CLI session]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -250,6 +257,30 @@ it.
 > its version, which model, which MCP config, and what the agent was told. The task is
 > **goal-level** ("log in and confirm the banner"), never a script of tool calls:
 > a runbook that dictates the calls tests the runbook, not the runtime.
+>
+> **Drive with the CLI whose session is driving the pass.** A pass running under
+> Claude Code launches its drivers with `claude`, and under Codex with `codex`.
+> Both satisfy the method, and the choice is not a preference: it is which
+> account the running session can actually see. A driver launched on the other
+> CLI runs on credit this session cannot check, cannot top up, and cannot even
+> read the state of when it stops.
+>
+> Each runs on that CLI's own interactive login with prompts bypassed, per the
+> rule above: a headless driver has nobody to answer a permission prompt, and
+> one it cannot answer stalls the pass at whichever cell reached for a new tool.
+>
+> **A driver that stops mid-cell is worse than one that never started**, because
+> the cell is left half observed and the machine is left holding fixtures and
+> processes that the next session must identify before it can do anything. Say
+> in the runbook which CLI drove each result, so a reader can tell two
+> observations apart and knows which account to look at when one dies.
+>
+> This is written because a Windows pass launched a Codex driver from a session
+> that had no view of that account. The driver ran `B09` to its last call, hit
+> the account's usage limit mid-cell with a two-day reset, and exited non-zero
+> having reclaimed the target but never read it back. Its broker was gone by the
+> time anyone looked, so the missing observation could not be finished from
+> where it stopped and the whole cell was owed again.
 
 **Use the agent CLI's existing interactive login.** A signed-in Codex or Claude
 Code session is the authentication requirement for the driver. The driver does
