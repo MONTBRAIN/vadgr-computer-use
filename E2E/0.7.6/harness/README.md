@@ -54,6 +54,9 @@ They do not drive the product, select actions, or decide a cell verdict.
 - `pause_mcp.py` prepares a bounded POSIX scheduling fault for D04's explicit
   runtime deadline or a B06 claim barrier. It never issues product requests.
 - `focus_window.ps1` verifies and focuses the exact Windows editor or Chrome for Testing window.
+- `registration_fault_windows.py` removes only the two current-user CUA native
+  registration default values for a bounded A04 fault, then restores their exact
+  values and registry types. It never drives a product request.
 
 The worker and toggle helpers require the isolated profile's `DevToolsActivePort`
 file and the `websockets` package. The worker helper also requires the exact
@@ -107,6 +110,37 @@ print its contents. Mount the alias for the first fresh installed MCP client
 and the original endpoint for the second. Use the same 8-second and 46-second
 cuts. Do not substitute a process scheduling pause: missed heartbeat accounting
 alone does not prove the socket was closed and reconnected.
+
+## A04 Windows registration fault
+
+Prepare the isolated browser, both installed MCP clients and the parent's
+registration backup before this fault. The helper changes only the default
+values of the current-user Chrome and Edge `com.vadgr.cua` registration keys.
+It never deletes or creates registry keys and preserves sibling values and
+key permissions. Do not run another installer or registration setup while the
+fault is active.
+
+```text
+python E2E/0.7.6/harness/registration_fault_windows.py --root <isolated-root> --snapshot-file <new-private-snapshot> --ready-file <new-ready-file> --done-file <new-done-file> --seconds 180
+```
+
+All three files must be fresh, distinct and inside a named isolated CUA root
+below the system temporary directory or the workspace's `.tmp` directory.
+The helper creates and verifies an owner-only snapshot file before writing
+registration values, types and security descriptors. The snapshot contains
+private state. Never print, commit or include it in evidence. Keep it for the
+parent's cleanup or recovery; this helper does not delete it.
+
+Start the helper as a separate hidden setup process and wait for its ready file.
+The agent then requests the public status and read errors through the installed
+MCP. Create the done file after those read-backs. The helper restores defaults
+in `finally`, whether done arrives, its three-minute bound expires, or an
+ordinary Python interruption occurs. Require exit zero and `restored` with
+`verified: true` before the subsequent public recovery read. The ready file
+alone does not prove restoration or a cell verdict. Forced process termination
+or host shutdown cannot run `finally`; retain the private snapshot and never
+kill this helper while its fault is active. The helper changes no host power
+state, network setting or registration ACL.
 
 ## B06 claim barrier
 

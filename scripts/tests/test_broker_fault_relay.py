@@ -179,7 +179,8 @@ def test_windows_acl_failure_never_writes_credential(isolated, monkeypatch):
 def assert_windows_owner_only(path):
     # Independent .NET ACL read-back emits no SID or owner-private path.
     script = (
-        "$a=Get-Acl -LiteralPath $args[0];"
+        "$ErrorActionPreference='Stop';"
+        "$a=[System.IO.File]::GetAccessControl($args[0]);"
         "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User;"
         "$rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]));"
         "@{protected=$a.AreAccessRulesProtected;count=$rules.Count;"
@@ -188,7 +189,7 @@ def assert_windows_owner_only(path):
         "-and $rules[0].FileSystemRights -eq 'FullControl')}|ConvertTo-Json -Compress"
     )
     # Feed the path as data, without interpolating it into executable shell text.
-    encoded = json.dumps(str(path))
+    encoded = json.dumps(str(path.resolve(strict=True)))
     script = "$target=ConvertFrom-Json ([Console]::In.ReadToEnd());" + script.replace(
         "$args[0]", "$target"
     )
