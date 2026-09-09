@@ -331,6 +331,10 @@ ports free and moved all six isolated test roots plus the pass's gate root
 and two diagnostic samples to recoverable Trash. Owner processes and
 repository build state were preserved. Moving files to Trash is not a claim
 of freed disk space. The later A02 rerun used a separate fresh isolated root.
+After its evidence was pushed, cleanup verified all 15 recorded test processes
+absent and all four ports free. The fresh root and its isolated CLI task files
+were moved to recoverable Trash. No unrelated process or repository build state
+was removed. Every applicable macOS cell and its cleanup are now complete.
 
 ## Findings
 
