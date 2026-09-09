@@ -193,11 +193,21 @@ independent oracle and cleanup.
 
 ## Part A: recovery and setup diagnosis
 
+For A04, first disable only the isolated development extension with the
+committed toggle helper and verify that its existing native-host session has
+disconnected. Remove the isolated registration, then enable the extension
+while registration is absent so it attempts a new native-host connection.
+Verify registration is still absent before requesting status and the read.
+Restore registration in the fault helper's bounded finally block, then verify
+reconnection and the original document. If needed, cycle only the isolated
+extension after restoration. Removing a registration does not revoke an
+already-open native-host connection; that warm connection is not A04's setup.
+
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: stopped worker recovered once with unchanged target, revision and document at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: verified worker stop recovered once on the same target at a1c24f3 |
 | A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: verified Windows sleep and wake retained the same document and one read at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: owner deferred host suspend until the end because this machine is doing real work | pass: b8a5513 retained the same document, tab and revision after verified 36-second sleep; one post-wake read returned counter 1 |
-| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | pass: persisted disabled setup returned extension_disabled for status and read; restored at 747b6fb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: two immediate and two settled disabled reads returned the named error at a1c24f3 |
+| A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | not run: redirected-local-appdata diagnosis requires the rebuilt Windows bundle; prior 747b6fb pass retained | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: two immediate and two settled disabled reads returned the named error at a1c24f3 |
 | A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: absent registrations returned not_set_up; both original values restored and browser recovered at 63e65bb | not run: rerun the setup-diagnosis repair; prior observation retained | not run: rerun the setup-diagnosis repair; prior observation retained | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
 
 ## Part B: shared broker and target ownership
@@ -318,12 +328,12 @@ billing is required. Native Linux and macOS do not execute this launcher.
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
-| A: recovery and setup diagnosis | pass: A01-A04 observed; registration fault restored exactly | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
+| A: recovery and setup diagnosis | incomplete: A03 redirected-local-appdata rerun owed; prior observations retained | incomplete: rerun A01-A04 after the setup-diagnosis repair | incomplete: rerun A01-A04 after the setup-diagnosis repair | pass: A01-A04 observed; A02 retained the original document after verified sleep and full wake |
 | B: shared broker and target ownership | incomplete: B15 requires the spaced-path launcher repair | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
 | E: packaged and clean delivery | incomplete: fresh launcher-artifact E01 and new E03 are owed | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
-| overall | incomplete: launcher repair requires E01, E03 and B15; prior observations retained | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
+| overall | incomplete: Windows launcher and rebuilt bundle require A03, E01, E03 and B15; prior observations retained | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations | incomplete: mutation-response repair requires fresh affected-cell observations |
 
 ## Evidence
 
@@ -350,7 +360,8 @@ of freed disk space. The later A02 rerun used a separate fresh isolated root.
 After its evidence was pushed, cleanup verified all 15 recorded test processes
 absent and all four ports free. The fresh root and its isolated CLI task files
 were moved to recoverable Trash. No unrelated process or repository build state
-was removed. Every applicable macOS cell and its cleanup are now complete.
+was removed. That macOS boundary and its cleanup are complete. The later
+mutation-response repair still requires the macOS reruns listed above.
 
 ## Findings
 
