@@ -253,3 +253,43 @@ def test_failed_write_removes_only_new_alias(isolated, monkeypatch):
         relay_module.write_alias(isolated, source, alias, endpoint, 23456)
     assert not alias.exists()
     assert json.loads(source.read_text()) == endpoint
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows security descriptors")
+@pytest.mark.parametrize("sddl,expected", [
+    ("D:P(A;;FA;;;SY)", True),
+    ("D:PAI(A;;FA;;;SY)", True),
+    ("D:P(A;;FA;;;S-1-5-18)", True),
+    ("D:(A;;FA;;;SY)", False),
+    ("D:P(A;;FA;;;WD)", False),
+    ("D:P(A;;FA;;;SY)(A;;FA;;;WD)", False),
+    ("D:P(A;ID;FA;;;SY)", False),
+    ("D:P(A;;FR;;;SY)", False),
+    ("D:P(D;;FA;;;SY)", False),
+    ("D:P", False),
+])
+def test_native_dacl_checks_permissions_not_sddl_spelling(sddl, expected):
+    import ctypes
+    from ctypes import wintypes
+
+    security = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    pointer = ctypes.c_void_p
+    kernel.LocalFree.argtypes = [pointer]
+    kernel.LocalFree.restype = pointer
+    security.ConvertStringSidToSidW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(pointer)]
+    security.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(pointer), pointer,
+    ]
+    sid = pointer()
+    descriptor = pointer()
+    try:
+        assert security.ConvertStringSidToSidW("S-1-5-18", ctypes.byref(sid))
+        assert security.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, 1, ctypes.byref(descriptor), None,
+        )
+        assert relay_module.windows_owner_only_dacl(descriptor, sid) is expected
+    finally:
+        for allocated in (sid, descriptor):
+            if allocated:
+                kernel.LocalFree(allocated)

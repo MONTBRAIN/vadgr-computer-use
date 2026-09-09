@@ -65,6 +65,61 @@ def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int
     return destination
 
 
+def windows_owner_only_dacl(descriptor, sid) -> bool:
+    """Compare permissions, not Windows' version-dependent SDDL formatting."""
+    import ctypes
+    from ctypes import wintypes
+
+    security = ctypes.WinDLL("advapi32", use_last_error=True)
+    pointer = ctypes.c_void_p
+    security.GetSecurityDescriptorControl.argtypes = [
+        pointer, ctypes.POINTER(wintypes.WORD), ctypes.POINTER(wintypes.DWORD),
+    ]
+    security.GetSecurityDescriptorDacl.argtypes = [
+        pointer, ctypes.POINTER(wintypes.BOOL), ctypes.POINTER(pointer),
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    security.GetAclInformation.argtypes = [pointer, pointer, wintypes.DWORD, ctypes.c_int]
+    security.GetAce.argtypes = [pointer, wintypes.DWORD, ctypes.POINTER(pointer)]
+    security.EqualSid.argtypes = [pointer, pointer]
+
+    class AclSize(ctypes.Structure):
+        _fields_ = [("count", wintypes.DWORD), ("used", wintypes.DWORD),
+                    ("free", wintypes.DWORD)]
+
+    class AllowedAce(ctypes.Structure):
+        _fields_ = [("type", wintypes.BYTE), ("flags", wintypes.BYTE),
+                    ("size", wintypes.WORD), ("mask", wintypes.DWORD),
+                    ("sid_start", wintypes.DWORD)]
+
+    control = wintypes.WORD()
+    revision = wintypes.DWORD()
+    present = wintypes.BOOL()
+    defaulted = wintypes.BOOL()
+    dacl = pointer()
+    info = AclSize()
+    ace_pointer = pointer()
+    if not security.GetSecurityDescriptorControl(descriptor, ctypes.byref(control),
+                                                 ctypes.byref(revision)):
+        return False
+    if not control.value & 0x1000:
+        return False
+    if not security.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present),
+                                              ctypes.byref(dacl), ctypes.byref(defaulted)):
+        return False
+    if not present.value or not dacl:
+        return False
+    if not security.GetAclInformation(dacl, ctypes.byref(info), ctypes.sizeof(info), 2):
+        return False
+    if info.count != 1 or not security.GetAce(dacl, 0, ctypes.byref(ace_pointer)):
+        return False
+    ace = ctypes.cast(ace_pointer, ctypes.POINTER(AllowedAce)).contents
+    return bool(
+        ace.type == 0 and ace.flags == 0 and ace.mask == 0x1F01FF
+        and security.EqualSid(ace_pointer.value + AllowedAce.sid_start.offset, sid)
+    )
+
+
 def windows_private_fd(destination: Path) -> int:
     """Create an exclusive empty file with a protected owner-only DACL."""
     import ctypes
@@ -89,9 +144,6 @@ def windows_private_fd(destination: Path) -> int:
     security.GetSecurityInfo.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.DWORD,
                                         pointer, pointer, pointer, pointer, ctypes.POINTER(pointer)]
     security.GetSecurityInfo.restype = wintypes.DWORD
-    security.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
-        pointer, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(pointer), pointer,
-    ]
 
     class SecurityAttributes(ctypes.Structure):
         _fields_ = [("length", wintypes.DWORD), ("descriptor", pointer),
@@ -105,7 +157,6 @@ def windows_private_fd(destination: Path) -> int:
     sid_text = pointer()
     descriptor = pointer()
     observed = pointer()
-    observed_text = pointer()
     handle = None
     created = False
     try:
@@ -138,9 +189,7 @@ def windows_private_fd(destination: Path) -> int:
         if security.GetSecurityInfo(handle, 1, 4, None, None, None, None,
                                     ctypes.byref(observed)):
             raise ValueError("cannot verify the alias DACL")
-        if not security.ConvertSecurityDescriptorToStringSecurityDescriptorW(
-            observed, 1, 4, ctypes.byref(observed_text), None,
-        ) or ctypes.wstring_at(observed_text) != expected:
+        if not windows_owner_only_dacl(observed, sid):
             raise ValueError("alias DACL is not owner-only")
         fd = msvcrt.open_osfhandle(handle, os.O_WRONLY)
         handle = None
@@ -155,7 +204,7 @@ def windows_private_fd(destination: Path) -> int:
     finally:
         if token:
             kernel.CloseHandle(token)
-        for allocated in (sid_text, descriptor, observed, observed_text):
+        for allocated in (sid_text, descriptor, observed):
             if allocated:
                 kernel.LocalFree(allocated)
 
