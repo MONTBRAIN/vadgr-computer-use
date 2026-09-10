@@ -346,13 +346,17 @@ class BrowserBroker:
         )
         return self._client_result(state, result)
 
-    def _ensure_target(self, state: ClientState, profile_id: str) -> None:
+    @staticmethod
+    def _require_valid_target_identity(state: ClientState) -> None:
         if state.needs_explicit_target:
             raise BrowserError(
                 BrowserErrorCode.TARGET_LOST,
                 "the previous browser client identity is no longer valid",
                 remediation="list browser targets, then explicitly claim or select a workspace",
             )
+
+    def _ensure_target(self, state: ClientState, profile_id: str) -> None:
+        self._require_valid_target_identity(state)
         if state.window_id is not None and state.tab_id is not None:
             self.ownership.require(
                 profile_id, state.window_id, state.tab_id, state.client_id, state.revision
@@ -436,6 +440,12 @@ class BrowserBroker:
                 return self._use_profile(state, str(params.get("profile_id", "")))
         if op == "use_target" and params.get("profile_id") is not None:
             self._use_profile(state, str(params.pop("profile_id")))
+        # Reject stale implicit targets before profile discovery can mask the
+        # lost identity with an unrelated installation or recovery diagnosis.
+        if op not in {"tabs", "windows", "use_target"} or (
+            op == "tabs" and params.get("op") == "open" and params.get("window_id") is None
+        ):
+            self._require_valid_target_identity(state)
         profile_id = self._profile(state)
         sub = str(params.get("op", ""))
         if (op, sub) in self._LIST_ONLY:

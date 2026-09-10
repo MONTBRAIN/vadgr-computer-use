@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Reject a stale browser target immediately after broker replacement, before
+  extension recovery can mask the required explicit-reclaim error.
 - Protect browser credentials and their dedicated directories before the first
   write, replace discovery files atomically, and refuse unsafe paths or failed
   permission setup. Windows publication verifies an owner-and-SYSTEM-only ACL.

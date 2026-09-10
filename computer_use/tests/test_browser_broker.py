@@ -11,7 +11,7 @@ from computer_use.browser import broker_client
 from computer_use.browser.bridge import BridgeStatus
 from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrokerServer, BrowserBroker
 from computer_use.browser.ownership import OwnershipConflict
-from computer_use.browser.protocol import BrowserError
+from computer_use.browser.protocol import SUPPORTED_OPS, BrowserError
 
 
 def test_heartbeat_eof_reconnects_before_the_next_operation(monkeypatch):
@@ -682,6 +682,71 @@ def test_fresh_client_can_still_create_default_workspace_for_content():
     result = broker.request(client, "read_text", {})
     assert result["value"] == "target-20"
     assert len(extension.windows) == 2
+
+
+@pytest.mark.parametrize("reason", [
+    "extension_missing", "extension_disabled", "not_set_up", "waking", None,
+])
+@pytest.mark.parametrize("op,params", [
+    (op, {}) for op in SUPPORTED_OPS
+    if op not in {"status", "profiles", "tabs", "windows", "use_target"}
+] + [("tabs", {"op": "open"})])
+def test_rejected_reconnect_precedes_profile_lookup(monkeypatch, reason, op, params):
+    """Each case starts after rejected credentials, with no connected profiles."""
+    extension = ExtensionBridge()
+    monkeypatch.setattr(
+        extension, "status",
+        lambda: BridgeStatus(False, [], reason != "not_set_up", reason, []),
+    )
+    calls = []
+
+    def send(operation, **arguments):
+        calls.append((operation, arguments))
+        assert operation == "profiles"
+        return {"profiles": []}
+
+    monkeypatch.setattr(extension, "send", send)
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(broker_module, "time", SimpleNamespace(
+        monotonic=lambda: clock.now,
+        sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
+    ))
+    broker = BrowserBroker(extension, recovered_epoch=True)
+    client = broker.connect("old-client", "old-secret")
+
+    with pytest.raises(BrowserError) as caught:
+        broker.request(client, op, dict(params))
+
+    assert caught.value.code.value == "target_lost"
+    assert "claim" in caught.value.remediation
+    assert calls == []
+    assert clock.now == 0.0
+    assert client.needs_explicit_target
+    assert client.profile_id is client.window_id is client.tab_id is None
+
+
+@pytest.mark.parametrize("op,params", [
+    ("windows", {"op": "claim", "window_id": 1}),
+    ("tabs", {"op": "claim", "tab_id": 10}),
+    ("windows", {"op": "open"}),
+    ("use_target", {"mode": "owned"}),
+    ("use_target", {"mode": "owned", "window_id": 1}),
+    ("use_target", {"mode": "attach", "tab_id": 10, "profile_id": "profile-one"}),
+])
+def test_rejected_reconnect_allows_explicit_workspace_selection(op, params):
+    """A replacement broker retains the browser but rejects the old identity."""
+    broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
+    client = broker.connect("old-client", "old-secret")
+    assert broker.request(client, "profiles", {"op": "list"})["profiles"]
+    broker.request(client, "profiles", {"op": "use", "profile_id": "profile-one"})
+    for group in ("tabs", "windows"):
+        assert broker.request(client, group, {"op": "list"})["windows"]
+    assert client.needs_explicit_target
+
+    selected = broker.request(client, op, dict(params))
+
+    assert not client.needs_explicit_target
+    assert broker.request(client, "read_text", {})["value"] == f"target-{selected['tab_id']}"
 
 
 def test_two_clients_racing_for_one_tab_have_one_atomic_winner():
