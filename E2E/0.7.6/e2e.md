@@ -604,7 +604,7 @@ only the actual rerun result on the frozen candidate.
 | D: pixel typing | pass: prior observations retained; no pixel change in this repair batch | pass: prior observations retained; no pixel change in this repair batch | pass: prior observations retained; no pixel change in this repair batch | pass: prior observations retained; no pixel change in this repair batch |
 | E: packaged and clean delivery | pass: E01, E03 and E04 accepted | blocked: E01 requires candidate identity | pass: E01, E03 and E04 accepted on the repaired installed wheel | blocked: E01 requires candidate identity |
 | F: final audit regressions | pass: F01-F05 and F08 accepted; F06-F07 are POSIX Not-Needed on WSL | blocked: F01-F07 await repairs and execution | pass: F01-F05 and F08 accepted; F06-F07 are POSIX Not-Needed on Windows | blocked: F01-F07 await repairs and execution |
-| overall | pass: 20 of 20 required observations accepted; evidence publication and post-push cleanup remain | blocked: candidate gate and named reruns remain owed | pass: 20 of 20 required observations accepted; evidence publication and post-push cleanup remain | blocked: candidate gate and named reruns remain owed |
+| overall | pass: 20 of 20 required observations accepted; evidence publication and post-push cleanup remain | blocked: candidate gate and named reruns remain owed | pass: 20 of 20 required observations accepted; evidence published and scoped cleanup complete | blocked: candidate gate and named reruns remain owed |
 
 ### Historical result before the audit amendment
 
