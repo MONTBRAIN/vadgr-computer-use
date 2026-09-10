@@ -88,28 +88,49 @@ def live_test_endpoint(path, root):
         return None
 
 
-def driver_command(root, gate, runtime, codex):
+def mcp_configuration(root, gate, runtime):
     environment = {
         "VADGR_CUA_BROKER_ROOT": str(root / "broker"),
         "VADGR_CUA_BROWSER_DISCOVERY": str(root / "discovery.json"),
         "LOCALAPPDATA": str(root / "local"), "APPDATA": str(root / "roaming"),
     }
-    command = [codex, "--yolo", "exec", "--json", "--ephemeral", "--ignore-user-config",
-               "--skip-git-repo-check", "--model", "gpt-5.6-luna",
-               "-c", 'model_reasoning_effort="medium"']
+    servers = {}
     for name in ("cua_two", "cua_three", "cua_one"):
         executable = str(runtime) if name != "cua_one" else sys.executable
-        command += ["-c", f"mcp_servers.{name}.command={json.dumps(executable)}",
-                    "-c", f"mcp_servers.{name}.startup_timeout_sec=120",
-                    "-c", f"mcp_servers.{name}.tool_timeout_sec=180"]
         selected_env = dict(environment)
+        arguments = []
         if name == "cua_one":
-            command += ["-c", f"mcp_servers.{name}.args=" + json.dumps([
+            arguments = [
                 str(HARNESS / "broker_stdio_gate_windows.py"), str(gate), str(runtime),
-            ])]
+            ]
         else:
             selected_env["VADGR_CUA_BROKER_ENDPOINT"] = str(root / "broker/browser-broker.json")
-        for key, value in selected_env.items():
+        servers[name] = {"command": executable, "args": arguments, "env": selected_env}
+    return {"mcpServers": servers}
+
+
+def driver_command(root, gate, runtime, executable, driver="codex", mcp_config=None):
+    configuration = mcp_configuration(root, gate, runtime)
+    if driver == "claude":
+        if mcp_config is None:
+            raise ValueError("Claude requires a private MCP configuration path")
+        return [
+            executable, "--dangerously-skip-permissions", "--print",
+            "--output-format", "stream-json", "--verbose", "--model", "claude-sonnet-5",
+            "--mcp-config", str(mcp_config), "--strict-mcp-config", "-p",
+        ]
+    if driver != "codex":
+        raise ValueError("unsupported subscription CLI")
+    command = [executable, "--yolo", "exec", "--json", "--ephemeral", "--ignore-user-config",
+               "--skip-git-repo-check", "--model", "gpt-5.6-luna",
+               "-c", 'model_reasoning_effort="medium"']
+    for name, server in configuration["mcpServers"].items():
+        command += ["-c", f"mcp_servers.{name}.command={json.dumps(server['command'])}",
+                    "-c", f"mcp_servers.{name}.startup_timeout_sec=120",
+                    "-c", f"mcp_servers.{name}.tool_timeout_sec=180"]
+        if server["args"]:
+            command += ["-c", f"mcp_servers.{name}.args=" + json.dumps(server["args"])]
+        for key, value in server["env"].items():
             command += ["-c", f"mcp_servers.{name}.env.{key}={json.dumps(value)}"]
     return command
 
@@ -120,6 +141,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=pathlib.Path)
     parser.add_argument("--prompt", required=True, type=pathlib.Path)
+    parser.add_argument("--driver", required=True, choices=("codex", "claude"))
     args = parser.parse_args()
     ROOT = checked_root(args.root)
     prompt_path = args.prompt.resolve(strict=True)
@@ -170,12 +192,18 @@ def main():
     (ROOT / f"{PREFIX}-progress.txt").write_text("Waiting for installed cua_two normal startup.\n")
     relay_log = None
     try:
-        codex = shutil.which("codex.cmd")
-        if not codex:
+        cli = shutil.which(args.driver + ".cmd") or shutil.which(args.driver)
+        if not cli:
             raise RuntimeError("subscription CLI missing")
-        command = driver_command(ROOT, GATE, runtime, codex)
+        mcp_config = private_root / "claude-mcp-private.json"
+        if args.driver == "claude":
+            descriptor = helper.windows_private_fd(mcp_config, retain_on_failure=True)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                json.dump(mcp_configuration(ROOT, GATE, runtime), stream)
+        command = driver_command(ROOT, GATE, runtime, cli, args.driver, mcp_config)
+        prompt_marker = [] if args.driver == "claude" else ["-"]
         with prompt_path.open("rb") as prompt:
-            driver = subprocess.Popen(command + ["-"], stdin=prompt, stdout=subprocess.PIPE,
+            driver = subprocess.Popen(command + prompt_marker, stdin=prompt, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL, cwd=ROOT,
                                       creationflags=subprocess.CREATE_NO_WINDOW)
         redactor = subprocess.Popen(

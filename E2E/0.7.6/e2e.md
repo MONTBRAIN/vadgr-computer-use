@@ -43,13 +43,16 @@ the WSL verdict above comes from the completed public observations.
    `Not-Needed`.
 9. Confirm evidence is committed and pushed before cleanup. Stop only processes
    started by this pass and remove only validated isolated test roots.
-10. All new CUA agent tasks use GPT-5.6 Luna with Codex or Claude Sonnet 5
-    with Claude Code. Codex defaults to medium reasoning; high is also approved
-    without another owner approval. Claude retains medium effort where supported.
-    Verify current capabilities and authenticated availability before each group,
+10. Before every new CUA agent group, run
+    `python scripts/select_cua_e2e_driver.py`. Use Codex only while its ordinary
+    seven-day allowance has at least 75 percent remaining. Below 75 percent, or
+    when the probe cannot read that allowance, use Claude Code. Do not change a
+    driver during a cell. Recheck after each group and after the weekly reset.
+    Codex uses GPT-5.6 Luna at medium reasoning by default; high is also approved
+    when its reason is recorded. Claude Code uses Claude Sonnet 5 at medium effort
+    where supported. Verify current capabilities and authenticated availability,
     including image-result continuation for visual cells. Record the exact model,
-    effort and sources, and the reason for high. Do not silently substitute Sol,
-    Opus or another model; unavailable approved drivers require an owner decision.
+    effort and sources. Do not silently substitute Sol, Opus or another model.
 11. Every remaining browser-tier cell uses a versioned Chrome for Testing
     executable, a fresh isolated profile, and the matching development
     extension. Never attach to the owner's normal browser process or profile.
@@ -104,7 +107,7 @@ on the execution day. Do not reuse earlier model selections as the current polic
 
 | cells | provider/auth | required capabilities | selected model | usage limits | escalation |
 |---|---|---|---|---|---|
-| all agent-driven cells | existing Codex or Claude Code subscription login | MCP tools; image-result continuation for visual cells | GPT-5.6 Luna (`gpt-5.6-luna`), medium or high; Claude Sonnet 5 (`claude-sonnet-5`), medium where supported | real account limits only; no synthetic API budget | Luna high is approved; record the reason. Any other model requires owner approval. No API-key fallback or paid extra usage. |
+| all agent-driven cells | existing Codex or Claude Code subscription login, selected by `scripts/select_cua_e2e_driver.py` before each group | MCP tools; image-result continuation for visual cells | At least 75 percent of ordinary Codex weekly allowance remaining: GPT-5.6 Luna (`gpt-5.6-luna`), medium or high. Below 75 percent or unreadable allowance: Claude Sonnet 5 (`claude-sonnet-5`), medium where supported. | real account limits only; no synthetic API budget | Luna high is approved when its reason is recorded. Any other model requires owner approval. No API-key fallback or paid extra usage. |
 
 The owner changed the driver policy on 2026-09-10 to reduce subscription usage.
 This applies to all subsequent CUA tasks. Earlier Sol and Opus observations keep
@@ -114,6 +117,13 @@ capabilities were rechecked on 2026-09-10:
 [Claude Sonnet 5](https://platform.claude.com/docs/en/models/overview).
 These pages do not prove availability in the owner's subscription; verify that
 before a live task. No new live cell is claimed by this policy change.
+
+The selector reads `account/rateLimits/read` from the local Codex app-server. It
+uses only the ordinary `rateLimits` snapshot, or the `codex` limit id when that
+snapshot is absent. It selects the 10,080-minute window and reports remaining
+percentage and reset time without account metadata. A separate model allowance,
+five-hour window, session token count or `/status` display does not control the
+driver choice. Record each probe result with the group evidence.
 
 The Linux pass rechecked the official OpenAI and Anthropic capability and
 pricing pages on 2026-09-07. GPT-5.6 Sol supports image input and tools. Its
@@ -341,6 +351,7 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 Every remaining host uses this temporary driver form for each live task:
 
 ```text
+python scripts/select_cua_e2e_driver.py
 codex --yolo exec --json --model gpt-5.6-luna -c 'model_reasoning_effort="medium"' <MCP, working-directory and prompt options>
 claude --dangerously-skip-permissions --print --output-format stream-json --model claude-sonnet-5 <MCP, working-directory and prompt options>
 ```
@@ -350,8 +361,8 @@ Use the CLI's existing interactive login. Do not inspect, source, export, or pas
 active login, mark the agent-driven cells `blocked: authenticated agent CLI
 unavailable`. Do not convert an API key into a substitute login.
 
-Codex may use `high` instead of `medium` without another approval. Record its
-selection reason. The command uses the selected model and invokes the exact
+Run only the driver selected by the first command. Codex may use `high` instead
+of `medium` when its reason is recorded. The command uses the selected model and invokes the exact
 isolated-wheel `vadgr-cua` entry point. Run it from an isolated working
 directory. Pipe its JSON stream through `redact_stream.py`. Record paths only in
 owner-private local state, never in the public runbook or private evidence. The

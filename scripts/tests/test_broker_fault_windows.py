@@ -48,6 +48,40 @@ def test_three_installed_clients_keep_restart_pair_direct(tmp_path):
             assert settings[f"mcp_servers.{name}.env.{key}"] == str(tmp_path / relative)
 
 
+def test_claude_driver_uses_strict_private_mcp_config(tmp_path):
+    helper = load("coordinate_broker_fault_windows")
+    root = tmp_path / "root with spaces"
+    runtime = root / "runtime/Scripts/vadgr-cua.exe"
+    gate = root / "b09-gate-private.json"
+    config = root / "claude-mcp-private.json"
+
+    command = helper.driver_command(root, gate, runtime, "claude.cmd", "claude", config)
+    mcp = helper.mcp_configuration(root, gate, runtime)
+
+    assert command == [
+        "claude.cmd",
+        "--dangerously-skip-permissions",
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        "claude-sonnet-5",
+        "--mcp-config",
+        str(config),
+        "--strict-mcp-config",
+        "-p",
+    ]
+    assert set(mcp["mcpServers"]) == {"cua_one", "cua_two", "cua_three"}
+    assert mcp["mcpServers"]["cua_one"]["command"] == sys.executable
+    assert mcp["mcpServers"]["cua_one"]["args"] == [
+        str(HARNESS / "broker_stdio_gate_windows.py"),
+        str(gate),
+        str(runtime),
+    ]
+    assert mcp["mcpServers"]["cua_two"]["command"] == str(runtime)
+
+
 def test_atomic_control_json_replaces_without_bom(tmp_path):
     helper = load("coordinate_broker_fault_windows")
     path = tmp_path / "request.json"

@@ -272,7 +272,8 @@ The native Windows coordinator launches the subscribed driver with three
 independent installed MCP clients:
 
 ```text
-python E2E/0.7.6/harness/coordinate_broker_fault_windows.py --root <isolated-root> --prompt <prompt-file>
+python scripts/select_cua_e2e_driver.py
+python E2E/0.7.6/harness/coordinate_broker_fault_windows.py --root <isolated-root> --prompt <prompt-file> --driver <selected-driver>
 ```
 
 Prepare `runtime/Scripts/vadgr-cua.exe`, the browser, and the prompt inside the
@@ -280,11 +281,13 @@ existing named root first. The root must be below the system temporary folder
 or the workspace `.tmp` folder. Each attempt requires fresh `b09-*` output
 names. The coordinator sets `LOCALAPPDATA=root/local`, `APPDATA=root/roaming`,
 `VADGR_CUA_BROKER_ROOT=root/broker`, and browser discovery to
-`root/discovery.json` in each MCP configuration. It uses Codex with `--yolo
-exec --json --ephemeral --ignore-user-config --skip-git-repo-check`, the
-approved GPT-5.6 Luna model and medium reasoning. The runbook also permits
-high reasoning for explicitly configured Codex tasks. Existing subscription authentication
-remains in use.
+`root/discovery.json` in each MCP configuration. It requires the driver selected
+by the quota command. Codex uses `--yolo exec --json --ephemeral
+--ignore-user-config --skip-git-repo-check`, GPT-5.6 Luna and medium reasoning.
+Claude Code uses `--dangerously-skip-permissions`, a strict owner-private MCP
+configuration and Claude Sonnet 5. Existing subscription authentication remains
+in use. The runbook also permits high reasoning for separately configured Codex
+tasks when its reason is recorded.
 
 `cua_two` and `cua_three` use the canonical broker endpoint directly. Their
 normal installed startup establishes the broker. The coordinator checks the
