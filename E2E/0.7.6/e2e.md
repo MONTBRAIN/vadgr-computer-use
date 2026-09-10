@@ -11,13 +11,22 @@ fresh environment outside the checkout. Install the matching unpacked extension
 from this branch. The MCP configuration must call that environment's
 `vadgr-cua` executable.
 
-**Current close status: blocked pending candidate verification and live reruns.** The prior
+**Current close status: blocked on the required live reruns.** The prior
 observations remain recorded below. They do not cover the new Part F cases.
 Do not start another cross-platform round on `25e231f` or call this minor
 merge-ready. Complete the candidate gate below first, then run only the named
 affected cells on each host. This revision carries the repair batch and marks
 affected old cells unrun. It claims no new live pass. The private handoff must
 record the frozen candidate and completed gates before WSL begins.
+
+Candidate preparation passed at `478d39de3b53989cee2f4894f65bc1427698927a`:
+all 44 PR checks passed, the complete local suite passed 1,552 tests with
+73 platform skips, and the native Windows broker and clean-install checks
+passed. The runtime source is `47aa575a14b79ff401951952c19828b34cb4736f`;
+the rebuilt archive, manifest and SBOM are in `d8f45a3`. The final helper change
+does not change those runtime bytes. This status note changes no runtime or
+helper. WSL may now begin the 20-cell round below; the other hosts wait for its
+result. None of these automated results closes a live cell.
 
 ## The rules
 
