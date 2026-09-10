@@ -11,6 +11,13 @@ fresh environment outside the checkout. Install the matching unpacked extension
 from this branch. The MCP configuration must call that environment's
 `vadgr-cua` executable.
 
+**Current close status: blocked pending the audit repair batch.** The prior
+observations remain recorded below. They do not cover the new Part F cases.
+Do not start another cross-platform round on `25e231f` or call this minor
+merge-ready. Complete the candidate gate below first, then run only the named
+affected cells on each host. This revision specifies tests; it claims no fix
+or new live pass.
+
 ## The rules
 
 1. Run the owner-dependent cells before unattended cells.
@@ -65,12 +72,21 @@ Tell the owner about these requirements before the affected group starts.
 | Stock plain-text editor | D01-D07 where applicable, E02 pixel path | Keep Windows Notepad, macOS TextEdit, or the host's stock Linux text editor available; install no editor solely for these cells |
 | Windows browser reachable from native Windows and WSL | B02a-B02f, B11-B17 | Keep both clients available during the convergence and lifecycle cells; provide hosts already configured for NAT and mirrored networking |
 | Subscription-authenticated agent CLI | all agent-driven cells | Keep one supported Claude or Codex subscription login available; no provider API key is required; do not enable paid extra usage |
+| Two isolated browser profiles connected to one test broker | F01-F02 | Approve the development extension in each fresh profile only if prompted; no browser account or sync |
+| Disposable descendants and client disconnects | F03-F05, B05-B10 | None after browser setup; operate only on test-owned tabs, windows and clients |
+| Endpoint permission and startup fault fixtures | F06-F08, E01, applicable B15/E03/E04 | None; restrict permission faults to disposable test roots and child environments; never change owner home permissions, ACLs or registrations without the existing setup approval |
 
 No product account or external test-site login is required. The visual driver
 uses the separately declared subscription-authenticated agent CLI and model. The
 harness serves a local instrumented page. The pass changes browser test state
 and creates isolated temporary roots. It does not change host network state or
 privacy settings.
+
+The audit rerun needs no phone, pixel input, stock-editor interaction, host
+suspend, distribution shutdown, new account, elevation or network change.
+Ask for any unavoidable isolated-browser approval before unattended work.
+If the final implementation changes one of those surfaces, revise this mapping
+before scheduling its additional cells.
 
 ## Subscription driver model selection
 
@@ -113,6 +129,104 @@ install, and diff checks before the live pass.
 The committed harness must start the local instrumented page and capture each
 MCP client's JSON stream. Helpers prepare state and capture output. They never
 drive product operations or decide a verdict.
+
+### Candidate gate before the final cross-platform round
+
+Complete this gate once for the repair batch, not separately after each fix.
+Until it passes, all newly owed cells remain blocked by the candidate, not by
+the availability of another OS.
+
+1. Repair all four audit findings together: private endpoint publication,
+   single-tab reclaim under an expired window lease, inheritance after explicit
+   release, and caller-specific profile status. Cover the neighboring state
+   transitions with regressions, including sibling orphan leases, popup
+   release, an unselected client and zero/one/multiple-profile status. Preserve
+   missing and disabled installation diagnoses. Reopen A01/A03/A04 if the repair
+   changes setup or recovery; reopen A02 only if its suspend, heartbeat or
+   grace behavior changes.
+2. Preserve regression output that fails without each repair and passes with
+   it. Permission tests must inspect creation before the first write, atomic
+   replacement, symlink refusal and failure to establish protection. Prove
+   failure closes the startup path without publishing an insecure endpoint.
+   Test Windows owner/SYSTEM ACLs and the unchanged caller environment too.
+   These deterministic checks are acceptance evidence, not live cell passes.
+3. Resolve the development dependency advisories and shared security-workflow
+   inconsistency without dropping scientific or platform test coverage. Run
+   both the full and production-only dependency audits. A production-only
+   clean result does not resolve a development finding.
+4. Finish and commit every needed fault fixture and observer with its usage
+   instructions under this minor's harness. Smoke-check their setup and
+   bounded restoration before delegating a host. No host invents a replacement
+   helper during its final round. Helpers may arrange a fault or inspect
+   permissions, but the subscribed agent invokes the installed public product.
+5. Freeze the product source commit and rebuild its Windows broker archive,
+   manifest and SBOM. Build the wheel and matching extension from the locks.
+   Verify packaged source and resources against that commit, not just a
+   version string. Record the source commit, lock hashes, wheel hash, broker
+   hash and complete extension file hash manifest in the private handoff.
+   Compare every shipped extension file with the accepted baseline. Byte
+   identity, not a claim that a dependency is development-only, supports reuse.
+6. Run all repository gates on the candidate: secret and attribution scans,
+   branch-point, documentation style, runbook and diff checks, full Python and
+   script suites including scientific tests, extension typecheck/tests/build,
+   broker integrity and native smoke, installer regressions and clean install.
+   Confirm the complete PR check suite finishes green at the candidate head.
+   Keep command output and exit codes. Do not replace a missing suite with CI
+   status from an older head.
+7. Have the reviewer check the complete repair diff against Part F and the
+   rerun map below before dispatching other hosts. Publish one immutable
+   candidate identity for all hosts. A platform-built wheel may have a
+   different archive hash, but must prove matching runtime files and resources
+   from the frozen source. Verify E01 on that host before any browser case.
+
+Run the implementing host first. If it finds another shared defect, fix the
+batch and update its impact map before asking the remaining hosts to run.
+After that first host passes, the other independent hosts may run concurrently
+against the same candidate. Do not update the tested installation mid-group.
+Runbook-only verdict commits do not change the frozen product identity.
+
+### Final rerun map and evidence reuse
+
+These are the required observations after the four repairs, not four complete
+repeats of the original runbook. New F cells are additional cases; an older
+passing parent cell does not close them.
+
+| host | existing cells to rerun on the candidate | new cells | cells retained unless their implementation changes |
+|---|---|---|---|
+| WSL | E01, B01, B05-B10, B15, E03-E04 | F01-F05, F08 | A01-A04, B02a-B04, B11-B14, B16-B17, all C and D, E02 |
+| Linux | E01, B01, B05-B10 | F01-F07 | A01-A04, B02a-B04, B11-B17, all C and D, E02-E04 |
+| Windows | E01, B01, B05-B10, B15, E03-E04 | F01-F05, F08 | A01-A04, B02a-B04, B11-B14, B16-B17, all C and D, E02 |
+| macOS | E01, B01, B05-B10 | F01-F07 | A01-A04, B02a-B04, B11-B17, all C and D, E02-E04 |
+
+Retained `Not-Needed` entries keep their existing reasons; they are not new
+passes. Reuse a passing observation only with its original artifact identity,
+raw oracle and a reviewed file/dependency impact comparison to the candidate.
+Keep the original failures as well. No change to timing code, profile data,
+pixel backends or extension runtime bytes means no automatic repeat of long
+typing, screenshots or sleep. A changed extension bundle reopens the affected
+browser cells before host dispatch. A runtime dependency or shared dispatch
+change likewise needs an explicit impact review; this table is not a waiver.
+
+Use one isolated environment per host and reset only the state a case needs.
+The multi-profile F01-F02 group uses two fresh profiles, then closes them before
+the one-profile ownership group. Two independent agent sessions are sufficient
+for ownership cases; E04 still requires its third fresh client. Capture their
+separate streams. One action sequence may satisfy several cell IDs only when
+each precondition, action and oracle is recorded separately. In particular,
+B10 and B15 may share one Windows broker replacement; F04/F05 may share setup
+with B07/B08, but they do not replace the original stale-revision controls.
+
+No final group requires typing into the desktop. Preserve each cell's stated
+focus and activation conditions; tab-scoped mutations must not change them.
+Never activate a target to rescue a failed browser action. Preserve an
+independent fixture hash or
+counter, document identity, target IDs and unaffected-peer state at every
+ownership transition. A successful claim response alone is not an oracle.
+
+If a later change invalidates a cell, record the changed files, affected IDs
+and hosts before another pass starts. Mark those entries `not run` with that
+reason and retain the older observation as history. Do not relabel an unrun
+case as failed or turn a repaired case into `Not-Needed` to reduce the count.
 
 ### Browser isolation for remaining hosts
 
@@ -350,7 +464,68 @@ do not execute this installer.
 |---|---|---|---|---|---|---|---|---|
 | E04 | Fresh test-owned Windows deployment absent; no test broker; two independent installed clients | Start both clients concurrently, read an owned fixture from each, then connect a third fresh client | One verified broker; manifest comparison finds no nested staging directory or extra payload; all three clients connect | Process starts, public reads, complete broker identities and file hashes; stop only test processes and remove only isolated state | pass: two concurrent installed clients and one later fresh client share one broker; 27 payload files match with no extras or staging at b2b1525 | Not-Needed: native Linux does not execute the Windows installer | pass: two concurrent native Windows clients and one later fresh client share one broker; 27 payload files match with no extras or staging at b2b1525 | Not-Needed: native macOS does not execute the Windows installer |
 
+## Part F: final audit regressions
+
+All F cells are new and unrun. Pure-logic audit reproductions are not live
+failures and cannot fill these slots. Use the candidate gate and existing
+subscription driver, Chrome for Testing isolation, local page and redactor.
+Record no endpoint token or reconnect secret, even in negative requests.
+Use a metadata-only observer for file modes/ACLs, process identity and hashes;
+never copy endpoint JSON into a retained stream. A polling observation of a
+finished file alone cannot prove its permissions before the first write; that
+proof comes from the candidate's deterministic publication tests.
+
+For F03, expire the original client's connection through the bounded isolated
+relay, not host networking. Keep a peer connected. Record disconnect,
+heartbeat/grace expiry and reconnect times. The expired client must attempt
+its stale operation before status, selection or reclaim can refresh its state.
+For F04/F05, record the opener relationship from the real browser registry.
+Keep the opener owner alive while another client claims the released resource.
+
+For F06/F07, use a new test-owned POSIX home/root with a stated ordinary umask.
+The candidate must protect its endpoint and parent from creation onward.
+Never relax permissions on the real home. F07's fault fixture must restore
+only its own permissions in a bounded cleanup path even when startup fails.
+Before the live round, prove its failure occurs at endpoint publication, not
+earlier lock acquisition, registration or browser setup. Retain that acceptance
+trace without secrets. An earlier setup failure does not close F07.
+On Windows/WSL, F08 observes the actual Windows endpoint ACL, not a mode from
+the WSL mount. No second OS account, impersonation or read of an owner's token
+is needed. A blocked fault fixture remains a blocker, not a reason to infer a
+security pass.
+
+| id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
+|---|---|---|---|---|---|---|---|---|
+| F01 | Two isolated profiles connected to one broker; independent clients A and B; one instrumented target per profile | Each client selects a different profile, interleaves status and profile lists, then reads and mutates its own target; switch A to B's profile and repeat status/list without altering B's selection | Each reply marks exactly the caller's selected profile current and agrees with its list; no false profile_ambiguous after selection; original per-profile mutations read back exactly; switching A does not change B | Both public streams, profile/target IDs, exact hashes or counters and unchanged peer records; release targets and close both test profiles | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending |
+| F02 | Two isolated profiles connected; A explicitly selects one; B is a fresh client with no selection | B requests status and profile list before any target call; A reads its selected target; B explicitly selects the other profile and repeats status/list and a target read | B initially has no current profile and reports profile_ambiguous without inheriting A's selection or creating a target; explicit selection resolves ambiguity only for B; A retains its original selection and document | Both streams, before/after registry and fixture records; close only test resources | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending |
+| F03 | A owns a window with two fixture tabs and selects the second tab; B holds a separate live target; disconnect A and verify heartbeat plus grace expiry without restarting the broker | B explicitly claims only the first orphaned tab, reads and mutates it, then attempts a parent-window close; inspect the unclaimed sibling; reconnect A and attempt its stale sibling write before status or selection; explicitly claim the sibling last | First tab is usable by B with a new tab lease; sibling stays orphaned until its own claim; parent-window close and A's first stale write fail with target_owned_by_another_client; A retains its client identity in the same epoch; no refused action mutates or closes a target; all documents and B's original peer target survive | Both streams, timed expiry, lease scopes/revisions, named errors, document counters and sibling hashes before/after; explicitly reclaim for cleanup and close only test windows | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending |
+| F04 | A owns only an opener tab in a shared test window; real opener-linked child tab inherits A's lease; A selects that child; another unrelated tab stays unowned | A releases the inherited child without changing its selection; both clients list twice; B explicitly claims the child, reads and mutates it; A attempts a stale child write before any new selection; inspect opener afterward | Lists never restore A's released child lease; B's claim is usable; A's stale write fails with target_owned_by_another_client; opener remains A's, unrelated tab stays unowned, and all targets remain open without focus change | Both streams, opener and lease IDs, repeated registries, exact read-back and unchanged opener/unrelated-tab records; release and close test targets | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending |
+| F05 | A owns an opener target; a real opener-linked popup in another window inherits A's window lease; A selects the popup tab; B is independent | A releases the popup window without changing its selection; both clients list twice; B claims the popup window and uses its existing tab; A attempts a stale popup write before any new selection; inspect opener afterward | Popup stays open and unowned after release and repeated lists; B receives a usable lease; A's stale write fails with target_owned_by_another_client without closing or mutating it; A retains only its opener | Both streams, opener relationship, window/tab leases and revisions, popup read-back and unchanged opener; release and close only test windows | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending | not run: new regression; repair batch and frozen candidate pending |
+| F06 | POSIX only; isolated endpoint absent, ordinary umask, fresh installed wheel and no test broker; metadata observer prepared before startup | Agent requests public readiness and performs an owned fixture read through normal automatic startup | One broker starts; endpoint parent is owner-only and endpoint/temp files are owner-readable/writable only; no insecure or leftover publication file; readiness and exact read succeed; deterministic first-write protection proof accompanies this live boundary | Public stream, metadata-only permission observations, installed hashes and broker identity; stop test processes and remove only the isolated root | Not-Needed: WSL uses the Windows endpoint; F08 covers its ACL | not run: new regression; private-publication repair and frozen candidate pending | Not-Needed: Windows ACL publication is F08 | not run: new regression; private-publication repair and frozen candidate pending |
+| F07 | POSIX only; F06 installed candidate; forcibly terminate only the recorded disposable broker PID with a bounded wait; verify its exit and the still-protected stale endpoint before arming the publication-specific fault fixture | Request readiness with the publication fault active; verify refusal, restore the fixture, then request readiness and explicitly reclaim/read the original test document | Failed startup never reports ready or publishes a readable token; existing protected endpoint is not replaced with insecure state; no usable failed broker or temporary token remains; restored startup creates one protected replacement and preserves the original browser document | Public failure/success streams, exit codes, metadata-only before/fault/after records and new broker identity; restore isolated permissions in bounded cleanup and stop test processes | Not-Needed: WSL uses Windows ACLs; F08 and candidate fault regressions apply | not run: new regression; fail-closed publication repair and committed fixture pending | Not-Needed: Windows ACL publication is F08 | not run: new regression; fail-closed publication repair and committed fixture pending |
+| F08 | Windows endpoint absent in test-owned root; fresh verified payload; metadata observer before startup; WSL must inspect Windows ACLs natively | Start via the installed public entry point, read a fixture, then replace only the test broker and explicitly reclaim/read the same target | Endpoint and temporary files restrict access to the owner and SYSTEM; replacement retains restricted ACLs; one verified broker per generation and original document read-back; caller environment and owner registrations are restored; attach the separate deterministic ACL-failure proof without calling it a live observation | Public streams, ACL trustee/rights metadata without token content, bundle/installed hashes, before/after broker identity and registration comparison; restore only temporary setup and stop test processes | not run: new regression; rebuilt Windows payload and frozen candidate pending | Not-Needed: POSIX publication is F06-F07 | not run: new regression; rebuilt Windows payload and frozen candidate pending | Not-Needed: POSIX publication is F06-F07 |
+
 ## Per-OS results
+
+**Current verdict: blocked on every OS until the candidate gate and audit
+reruns pass.** The tables in Parts A-E retain earlier observed results. The
+rerun map supersedes them for candidate acceptance; none of the new F cases
+inherits a pass. This amendment changes no product code, so old observations
+are not rewritten as failures. After the repair batch lands, mark each listed
+existing cell `not run: audit repair candidate requires rerun`, retaining its
+original result in the evidence history, then record the actual rerun result.
+
+| part | WSL | Linux | Windows | macOS |
+|---|---|---|---|---|
+| A: recovery and setup diagnosis | pass: prior observations retained subject to candidate impact check | pass: prior observations retained subject to candidate impact check | pass: prior observations retained subject to candidate impact check | pass: prior observations retained subject to candidate impact check |
+| B: shared broker and target ownership | blocked: B01, B05-B10 and B15 await audit repairs and candidate reruns | blocked: B01 and B05-B10 await audit repairs and candidate reruns | blocked: B01, B05-B10 and B15 await audit repairs and candidate reruns | blocked: B01 and B05-B10 await audit repairs and candidate reruns |
+| C: actionability and browser typing | pass: retain only after extension/runtime identity comparison | pass: retain only after extension/runtime identity comparison | pass: retain only after extension/runtime identity comparison | pass: retain only after extension/runtime identity comparison |
+| D: pixel typing | pass: prior observations retained; no pixel change in this amendment | pass: prior observations retained; no pixel change in this amendment | pass: prior observations retained; no pixel change in this amendment | pass: prior observations retained; no pixel change in this amendment |
+| E: packaged and clean delivery | blocked: E01, E03 and E04 require rebuilt candidate | blocked: E01 requires candidate identity | blocked: E01, E03 and E04 require rebuilt candidate | blocked: E01 requires candidate identity |
+| F: final audit regressions | blocked: F01-F05 and F08 await repairs and execution | blocked: F01-F07 await repairs and execution | blocked: F01-F05 and F08 await repairs and execution | blocked: F01-F07 await repairs and execution |
+| overall | blocked: candidate gate and named reruns remain owed | blocked: candidate gate and named reruns remain owed | blocked: candidate gate and named reruns remain owed | blocked: candidate gate and named reruns remain owed |
+
+### Historical result before the audit amendment
 
 The final WSL follow-up closes A03 at `fc7307f`, B09, B10 and B15 at
 `9a564b9`, and E01, E03 and E04 at `b2b1525`. The same host also ran the
@@ -361,8 +536,9 @@ drivers use the same final wheel SHA-256:
 `1fdd3cf395d38c1d2ce294a1152255a08822bff4f7768c12e3b7ebc1f4235357`.
 The compiled Windows bundle and extension are unchanged by the installer
 repairs. Native Linux and macOS do not execute those changed startup paths;
-their earlier observations remain valid. The results below supersede older
-owed-cell notes, which remain historical records of the earlier handoffs.
+their earlier observations remained valid at that boundary. The table below
+records that pre-audit boundary only. It does not override the current blocked
+verdict or the additional owed cases above.
 
 | part | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|
@@ -424,6 +600,23 @@ artifact-deletion refusal was not bypassed. No files were deleted and no freed
 space is claimed. Process cleanup is complete; artifact removal is not claimed.
 
 ## Findings
+
+### Open audit findings at `25e231f`
+
+The endpoint publisher writes a temporary token file before restricting its
+permissions and ignores protection failures. An orphaned window lease hides
+a newly claimed child-tab lease. Repeated observation reapplies opener
+inheritance after explicit child or popup release. Status uses shared profile
+selection instead of the requesting client's selection. The candidate gate
+requires all four repairs; F01-F08 specify their live proof. The seven
+development dependency advisories and shared workflow inconsistency also
+remain candidate blockers. No new repair or live result is claimed here.
+
+### Historical findings and repair observations
+
+The following notes retain the state at each earlier boundary. Their old owed
+lists are not instructions to repeat every past pass. The current rerun map
+above is the execution list for the audit batch.
 
 - Concurrent WSL first starts exposed an installer publication race. PowerShell
   `Move-Item` placed the second staging directory inside the winner's completed
