@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Publish the Windows broker bundle without nesting a second install inside
+  the first when native Windows or WSL clients start concurrently.
 - Reconnect before the next browser operation when a heartbeat has already
   detected a closed broker connection, without replaying dispatched operations.
 - Find Windows browser profiles under redirected local application data when

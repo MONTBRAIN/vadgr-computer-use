@@ -323,10 +323,25 @@ billing is required. Native Linux and macOS do not execute this launcher.
 
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
-| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: rerun on the heartbeat-EOF repaired installation; prior observations retained | pass: fresh noneditable 17fbe37 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed | pass: fresh noneditable 8ffe269 wheel starts outside checkout; public readiness, all 94 payload members, Unicode segmentation and fitted-profile loading verified | pass: fresh noneditable b207269 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed |
+| E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: rerun on the heartbeat-EOF repaired installation; prior observations retained | pass: fresh noneditable 17fbe37 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed | not run: rerun on the concurrent installer publication repair; prior result retained | pass: fresh noneditable b207269 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed |
 | E02 | Matching store-equivalent extension and installed wheel. WSL uses D01's exact stock-editor setup before the pixel action. | Run one owned-window browser read, one human browser type longer than 60 seconds, and one human pixel type longer than 60 seconds | The installed package and matching extension execute the fitted cadence and long typing without an implicit total deadline | MCP JSON with input text removed plus before and after screenshot results for the pixel document; close without saving | pass: installed-wheel browser evidence retained 74 completed calls; Notepad completed 588 units in 101.429 seconds | pass: the installed wheel completed 520 browser units in 89.730 seconds and 520 gedit units in 88.632 seconds without an implicit deadline | pass: the installed wheel completed a 980-unit browser type in 149.8 seconds and a 980-unit Notepad type in 164.719 seconds without an implicit deadline | pass: browser long-input proof retained; b208cf7 completed 505 pixel units in 95.628 seconds with exact read-back and no implicit deadline |
 
-| E03 | Fresh installed wheel; spaced Windows deployment parent; no test broker running | Request public readiness, open the fixture and read it without manually launching the broker | Normal startup creates one verified broker and the public read succeeds | Path-shape booleans, wheel and bundle hashes, broker identity and MCP results; restore registrations and stop only test processes | not run: new Windows-launch regression also requires the WSL caller | Not-Needed: native Linux does not execute the Windows launcher | pass: spaced-path installed readiness and fixture read succeeded; exact broker stop followed by normal public replacement startup at 86fe6f1 | Not-Needed: native macOS does not execute the Windows launcher |
+| E03 | Fresh installed wheel; spaced Windows deployment parent; no test broker running | Request public readiness, open the fixture and read it without manually launching the broker | Normal startup creates one verified broker and the public read succeeds | Path-shape booleans, wheel and bundle hashes, broker identity and MCP results; restore registrations and stop only test processes | not run: new Windows-launch regression also requires the WSL caller | Not-Needed: native Linux does not execute the Windows launcher | not run: rerun on the concurrent installer publication repair; prior result retained | Not-Needed: native macOS does not execute the Windows launcher |
+
+E04 uses the same isolated Windows profile and installed wheel as E03, but
+starts from an absent test-owned deployment and no running test broker.
+Start two independent installed MCP clients concurrently. Capture both
+process start times, public readiness, one shared broker identity and an
+owned fixture read from each client. Independently compare the deployed
+files with the packaged manifest: no missing, changed or extra payload file
+is allowed. A third fresh client must connect after that comparison.
+Preserve any failed deployment inside the isolated root before a rerun.
+Never change or remove the owner's installation. Native Linux and macOS
+do not execute this installer.
+
+| id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
+|---|---|---|---|---|---|---|---|---|
+| E04 | Fresh test-owned Windows deployment absent; no test broker; two independent installed clients | Start both clients concurrently, read an owned fixture from each, then connect a third fresh client | One verified broker; manifest comparison finds no nested staging directory or extra payload; all three clients connect | Process starts, public reads, complete broker identities and file hashes; stop only test processes and remove only isolated state | not run: rerun after the concurrent installer publication repair; initial failure retained | Not-Needed: native Linux does not execute the Windows installer | not run: new concurrent installer publication regression requires native Windows | Not-Needed: native macOS does not execute the Windows installer |
 
 ## Per-OS results
 
@@ -336,8 +351,8 @@ billing is required. Native Linux and macOS do not execute this launcher.
 | B: shared broker and target ownership | incomplete: heartbeat-EOF B09, B10 and B15 reruns owed | pass: repaired-wheel ownership, reconnect and broker replacement observed | pass: repaired-wheel ownership, timely and expired reconnect, and Windows broker replacement observed | pass: repaired-artifact mutation metadata, reconnect and broker replacement observed |
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
-| E: packaged and clean delivery | incomplete: repaired-artifact E01 and E03 owed | pass: repaired noneditable wheel, readiness, segmenter and profile verified | pass: repaired installed artifact, public readiness, Unicode segmentation, fitted profile and spaced-path startup verified | pass: repaired noneditable wheel, readiness, segmenter and fitted profile verified |
-| overall | incomplete: A03, B09, B10, B15, E01 and E03 reruns owed | pass: all 30 applicable Linux cells passed; 16 Not-Needed cells retain reasons; evidence pushed and isolated test state removed | pass: all 40 applicable Windows cells observed; six Not-Needed cells retain reasons; earlier unaffected observations preserved | pass: all 32 applicable macOS cells passed; 14 Not-Needed cells retain reasons; evidence pushed and isolated test state moved to recoverable Trash |
+| E: packaged and clean delivery | incomplete: repaired-artifact E01 and E03 owed | pass: repaired noneditable wheel, readiness, segmenter and profile verified | incomplete: repaired-installer E01, E03 and E04 owed | pass: repaired noneditable wheel, readiness, segmenter and fitted profile verified |
+| overall | incomplete: A03, B09, B10, B15, E01, E03 and E04 reruns owed | pass: all 30 applicable Linux cells passed; 16 Not-Needed cells retain reasons; evidence pushed and isolated test state removed | incomplete: repaired-installer E01, E03 and E04 owed; earlier observations retained | pass: all 32 applicable macOS cells passed; 14 Not-Needed cells retain reasons; evidence pushed and isolated test state moved to recoverable Trash |
 
 ## Evidence
 
@@ -390,6 +405,15 @@ artifact-deletion refusal was not bypassed. No files were deleted and no freed
 space is claimed. Process cleanup is complete; artifact removal is not claimed.
 
 ## Findings
+
+- Concurrent WSL first starts exposed an installer publication race. PowerShell
+  `Move-Item` placed the second staging directory inside the winner's completed
+  bundle. Later clients correctly rejected its extra files. Publication now
+  uses a no-overwrite directory rename and verifies an existing winner after a
+  collision. Two native Windows regressions reproduce valid and corrupt winners.
+  WSL and Windows owe fresh installation E01, spaced-path E03 and concurrent
+  publication E04 on the repaired wheel. Earlier broker, extension and typing
+  observations remain unchanged; the compiled broker payload did not change.
 
 - The native Windows heartbeat-EOF rerun at
   `8ffe269d61df605e5a487dbc4b8f317876f5cd67` passes E01, B09, B10 and B15.

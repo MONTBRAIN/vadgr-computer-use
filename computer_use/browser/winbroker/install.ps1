@@ -76,7 +76,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Failed to set broker inheritance rules" }
 
     try {
-        Move-Item -LiteralPath $staging -Destination $destination
+        # Move-Item nests staging inside an existing destination when another
+        # installer wins. Directory.Move fails instead, preserving the winner.
+        [System.IO.Directory]::Move($staging, $destination)
     }
     catch {
         if (-not (Test-Path -LiteralPath $destination) -or -not (Test-Bundle $destination)) {
