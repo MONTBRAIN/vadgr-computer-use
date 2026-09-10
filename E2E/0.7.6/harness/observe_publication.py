@@ -36,6 +36,8 @@ def validate(root: Path, endpoint: Path) -> tuple[Path, Path]:
 def windows_metadata(path: Path) -> dict:
     script = r"""
 $ErrorActionPreference = 'Stop'
+# Use this Windows PowerShell child's built-ins, not a PowerShell 7 parent's modules.
+$env:PSModulePath = $PSHOME + '\Modules'
 $acl = Get-Acl -LiteralPath $env:VADGR_CUA_OBSERVE_PATH
 $owner = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {

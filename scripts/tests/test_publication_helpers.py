@@ -102,6 +102,33 @@ def test_observer_reports_metadata_without_reading_contents(isolated, monkeypatc
     assert "synthetic private content" not in json.dumps(rows)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="native Windows PowerShell module isolation")
+@pytest.mark.parametrize("module,command", [
+    ("Security", "Get-Acl"), ("Utility", "ConvertTo-Json"),
+])
+def test_observer_ignores_foreign_parent_modules(isolated, monkeypatch, module, command):
+    observer = load("observe_publication")
+    modules = isolated / "foreign modules"
+    foreign = modules / f"Microsoft.PowerShell.{module}"
+    foreign.mkdir(parents=True)
+    (foreign / f"Microsoft.PowerShell.{module}.psd1").write_text(
+        "@{ ModuleVersion = '7.0.0'; RootModule = 'foreign.psm1'; "
+        f"FunctionsToExport = @('{command}') }}", encoding="utf-8",
+    )
+    (foreign / "foreign.psm1").write_text(
+        f"function {command} {{ throw 'incompatible parent module fixture' }}",
+        encoding="utf-8",
+    )
+    builtins = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/Modules"
+    inherited = str(modules) + os.pathsep + str(builtins)
+    monkeypatch.setenv("PSModulePath", inherited)
+    metadata = observer.windows_metadata(isolated)
+    assert isinstance(metadata["protected"], bool)
+    assert isinstance(metadata["owner_matches"], bool)
+    assert "rules" in metadata
+    assert os.environ["PSModulePath"] == inherited
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX ownership validation")
 def test_fault_refuses_symlink_root_and_outside_endpoint(isolated):
     fixture = load("publication_fault")
