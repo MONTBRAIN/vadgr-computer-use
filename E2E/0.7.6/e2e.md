@@ -212,7 +212,7 @@ checks. Never replace the isolated manifests with files from the owner's home.
 | A01 | Extension connected; one owned target exists | Let or force the MV3 worker idle, then request a DOM read | One bounded recovery restores the bridge and the original read runs once | Client JSON, broker log without page data; restore normal worker state | pass: stopped worker recovered once with unchanged target, revision and document at 747b6fb | pass: verified worker stop recovered once on the same document, target and revision at f6cd434 | pass: stopped worker recovered once on the same target and document at 86fe6f1 | pass: verified worker stop recovered once on the same target at a1c24f3 |
 | A02 | A01 passed | Suspend and resume the host, then request one DOM read | The read succeeds after bounded recovery, or returns the named recovery timeout without duplicate dispatch | Client JSON and timestamps; no host setting change | pass: verified Windows sleep and wake retained the same document and one read at 747b6fb | pass: owner-assisted VM save/resume retained the same live MCP client, document, target and revision; one gated read incremented the counter once at f6cd434 | not run: the owner approved the suspend and it happened, verified in the event log as Kernel-Power 42 then 107, 5.205 seconds, and the broker survived as the same pid, start, epoch and bundle while window 628297199, tab 628297200, counter 7 and the original time origin all survived with it. **The cell's own oracle was still not validly exercised**: the pre-suspend client exited with the setup driver, so the single gated read came from a new client with no pinned target and returned the named `target_restricted` rather than reaching the recorded document, and the value comparison rests on a second read taken after an explicitly permitted reclaim. `browser_eval` takes no window or tab parameter, so steering the gated read would itself have required a product call before it. A valid A02 needs one driver session that spans the suspend, so the client identity survives it. The owner declined a second suspend | pass: b8a5513 retained the same document, tab and revision after verified 36-second sleep; one post-wake read returned counter 1 |
 | A03 | Extension installed, then disabled | Request status and one read | The result says the extension is disabled and gives the matching remedy | Client JSON; re-enable the extension | not run: redirected-local-appdata diagnosis requires the rebuilt Windows bundle; prior 747b6fb pass retained | pass: persisted disabled state returned extension_disabled for status and read; original document recovered at f6cd434 | pass: persisted disable reason 1 returned extension_disabled for status and read; original document restored at 86fe6f1 | pass: two immediate and two settled disabled reads returned the named error at a1c24f3 |
-| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: absent registrations returned not_set_up; both original values restored and browser recovered at 63e65bb | pass: cold missing-registration status and read returned not_set_up; all three isolated manifests restored exactly and original document recovered at f6cd434 | pass: cold native-host failure returned not_set_up; verified restore recovered both original documents and client identities at 86fe6f1 | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
+| A04 | Isolated native-host registration removed | Request status and one read | The result says the host is not installed and does not call it an idle worker | Client JSON and isolated registration listing; restore registration | pass: absent registrations returned not_set_up; both original values restored and browser recovered at 63e65bb | pass: committed bounded helper produced cold not_set_up status/read; all three manifests restored exactly and original document recovered at 17fbe37 | pass: cold native-host failure returned not_set_up; verified restore recovered both original documents and client identities at 86fe6f1 | pass: missing registration returned not_set_up; all three isolated manifests restored at a1c24f3 |
 
 ## Part B: shared broker and target ownership
 
@@ -337,7 +337,7 @@ billing is required. Native Linux and macOS do not execute this launcher.
 | C: actionability and browser typing | pass | pass | pass | pass: exact state, cadence, interruption and inactive-target oracles observed |
 | D: pixel typing | pass | pass | pass | pass: D04 human and D07 fast Unicode repaired-artifact exact hashes now match; earlier unaffected pixel observations retained |
 | E: packaged and clean delivery | incomplete: repaired-artifact E01 and E03 owed | pass: repaired noneditable wheel, readiness, segmenter and profile verified | incomplete: heartbeat-EOF repaired-artifact E01 owed | incomplete: heartbeat-EOF repaired-artifact E01 owed |
-| overall | incomplete: A03, B09, B10, B15, E01 and E03 reruns owed | incomplete: all Linux live cells passed; final fixture validation and cleanup remain | incomplete: A02 owner-deferred; B09, B10, B15 and E01 repaired-artifact reruns owed | incomplete: B03, B04, B09, B10 and E01 repaired-artifact reruns owed |
+| overall | incomplete: A03, B09, B10, B15, E01 and E03 reruns owed | pass: all 30 applicable Linux cells passed; 16 Not-Needed cells retain reasons; evidence pushed and isolated test state removed | incomplete: A02 owner-deferred; B09, B10, B15 and E01 repaired-artifact reruns owed | incomplete: B03, B04, B09, B10 and E01 repaired-artifact reruns owed |
 
 ## Evidence
 
@@ -355,6 +355,14 @@ by this pass. Close only test windows and tabs. Remove only the recorded fresh
 environment and temporary root. Preserve browser owner state and every unrelated
 process. Run the build system's standard clean command. Record space before and
 after cleanup.
+
+The 2026-09-09 Linux rerun is complete. All live evidence was pushed before
+cleanup. The exact test broker, Chrome for Testing, fixture server and crash
+handlers were stopped. Their listeners are closed. Both isolated temporary
+roots were removed, releasing 1,317,269,504 allocated bytes from tmpfs.
+Setuptools clean and removal of validated generated build and cache paths
+released another 93,069,312 allocated bytes from the repository filesystem.
+Source, evidence, credentials and owner browser state were preserved.
 
 The latest macOS cleanup stopped the exact test processes, verified their
 ports free and moved all six isolated test roots plus the pass's gate root
@@ -377,6 +385,9 @@ mutation-response repair still requires the macOS reruns listed above.
   preserve that refusal. B09, B10, applicable B15 and packaged E01 require
   repaired-installation observations on every affected host. Same-socket VM
   resume and extension-only A01/A03/A04 do not enter this changed path.
+  Linux has now passed repaired-wheel B09, B10 and E01, plus its outstanding
+  ownership-label cells and the committed A04 fixture's restoration check.
+  Other affected hosts retain their explicit rerun requirements in the matrix.
 
 - Native Windows A03 twice reported `waking` and `recovery_timed_out` while
   the isolated Chrome profile recorded disable reason 1. The Windows profile
