@@ -203,6 +203,24 @@ Runbook-only verdict commits do not change the frozen product identity.
 
 ### Final rerun map and evidence reuse
 
+The WSL restart round found a further stale-client error-ordering defect.
+Both first stale content requests returned `extension_missing` before the
+required `target_lost` rejection. Source commit
+`9167aaa6130b9928dd4fd94add6d67be71870720` moves the existing stale-identity
+check before profile lookup for implicit content operations. It does not
+change explicit selection, normal setup diagnoses or the extension.
+The rebuilt Windows bundle SHA-256 is
+`c31448e7e58ae0535fd79efcdf1057bc39494e6472ec1e270afebb1dce6c62a1`.
+
+On a host that already ran the earlier candidate, repeat E01, B09/F03,
+B10 and applicable B15 on this repair. Preserve the failed first-stale calls.
+The wheel comparison changes only `broker.py`, the embedded broker archive,
+its manifest and SBOM, and the wheel RECORD. Dependency versions and extension
+bytes are unchanged. Ordinary-client ownership observations may retain their
+original artifact identity and full oracle. Remaining unrun cells below still
+require execution; this repair does not waive them. Do not repeat pixel input,
+typing or host sleep for this error-ordering change.
+
 These are the required observations after the four repairs, not four complete
 repeats of the original runbook. New F cells are additional cases; an older
 passing parent cell does not close them.
