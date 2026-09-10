@@ -95,7 +95,7 @@ def driver_command(root, gate, runtime, codex):
         "LOCALAPPDATA": str(root / "local"), "APPDATA": str(root / "roaming"),
     }
     command = [codex, "--yolo", "exec", "--json", "--ephemeral", "--ignore-user-config",
-               "--skip-git-repo-check", "--model", "gpt-5.6-sol",
+               "--skip-git-repo-check", "--model", "gpt-5.6-luna",
                "-c", 'model_reasoning_effort="medium"']
     for name in ("cua_two", "cua_three", "cua_one"):
         executable = str(runtime) if name != "cua_one" else sys.executable

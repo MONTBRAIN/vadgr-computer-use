@@ -27,7 +27,7 @@ def test_three_installed_clients_keep_restart_pair_direct(tmp_path):
     command = helper.driver_command(tmp_path, gate, runtime, "codex.cmd")
     assert command[:10] == ["codex.cmd", "--yolo", "exec", "--json", "--ephemeral",
                             "--ignore-user-config", "--skip-git-repo-check", "--model",
-                            "gpt-5.6-sol", "-c"]
+                            "gpt-5.6-luna", "-c"]
     settings = {}
     for index, item in enumerate(command):
         if item == "-c":

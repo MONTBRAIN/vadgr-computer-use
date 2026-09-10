@@ -43,14 +43,13 @@ the WSL verdict above comes from the completed public observations.
    `Not-Needed`.
 9. Confirm evidence is committed and pushed before cleanup. Stop only processes
    started by this pass and remove only validated isolated test roots.
-10. Before a pixel or screenshot group, check current official capabilities
-    and authenticated availability. Use GPT-5.6 Sol at medium reasoning with
-    Codex or the current Claude Opus at medium reasoning with Claude Code.
-    Choose between those
-    qualified subscription paths using availability and task fit. Do
-    not substitute Terra, Sonnet or Gemini. Record the exact model, reasoning
-    level and sources. A higher reasoning level
-    requires a recorded medium-tier capability failure and owner approval.
+10. All new CUA agent tasks use GPT-5.6 Luna with Codex or Claude Sonnet 5
+    with Claude Code. Codex defaults to medium reasoning; high is also approved
+    without another owner approval. Claude retains medium effort where supported.
+    Verify current capabilities and authenticated availability before each group,
+    including image-result continuation for visual cells. Record the exact model,
+    effort and sources, and the reason for high. Do not silently substitute Sol,
+    Opus or another model; unavailable approved drivers require an owner decision.
 11. Every remaining browser-tier cell uses a versioned Chrome for Testing
     executable, a fresh isolated profile, and the matching development
     extension. Never attach to the owner's normal browser process or profile.
@@ -101,12 +100,20 @@ before scheduling its additional cells.
 ## Subscription driver model selection
 
 Recheck the [OpenAI models][models] and [Anthropic models][claude-models] pages
-on the execution day. Do not reuse the superseded Terra/Sonnet comparison from
-the interrupted 2026-09-05 attempt.
+on the execution day. Do not reuse earlier model selections as the current policy.
 
 | cells | provider/auth | required capabilities | selected model | usage limits | escalation |
 |---|---|---|---|---|---|
-| all agent-driven cells | existing Codex or Claude Code subscription login | image-result continuation and MCP tools for visual cells | GPT-5.6 Sol or current Claude Opus, medium reasoning | real account limits only; no synthetic API budget | Do not change the qualified model or reasoning level without a recorded failure and owner approval. No API-key fallback or paid extra usage. |
+| all agent-driven cells | existing Codex or Claude Code subscription login | MCP tools; image-result continuation for visual cells | GPT-5.6 Luna (`gpt-5.6-luna`), medium or high; Claude Sonnet 5 (`claude-sonnet-5`), medium where supported | real account limits only; no synthetic API budget | Luna high is approved; record the reason. Any other model requires owner approval. No API-key fallback or paid extra usage. |
+
+The owner changed the driver policy on 2026-09-10 to reduce subscription usage.
+This applies to all subsequent CUA tasks. Earlier Sol and Opus observations keep
+their recorded model identities and results. Official model identities and
+capabilities were rechecked on 2026-09-10:
+[GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) and
+[Claude Sonnet 5](https://platform.claude.com/docs/en/models/overview).
+These pages do not prove availability in the owner's subscription; verify that
+before a live task. No new live cell is claimed by this policy change.
 
 The Linux pass rechecked the official OpenAI and Anthropic capability and
 pricing pages on 2026-09-07. GPT-5.6 Sol supports image input and tools. Its
@@ -334,8 +341,8 @@ python E2E/0.7.6/harness/redact_stream.py --output "$E2E_STREAM_FILE" \
 Every remaining host uses this temporary driver form for each live task:
 
 ```text
-codex --yolo exec --json --model gpt-5.6-sol <MCP, working-directory and prompt options>
-claude --dangerously-skip-permissions --print --output-format stream-json <MCP, working-directory and prompt options>
+codex --yolo exec --json --model gpt-5.6-luna -c 'model_reasoning_effort="medium"' <MCP, working-directory and prompt options>
+claude --dangerously-skip-permissions --print --output-format stream-json --model claude-sonnet-5 <MCP, working-directory and prompt options>
 ```
 
 Use the CLI's existing interactive login. Do not inspect, source, export, or pass
@@ -343,7 +350,8 @@ Use the CLI's existing interactive login. Do not inspect, source, export, or pas
 active login, mark the agent-driven cells `blocked: authenticated agent CLI
 unavailable`. Do not convert an API key into a substitute login.
 
-The command uses the selected medium reasoning model and invokes the exact
+Codex may use `high` instead of `medium` without another approval. Record its
+selection reason. The command uses the selected model and invokes the exact
 isolated-wheel `vadgr-cua` entry point. Run it from an isolated working
 directory. Pipe its JSON stream through `redact_stream.py`. Record paths only in
 owner-private local state, never in the public runbook or private evidence. The

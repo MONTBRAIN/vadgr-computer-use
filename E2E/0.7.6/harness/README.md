@@ -282,7 +282,8 @@ names. The coordinator sets `LOCALAPPDATA=root/local`, `APPDATA=root/roaming`,
 `VADGR_CUA_BROKER_ROOT=root/broker`, and browser discovery to
 `root/discovery.json` in each MCP configuration. It uses Codex with `--yolo
 exec --json --ephemeral --ignore-user-config --skip-git-repo-check`, the
-qualified model and medium reasoning. Existing subscription authentication
+approved GPT-5.6 Luna model and medium reasoning. The runbook also permits
+high reasoning for explicitly configured Codex tasks. Existing subscription authentication
 remains in use.
 
 `cua_two` and `cua_three` use the canonical broker endpoint directly. Their
