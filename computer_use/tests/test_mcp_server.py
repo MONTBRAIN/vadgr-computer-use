@@ -328,6 +328,25 @@ class TestKeyboardTools:
 
 class TestBrowserCancellation:
     @pytest.mark.asyncio
+    async def test_browser_forwards_explicit_trusted_click(self, monkeypatch):
+        from computer_use.mcp_server import browser
+
+        captured = {}
+
+        def trusted_click(*, op, **params):
+            captured.update(op=op, **params)
+            return {"clicked": True, "via": "cdp"}
+
+        monkeypatch.setattr("computer_use.mcp_server._browser_impl.browser", trusted_click)
+
+        result = await browser(op="click", selector="#open-popup", trusted=True)
+
+        assert result == {"clicked": True, "via": "cdp"}
+        assert captured["op"] == "click"
+        assert captured["selector"] == "#open-popup"
+        assert captured["trusted"] is True
+
+    @pytest.mark.asyncio
     async def test_human_browser_cancel_returns_named_progress(self, monkeypatch):
         from computer_use.browser.protocol import BrowserError, BrowserErrorCode
         from computer_use.mcp_server import browser
