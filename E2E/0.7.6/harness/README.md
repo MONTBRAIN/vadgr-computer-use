@@ -122,6 +122,15 @@ They do not drive the product, select actions, or decide a cell verdict.
 - `server.py` serves the loopback browser fixture and records sanitized request metadata.
 - `page.html` is the instrumented browser fixture for the browser cells.
 - `redact_stream.py` captures JSONL while removing typed values and binary result data.
+  Optional `--timing-output <fresh-file>` records each accepted line's zero-based
+  index, redacted-line SHA-256, and monotonic/UTC receipt times in nanoseconds.
+  It changes no event payload and stores no raw text in the timing file.
+  Run both recorders on the same OS host to compare monotonic clocks. These
+  timestamps order received CLI events, not browser dispatch. For a claim
+  race, combine them with both clients' started/completed events and the exact
+  MCP pause traces; a later conflict alone does not prove an overlapping claim.
+  Existing event and timing files are never overwritten. The two paths must
+  differ. Do not add timestamps to an old capture after the run.
   It also removes the account subtree from CLI control responses.
   It retains an allowlisted public browser error code from a tool error and removes
   the surrounding message, which can contain local paths or page data.
@@ -444,6 +453,9 @@ machine shutdown, or a system scheduler failure cannot provide this guarantee.
 POSIX process identity checks are not an atomic kernel process handle; keep
 the owned process alive and do not restart it during the fault. Evidence keeps
 only PID and timing metadata, never command lines or environment values.
+On Linux and WSL, identity uses kernel start ticks, not `ps` wall-clock start
+text. That text can change by a second for the same live process. The helper
+checks the kernel identity before and after reading the other process fields.
 
 Keep the helper's output attached to the evidence capture. Require its resumed
 event, then let the agent inspect the actual named deadline result, stable

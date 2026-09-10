@@ -23,8 +23,18 @@ def duration(value):
     return float(value)
 
 
+def linux_start_ticks(pid):
+    # The comm field can contain spaces and parentheses. Fields after its final
+    # parenthesis start at state (3); starttime is field 22.
+    record = Path(f"/proc/{pid}/stat").read_text()
+    fields = record.rsplit(")", 1)[1].split()
+    return int(fields[19])
+
+
 def inspect_process(pid):
     # Arguments are inspected privately, never returned in evidence or errors.
+    linux = sys.platform.startswith("linux")
+    start_ticks = linux_start_ticks(pid) if linux else None
     result = subprocess.run(
         ["ps", "-ww", "-p", str(pid), "-o", "pid=,ppid=,uid=,lstart=,command="],
         capture_output=True,
@@ -34,11 +44,15 @@ def inspect_process(pid):
     parts = result.stdout.strip().split(None, 8)
     if result.returncode or len(parts) != 9:
         raise ValueError("target process is unavailable")
+    if linux and linux_start_ticks(pid) != start_ticks:
+        raise ValueError("target process changed during inspection")
     return (
         int(parts[0]),
         int(parts[1]),
         int(parts[2]),
-        " ".join(parts[3:8]),
+        # ps derives lstart from wall time and uptime; rounding can change its
+        # displayed second for one live process. Kernel start ticks do not.
+        start_ticks if linux else " ".join(parts[3:8]),
         tuple(shlex.split(parts[8])),
     )
 

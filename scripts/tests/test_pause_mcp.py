@@ -29,6 +29,28 @@ def test_invalid_duration_fails_closed(helper, seconds):
         helper.duration(seconds)
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux kernel process identity")
+def test_kernel_start_identity_ignores_ps_wall_clock_rounding(helper, monkeypatch):
+    pid = os.getpid()
+    prefix = f"{pid} {os.getppid()} {os.getuid()} Thu Sep 10 10:39:"
+    replies = [
+        subprocess.CompletedProcess([], 0, prefix + "34 2026 /fixture/python /fixture/vadgr-cua"),
+        subprocess.CompletedProcess([], 0, prefix + "33 2026 /fixture/python /fixture/vadgr-cua"),
+    ]
+    monkeypatch.setattr(helper.subprocess, "run", Mock(side_effect=replies))
+    assert helper.inspect_process(pid) == helper.inspect_process(pid)
+
+
+def test_linux_pid_replacement_during_inspection_fails_closed(helper, monkeypatch):
+    monkeypatch.setattr(helper.sys, "platform", "linux")
+    monkeypatch.setattr(helper, "linux_start_ticks", Mock(side_effect=[100, 101]))
+    monkeypatch.setattr(helper.subprocess, "run", Mock(return_value=subprocess.CompletedProcess(
+        [], 0, "12 13 42 Thu Sep 10 10:39:34 2026 /fixture/python /fixture/vadgr-cua"
+    )))
+    with pytest.raises(ValueError, match="changed during inspection"):
+        helper.inspect_process(12)
+
+
 def test_windows_refuses_before_inspection(helper, monkeypatch):
     monkeypatch.setattr(helper.os, "name", "nt")
     with pytest.raises(ValueError, match="POSIX"):
