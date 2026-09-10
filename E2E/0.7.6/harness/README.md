@@ -2,6 +2,92 @@
 
 These helpers prepare fixtures and capture evidence for the 0.7.6 runbook.
 
+## Endpoint publication observation and fault
+
+`observe_publication.py` records only metadata for the exact endpoint, its
+dedicated parent, and matching temporary files. It never opens their contents.
+Start it before F06 or F08 startup and keep its stdout attached to the capture:
+
+```sh
+python E2E/0.7.6/harness/observe_publication.py \
+  --root /tmp/vadgr-cua-example \
+  --endpoint /tmp/vadgr-cua-example/broker/browser-broker.json \
+  --discovery /tmp/vadgr-cua-example/home/.vadgr-cua/browser.port --seconds 60
+```
+
+The root must be a current-user-owned `vadgr-cua-*` directory directly inside
+the system temporary directory. The endpoint uses a dedicated child directory.
+The parent and endpoint may initially be absent. The observation lasts at most
+120 seconds. Polling can miss a short-lived temporary file; it cannot establish
+first-byte protection. Attach the deterministic publication tests separately.
+The observer emits changes plus an explicit completion record, not a verdict.
+The `--discovery` argument adds the browser's token-bearing discovery file and
+its parent/temporary files. Include both surfaces in F06-F08. Resolve the actual
+discovery location from the isolated setup: the broker uses the default
+`HOME/.vadgr-cua/browser.port` on POSIX and
+`LOCALAPPDATA/vadgr-cua/browser.port` on Windows. The legacy standalone browser
+server can use a discovery override; that does not change the broker's default
+path selection. Never observe or copy the owner's normal discovery file.
+
+For Windows and WSL F08, run this same helper with native Windows Python and
+native Windows paths. It uses native `Get-Acl` and reports owner/SYSTEM matches,
+rights and inheritance without names or token content. Windows PowerShell must
+be available. Do not infer an ACL from a WSL mount's POSIX mode. Use the source
+helper directly or a byte-verified copy; it imports no product module.
+If a temporary disappears between its metadata and ACL reads, the observer
+records `vanished` without an ACL claim. Any ACL failure for a still-present
+path stops the observer. A disappearance is not proof of private permissions.
+
+`publication_fault.py` prepares the POSIX F07 failure. First stop only the
+recorded disposable broker and verify its exit. Keep its protected stale
+endpoint and original browser document. The installed public launcher removes
+the stale lock after checking the old process. Do not weaken parent permissions:
+that blocks lock creation before publication and does not exercise this cell.
+
+```sh
+python E2E/0.7.6/harness/publication_fault.py arm \
+  --root /tmp/vadgr-cua-example --directory /tmp/vadgr-cua-example/f07-fault \
+  --endpoint /tmp/vadgr-cua-example/broker/browser-broker.json --seconds 60
+```
+
+The root must be mode 0700, and the existing endpoint must be mode 0600. All
+paths stay inside the root without links. The fresh fault directory is a
+direct child, separate from endpoint storage. The helper copies only the
+committed `publication_fault/sitecustomize.py` into it. No product source is
+copied or placed on `PYTHONPATH`.
+
+Set `PYTHONPATH` to that copied directory in only the failing installed MCP
+child's environment. Preserve the caller environment. The subscribed agent
+still invokes the installed public entry point and requests readiness. Python's
+audit hook refuses only replacement of the exact endpoint. It cannot refuse
+lock creation or native registration. Its metadata-only `events.jsonl` records
+the publication attempt, temporary size/mode, lock presence and destination
+presence. A failed request without `publication_refused` is an earlier failure
+and does not close F07. The event proves only fault setup, not a live verdict.
+
+The fault expires automatically after the stated duration, at most 120 seconds.
+Disarm it explicitly after the public failure, even if the request fails:
+
+```sh
+python E2E/0.7.6/harness/publication_fault.py disarm \
+  --root /tmp/vadgr-cua-example --directory /tmp/vadgr-cua-example/f07-fault
+```
+
+No permission, registration or owner environment change needs restoration.
+The disarmed marker also disables the hook in already running children.
+Remove the fault `PYTHONPATH` setting for the successful restart and identity
+proof. Verify the failed broker's exit, unchanged protected stale endpoint and
+absence of temporary files. Then let the agent request readiness, explicitly
+reclaim and read the original document. Retain only metadata and public streams;
+the fault configuration contains private paths and does not enter the capture.
+Keep the isolated directory for the pass's bounded final cleanup.
+
+`scripts/tests/test_publication_helpers.py` proves that a child reaches the
+real publisher after synthetic lock and registration setup, exits on the
+publication fault, preserves the previous endpoint, and succeeds after disarm
+or expiry. This acceptance trace is not a browser session. Run it before the
+live group and retain its output with the separate security tests.
+
 `observe_textedit.py` reads only the document attached to one prepared stock
 TextEdit window ID. It checks the exact process identity before and after
 each read and reports count, hash, prefix match and combined-session modifier

@@ -117,6 +117,7 @@ def build(source_commit: str, output: Path) -> None:
                 "broker.py",
                 "native_host.py",
                 "ownership.py",
+                "private_file.py",
                 "protocol.py",
                 "server.py",
                 "windows_acl.py",

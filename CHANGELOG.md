@@ -41,6 +41,19 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Protect browser credentials and their dedicated directories before the first
+  write, replace discovery files atomically, and refuse unsafe paths or failed
+  permission setup. Windows publication verifies an owner-and-SYSTEM-only ACL.
+- Require native-host authentication before sending a hello or registering a
+  browser session. Reject missing, malformed and incorrect credentials.
+- Allow an explicit child-tab claim after its window lease expires without
+  granting the parent window or clearing the remaining siblings' orphan fences.
+- Preserve explicit releases when refreshing opener-derived tabs and popup
+  windows, including descendants received out of order.
+- Report profile selection and ambiguity for the requesting browser client,
+  without inheriting another client's selection or changing setup diagnoses.
+- Update vulnerable extension development dependencies while preserving the
+  shipped extension bytes and separate scientific tests from shared gate tests.
 - Use Windows PowerShell's built-in modules for broker installation and launch,
   without inheriting incompatible modules from a PowerShell 7 parent.
 - Publish the Windows broker bundle without nesting a second install inside

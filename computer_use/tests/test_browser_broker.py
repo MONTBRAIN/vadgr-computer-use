@@ -286,6 +286,48 @@ class ExtensionBridge:
         raise AssertionError((op, params))
 
 
+def test_expired_window_single_tab_reclaim_routes_read_and_fences_sibling():
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    old, survivor = broker.connect(None, None), broker.connect(None, None)
+    broker.request(old, "windows", {"op": "claim", "window_id": 1})
+    broker.disconnect(old)
+    old.lost_at -= LEASE_GRACE_SECONDS + 1
+    broker.reap()
+    broker.request(survivor, "tabs", {"op": "claim", "tab_id": 10})
+    assert broker.request(survivor, "read_text", {})["value"] == "target-10"
+    listed = broker.request(survivor, "tabs", {"op": "list"})
+    assert listed["windows"][0]["tabs"][1]["ownership"]["state"] == "orphaned"
+    with pytest.raises(OwnershipConflict):
+        broker.request(survivor, "windows", {"op": "close", "window_id": 1})
+    with pytest.raises(OwnershipConflict):
+        broker.request(old, "read_text", {})
+
+
+@pytest.mark.parametrize("popup", [False, True])
+def test_released_opener_target_stays_reclaimable_through_public_broker_requests(popup):
+    extension = ExtensionBridge()
+    broker = BrowserBroker(extension)
+    a, b = broker.connect(None, None), broker.connect(None, None)
+    broker.request(a, "tabs", {"op": "claim", "tab_id": 10})
+    wid = 2 if popup else 1
+    child = {"window_id": wid, "tab_id": 12, "opener_tab_id": 10, "url": "https://child.test"}
+    if popup:
+        extension.windows.append({"window_id": 2, "tabs": [child]})
+    else:
+        extension.windows[0]["tabs"].append(child)
+    broker.request(a, "tabs", {"op": "claim", "tab_id": 12})
+    op, key, value = ("windows", "window_id", wid) if popup else ("tabs", "tab_id", 12)
+    broker.request(a, op, {"op": "release", key: value})
+    for client in [a, b, a, b]:
+        broker.request(client, "tabs", {"op": "list"})
+    broker.request(b, op, {"op": "claim", key: value})
+    assert broker.request(b, "read_text", {})["value"] == "target-12"
+    with pytest.raises(OwnershipConflict):
+        broker.request(a, "read_text", {})
+    assert broker.ownership.describe("profile-one", 1, 10, a.client_id)["state"] == "mine"
+
+
 def test_two_clients_get_distinct_owned_windows_and_exact_routing():
     extension = ExtensionBridge()
     broker = BrowserBroker(extension)

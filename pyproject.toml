@@ -88,7 +88,7 @@ exclude = ["computer_use.tests*"]
 "computer_use.setup" = ["udev/*.rules"]
 
 [tool.pytest.ini_options]
-testpaths = ["computer_use/tests", "scripts/tests"]
+testpaths = ["computer_use/tests", "scripts/tests", "scripts/scientific_tests"]
 asyncio_mode = "strict"
 
 [tool.ruff]

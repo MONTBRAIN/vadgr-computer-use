@@ -7,7 +7,7 @@ import config from "../vitest.config";
 
 describe("extension gate worker bounds", () => {
   it("keeps one CPU available on small native hosts", () => {
-    expect(config.test?.minWorkers).toBe(1);
+    expect(config.test).not.toHaveProperty("minWorkers");
     expect(config.test?.maxWorkers).toBe(2);
   });
 });

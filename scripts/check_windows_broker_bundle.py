@@ -51,6 +51,8 @@ def main() -> int:
     source_files = manifest.get("source_files")
     if not isinstance(source_files, list) or not source_files:
         fail("source inventory is absent")
+    if "computer_use/browser/private_file.py" not in {item.get("path") for item in source_files}:
+        fail("private publication source is absent from the bundle inventory")
     source_commit = manifest.get("source_commit")
     if not isinstance(source_commit, str) or len(source_commit) != 40:
         fail("source commit is absent or malformed")

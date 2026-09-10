@@ -19,7 +19,7 @@ reusing the bridge-daemon foothold.
 
 On a connection the listener:
 
-1. reads an optional ``auth`` frame and checks the token (mismatch -> drop);
+1. requires an ``auth`` frame and checks the token (missing or wrong -> drop);
 2. sends cua's ``hello`` and reads the extension's ``hello`` (proto negotiated);
 3. registers a :class:`TcpBrowserSession` carrying the negotiated capability
    list - the bridge then routes ops to it; each op is sent over the live
@@ -99,17 +99,10 @@ def generate_token() -> str:
     return secrets.token_hex(16)
 
 
-def _write_one(dest: Path, payload: str) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(payload, encoding="utf-8")
-    try:
-        dest.chmod(0o600)
-    except OSError:  # pragma: no cover - non-posix best-effort
-        pass
-    if os.name == "nt":
-        from computer_use.browser.windows_acl import protect_owner_and_system
+def _write_one(dest: Path, payload: dict[str, object]) -> None:
+    from computer_use.browser.private_file import write_private
 
-        protect_owner_and_system(dest)
+    write_private(dest, payload)
 
 
 def write_discovery(
@@ -125,13 +118,10 @@ def write_discovery(
     ``/mnt/c`` so the Windows-side relay shim can find the listener.
     """
     dest = Path(path) if path is not None else discovery_path()
-    payload = json.dumps({"port": port, "token": token})
+    payload = {"port": port, "token": token}
     _write_one(dest, payload)
     if windows_copy is not None:
-        try:
-            _write_one(Path(windows_copy), payload)
-        except OSError:  # pragma: no cover - /mnt/c may be unavailable
-            pass
+        _write_one(Path(windows_copy), payload)
     return dest
 
 
@@ -444,12 +434,16 @@ class BrowserServer:
         self._sock.listen(8)
         self._sock.settimeout(0.25)
         self.port = self._sock.getsockname()[1]
-        write_discovery(
-            self.port,
-            self.token,
-            path=self._discovery_path,
-            windows_copy=self._windows_copy,
-        )
+        try:
+            write_discovery(
+                self.port,
+                self.token,
+                path=self._discovery_path,
+                windows_copy=self._windows_copy,
+            )
+        except BaseException:
+            self._sock.close()
+            raise
         self._thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._thread.start()
         return self.port
@@ -469,7 +463,7 @@ class BrowserServer:
         conn_file = conn.makefile("rwb")
         try:
             self._handshake(conn, conn_file)
-        except (OSError, ValueError, BrowserError):
+        except (OSError, ValueError, EOFError, BrowserError):
             try:
                 conn_file.close()
             finally:
@@ -477,19 +471,20 @@ class BrowserServer:
 
     def _handshake(self, conn: socket.socket, conn_file) -> None:
         """auth -> cua hello -> extension hello -> register session."""
-        # First frame may be an auth frame; if a token is in play it is required.
         first = read_message(conn_file)
         if first is None:
             raise ValueError("connection closed before handshake")
-        if first.get("type") == "auth":
-            if first.get("token") != self.token:
-                # Reject: drop the connection, register nothing.
-                raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "bad auth token")
-            first = None  # consumed; the next frame is the extension hello (after ours)
+        token = first.get("token") if isinstance(first, dict) else None
+        if (
+            not isinstance(first, dict) or first.get("type") != "auth"
+            or not isinstance(token, str) or not token.isascii()
+            or not secrets.compare_digest(token, self.token)
+        ):
+            raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "bad auth token")
 
         # cua sends its hello first, then reads the extension's.
         write_message(conn_file, client_hello(CUA_VERSION))
-        ext = first if first is not None else read_message(conn_file)
+        ext = read_message(conn_file)
         if ext is None:
             raise ValueError("connection closed before extension hello")
         hello = parse_server_hello(ext)  # raises proto_mismatch on a bad envelope

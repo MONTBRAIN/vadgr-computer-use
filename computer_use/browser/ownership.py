@@ -37,6 +37,7 @@ class OwnershipRegistry:
         self._epoch_orphan_tabs: set[tuple[str, int]] = set()
         self._orphan_on_first_observe = orphan_on_first_observe
         self._observed_profiles: set[str] = set()
+        self._observed_windows: set[tuple[str, int]] = set()
         self._revision = 0
         self._lock = RLock()
 
@@ -48,6 +49,11 @@ class OwnershipRegistry:
                 for window in windows
                 for tab in window.get("tabs", [])
             }
+            new_tabs = tab_keys.difference(self._tab_windows)
+            new_windows = window_keys.difference(self._observed_windows)
+            self._observed_windows = {
+                key for key in self._observed_windows if key[0] != profile_id
+            } | window_keys
             for key in [
                 key for key in self._windows if key[0] == profile_id and key not in window_keys
             ]:
@@ -74,26 +80,48 @@ class OwnershipRegistry:
                 self._epoch_orphan_windows.update(window_keys)
                 self._epoch_orphan_tabs.update(tab_keys)
             self._observed_profiles.add(profile_id)
+            pending = []
             for window in windows:
                 wid = int(window["window_id"])
                 for tab in window.get("tabs", []):
                     opener = tab.get("opener_tab_id")
-                    if opener is not None:
-                        self._inherit(profile_id, wid, int(tab["tab_id"]), int(opener))
+                    tid = int(tab["tab_id"])
+                    if opener is not None and (profile_id, tid) in new_tabs:
+                        pending.append((wid, tid, int(opener)))
+            # A snapshot can list a grandchild before its parent. Resolve only
+            # its new targets, never a released ancestor from an earlier list.
+            while pending:
+                remaining = [
+                    (wid, tid, opener)
+                    for wid, tid, opener in pending
+                    if not self._inherit(
+                        profile_id, wid, tid, opener,
+                        new_window=(profile_id, wid) in new_windows,
+                    )
+                ]
+                if len(remaining) == len(pending):
+                    break
+                pending = remaining
 
-    def _inherit(self, profile_id: str, window_id: int, tab_id: int, opener_id: int) -> None:
+    def _inherit(
+        self, profile_id: str, window_id: int, tab_id: int, opener_id: int,
+        *, new_window: bool,
+    ) -> bool:
         opener_window = self._tab_windows.get((profile_id, opener_id))
         if opener_window is None:
-            return
+            return False
         _scope, lease = self._effective(profile_id, opener_window, opener_id)
         if lease is None or lease.owner_id is None or lease.orphaned:
-            return
+            return False
         if window_id != opener_window:
             current = self._windows.get((profile_id, window_id))
-            if current is None:
+            if current is None and new_window:
                 self._windows[(profile_id, window_id)] = Lease(lease.owner_id, self._next())
+                return True
         elif (profile_id, tab_id) not in self._tabs:
             self._tabs[(profile_id, tab_id)] = Lease(lease.owner_id, self._next())
+            return True
+        return False
 
     def _next(self) -> int:
         self._revision += 1
@@ -136,6 +164,14 @@ class OwnershipRegistry:
     def claim_tab(self, profile_id: str, window_id: int, tab_id: int, client_id: str) -> Lease:
         with self._lock:
             self._tab_windows[(profile_id, tab_id)] = window_id
+            window = self._windows.get((profile_id, window_id))
+            if window is not None and window.orphaned:
+                # Split only an expired window, retaining every other child's
+                # fenced lease rather than giving the claimant window authority.
+                self._windows.pop((profile_id, window_id))
+                for key, wid in self._tab_windows.items():
+                    if key[0] == profile_id and wid == window_id:
+                        self._tabs[key] = Lease(window.owner_id, window.revision, orphaned=True)
             # A recovered window marker has no live owner. Splitting it permits
             # the explicit shared-window tab claim while the sibling tab
             # markers remain orphaned and require their own claims.

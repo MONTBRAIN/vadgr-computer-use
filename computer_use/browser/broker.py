@@ -20,6 +20,8 @@ from typing import Any
 
 from computer_use.browser.bridge import NativeMessagingBridge
 from computer_use.browser.ownership import OwnershipConflict, OwnershipRegistry
+from computer_use.browser.private_file import open_private_lock, private_directory
+from computer_use.browser.private_file import write_private as _write_private
 from computer_use.browser.protocol import BrowserError, BrowserErrorCode
 from computer_use.browser.server import BrowserServer, wsl_discovery_path
 
@@ -66,21 +68,6 @@ def windows_broker_endpoint_path() -> Path | None:
         return windows_user_home_mnt() / "AppData" / "Local" / "vadgr-cua" / "browser-broker.json"
     except Exception:
         return None
-
-
-def _write_private(path: Path, value: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value), encoding="utf-8")
-    try:
-        temporary.chmod(0o600)
-    except OSError:
-        pass
-    temporary.replace(path)
-    if sys.platform == "win32":
-        from computer_use.browser.windows_acl import protect_owner_and_system
-
-        protect_owner_and_system(path)
 
 
 def read_endpoint(path: Path | None = None) -> dict[str, Any] | None:
@@ -430,7 +417,16 @@ class BrowserBroker:
     ) -> Any:
         self.touch(state)
         if op == "status":
-            result = self.bridge.status().as_dict()
+            # The transport reports connectivity; selection belongs to this
+            # client. Never publish or mutate the bridge's shared current flags.
+            result = copy.deepcopy(self.bridge.status().as_dict())
+            profiles = result.get("profiles", [])
+            for profile in profiles:
+                profile["is_current"] = profile.get("profile_id") == state.profile_id
+            if profiles:
+                selected = any(profile["is_current"] for profile in profiles)
+                ambiguous = not selected and (state.profile_id is not None or len(profiles) > 1)
+                result["reason"] = "profile_ambiguous" if ambiguous else None
             result.update({"broker_epoch": self.epoch, "client_id": state.client_id})
             return result
         if op == "profiles":
@@ -819,7 +815,6 @@ class BrokerServer:
                 self.broker.disconnect(state)
 
     def run(self) -> None:
-        self.browser_server.start()
         endpoint = {
             "host": "127.0.0.1",
             "port": self.port,
@@ -830,11 +825,12 @@ class BrokerServer:
             "process_started_ns": PROCESS_STARTED_NS,
             "bundle_hash": BUNDLE_HASH,
         }
-        _write_private(broker_endpoint_path(), endpoint)
         windows_path = windows_broker_endpoint_path()
-        if windows_path is not None and windows_path != broker_endpoint_path():
-            _write_private(windows_path, endpoint)
         try:
+            self.browser_server.start()
+            _write_private(broker_endpoint_path(), endpoint)
+            if windows_path is not None and windows_path != broker_endpoint_path():
+                _write_private(windows_path, endpoint)
             while not self._stop.is_set():
                 self.broker.reap()
                 try:
@@ -863,12 +859,13 @@ class BrokerServer:
 
 def main() -> int:
     lock = broker_lock_path()
-    lock.parent.mkdir(parents=True, exist_ok=True)
+    private_directory(lock.parent)
     if sys.platform == "win32":
         import msvcrt
 
-        descriptor = os.open(lock, os.O_CREAT | os.O_RDWR)
+        descriptor = open_private_lock(lock)
         file = os.fdopen(descriptor, "r+", encoding="utf-8")
+        acquired = False
         try:
             from computer_use.browser.windows_acl import protect_owner_and_system
 
@@ -881,6 +878,7 @@ def main() -> int:
                 msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError:
                 return 0
+            acquired = True
             file.seek(0)
             file.truncate()
             file.write(str(os.getpid()))
@@ -893,10 +891,11 @@ def main() -> int:
             except OSError:
                 pass
             file.close()
-            try:
-                lock.unlink()
-            except OSError:
-                pass
+            if acquired:
+                try:
+                    lock.unlink()
+                except OSError:
+                    pass
         return 0
     try:
         descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
