@@ -43,7 +43,8 @@ def read_endpoint(root: Path, path: Path) -> dict:
     return endpoint
 
 
-def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int) -> Path:
+def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int,
+                *, retain: bool = False) -> Path:
     destination = isolated_path(root, alias)
     if destination == isolated_path(root, source):
         raise ValueError("alias must not replace the original endpoint")
@@ -51,7 +52,7 @@ def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int
         raise ValueError("relay port is invalid")
     payload = dict(endpoint, port=port)
     fd = (
-        windows_private_fd(destination) if sys.platform == "win32"
+        windows_private_fd(destination, retain_on_failure=retain) if sys.platform == "win32"
         else os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     )
     identity = os.fstat(fd).st_ino
@@ -59,7 +60,7 @@ def write_alias(root: Path, source: Path, alias: Path, endpoint: dict, port: int
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(payload, stream)
     except BaseException:
-        if destination.exists() and destination.stat().st_ino == identity:
+        if not retain and destination.exists() and destination.stat().st_ino == identity:
             destination.unlink()
         raise
     return destination
@@ -120,7 +121,7 @@ def windows_owner_only_dacl(descriptor, sid) -> bool:
     )
 
 
-def windows_private_fd(destination: Path) -> int:
+def windows_private_fd(destination: Path, *, retain_on_failure: bool = False) -> int:
     """Create an exclusive empty file with a protected owner-only DACL."""
     import ctypes
     import msvcrt
@@ -198,7 +199,7 @@ def windows_private_fd(destination: Path) -> int:
         if handle is not None:
             kernel.CloseHandle(handle)
             handle = None
-        if created:
+        if created and not retain_on_failure:
             destination.unlink()
         raise
     finally:
@@ -317,6 +318,8 @@ def main():
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--endpoint", required=True, type=Path)
     parser.add_argument("--alias", required=True, type=Path)
+    parser.add_argument("--retain-alias", action="store_true",
+                        help="retain private alias files, including failed writes")
     args = parser.parse_args()
     endpoint = read_endpoint(args.root, args.endpoint)
     relay = Relay(endpoint["port"], emit)
@@ -335,7 +338,8 @@ def main():
         commands.put({"stop": True})
 
     try:
-        alias = write_alias(args.root, args.endpoint, args.alias, endpoint, relay.port)
+        alias = write_alias(args.root, args.endpoint, args.alias, endpoint, relay.port,
+                            retain=args.retain_alias)
         alias_identity = alias.stat().st_ino
         emit("ready", relay_port=relay.port, upstream_port=endpoint["port"])
         threading.Thread(target=read_commands, daemon=True).start()
@@ -354,7 +358,8 @@ def main():
             relay.tick()
     finally:
         relay.close()
-        if alias is not None and alias.exists() and alias.stat().st_ino == alias_identity:
+        if (not args.retain_alias and alias is not None and alias.exists()
+                and alias.stat().st_ino == alias_identity):
             alias.unlink()
         emit("stopped")
 

@@ -171,6 +171,70 @@ when it already exists. Its .NET Framework does not provide the three-argument
 `File.Move` overwrite overload. Write JSON without a UTF-8 byte-order mark and
 fail a setup command immediately if its atomic replacement fails.
 
+## Windows B09 coordinator and control
+
+The native Windows coordinator launches the subscribed driver with three
+independent installed MCP clients:
+
+```text
+python E2E/0.7.6/harness/coordinate_broker_fault_windows.py --root <isolated-root> --prompt <prompt-file>
+```
+
+Prepare `runtime/Scripts/vadgr-cua.exe`, the browser, and the prompt inside the
+existing named root first. The root must be below the system temporary folder
+or the workspace `.tmp` folder. Each attempt requires fresh `b09-*` output
+names. The coordinator sets `LOCALAPPDATA=root/local`, `APPDATA=root/roaming`,
+`VADGR_CUA_BROKER_ROOT=root/broker`, and browser discovery to
+`root/discovery.json` in each MCP configuration. It uses Codex with `--yolo
+exec --json --ephemeral --ignore-user-config --skip-git-repo-check`, the
+qualified model and medium reasoning. Existing subscription authentication
+remains in use.
+
+`cua_two` and `cua_three` use the canonical broker endpoint directly. Their
+normal installed startup establishes the broker. The coordinator checks the
+live test-owned broker executable and loopback listener before preparing an
+owner-only endpoint copy and relay alias. `broker_stdio_gate_windows.py`
+then releases `cua_one` into the installed entry point with inherited stdio.
+The gate does not read or generate MCP protocol messages.
+
+After the driver verifies matching public broker identities, its owned targets,
+and a real relay connection, request each cut in one bounded shell call:
+
+```text
+python E2E/0.7.6/harness/control_broker_fault_windows.py --root <isolated-root> --sequence 1 --seconds 8
+python E2E/0.7.6/harness/control_broker_fault_windows.py --root <isolated-root> --sequence 2 --seconds 46
+```
+
+Run the two commands at their separate B09 steps. Each atomically writes one
+request, waits for the matching actual relay cut and restoration, and returns
+only numeric timing metadata. The default timeout is 58 seconds; `--timeout`
+must exceed the cut duration and cannot exceed 60 seconds. Duplicate sequence
+controllers, stale events, disconnected cuts and stopped coordinators fail.
+Require exit zero, then make `cua_one`'s product read immediately. Do not add
+intervening notes or state polling. The public read and actual reconnection
+timing still determine the verdict.
+
+After B09, release or close its targets through the product. Use only the two
+direct clients, `cua_two` and `cua_three`, for B10/B15. Prepare their owned
+targets before the restart. The alias retains the previous broker address and
+must not be used for restart cells. The driver still performs every product
+operation and verifies every public result.
+
+The coordinator captures the driver through the committed ingestion redactor
+into `b09-driver.jsonl`. `b09-relay.jsonl` records safe events without ports,
+endpoints or tokens. `b09-state.json` carries the control handshake;
+`b09-processes.json` and `b09-result.json` contain only safe process metadata
+and completion status. The owner-only `b09-gate-private.json` contains a private
+path and must not enter evidence. Inspect exit codes and the actual product
+stream; a helper exit alone is not a cell verdict.
+
+The coordinator passes `--retain-alias` to the relay. This option retains its
+owner-only alias on exit and retains failed alias writes. The coordinator also
+retains the original private endpoint copy and control artifacts. It stops only
+its own relay process, never the driver, browser or broker. Failed setup can
+leave a driver alive; the safe result and process metadata identify that state
+for the parent controller. No automatic file or directory deletion occurs.
+
 ## A04 Linux registration fault
 
 Prepare the isolated browser and installed MCP clients before this fault.

@@ -166,7 +166,7 @@ def test_windows_acl_failure_never_writes_credential(isolated, monkeypatch):
     source.write_text(json.dumps(endpoint))
     monkeypatch.setattr(sys, "platform", "win32")
 
-    def unavailable(path):
+    def unavailable(path, **kwargs):
         raise ValueError("owner-only Windows ACL unavailable")
 
     monkeypatch.setattr(relay_module, "windows_private_fd", unavailable)
