@@ -4,14 +4,14 @@
 """Request one POSIX B09 relay cut and observe its automatic restoration."""
 
 import argparse
-from datetime import datetime
 import json
 import math
 import os
-from pathlib import Path
 import stat
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 
 def identity(info):

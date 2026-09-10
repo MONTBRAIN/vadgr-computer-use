@@ -1,14 +1,17 @@
+# Copyright 2026 Victor Santiago Montaño Diaz
+# Licensed under the Apache License, Version 2.0.
+
 """Each case owns a fresh private root, FIFO and event log; no broker is used."""
 
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
