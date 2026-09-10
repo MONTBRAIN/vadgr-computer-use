@@ -392,15 +392,46 @@ never appears in.
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
 
-> Pixel and screenshot-driven cells use GPT-5.6 Sol at medium reasoning when
-> driven by Codex, or the current Claude Opus at medium reasoning when driven by
-> Claude Code. Before selection, recheck the candidates' current official
-> capability and pricing pages and the authenticated account catalog; record
-> the source date, exact model id, reasoning level, projected cost and hard
-> ceiling. Choose between those two qualified paths using availability, task
-> fit and projected total cost. Do not substitute Terra, Sonnet or Gemini for a
-> visual cell. A higher reasoning level or cost tier requires a recorded
-> capability failure at medium and explicit owner approval.
+> All CUA E2E agent tasks, including browser, pixel and screenshot cells, use
+> GPT-5.6 Luna (`gpt-5.6-luna`) with Codex or Claude Sonnet 5
+> (`claude-sonnet-5`) with Claude Code. Codex uses medium reasoning by default;
+> high is also approved without another owner decision when the run records why
+> it was needed. Claude retains medium effort where the CLI supports it. Do not
+> use Sol, Opus or another model for a new CUA E2E task without an explicit owner
+> decision. Historical evidence keeps the model identity and verdict it recorded.
+>
+> Before every live CUA group, query the authenticated Codex CLI's machine-readable
+> `account/rateLimits/read` app-server method from the terminal. Select the ordinary
+> Codex limit (`rateLimits`, falling back only to the `codex` limit id), locate its
+> 10,080-minute window, and calculate `remaining = 100 - usedPercent`. Do not use a
+> separate model-specific allowance as the ordinary Codex weekly allowance. Record
+> only the non-secret remaining percentage, reset time, probe time and selected
+> driver; never record authentication material or the raw account response.
+
+```sh
+python scripts/select_cua_e2e_driver.py
+```
+>
+> Use Codex while that weekly window has **at least 75% remaining**. Once it has
+> **less than 75% remaining**, use Claude Code for that group and every later group
+> until a fresh probe after the weekly reset again reports at least 75%. If the
+> machine-readable weekly value cannot be established, fail closed to Claude Code
+> and record the probe failure; never infer the allowance from session tokens, the
+> five-hour window, a model-specific quota, or `/status` text. Recheck after each
+> completed group before starting another so a group is never switched mid-cell.
+>
+> Before either driver runs, recheck its current official capability page and
+> authenticated availability, including image-result continuation for visual
+> cells. Record the source date, exact model id and effort. An unavailable selected
+> driver is a failed prerequisite, not permission to silently substitute a model.
+
+```sh
+codex --yolo exec --json --model gpt-5.6-luna -c 'model_reasoning_effort="medium"' <task-options>
+claude --dangerously-skip-permissions --print --output-format stream-json --model claude-sonnet-5 <task-options>
+```
+
+> For approved Codex high effort, replace `medium` with `high`. Keep subscription
+> authentication, the installed MCP entry point, redaction and all cell oracles.
 
 ## Prerequisites (per OS)
 
