@@ -4,6 +4,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# A PowerShell 7 parent can pass incompatible modules through Python. Use only
+# this Windows PowerShell process's built-in modules; leave the parent unchanged.
+$env:PSModulePath = $PSHOME + '\Modules'
 $metadata = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
 $archiveHash = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($archiveHash -ne [string]$metadata.archive_sha256) {

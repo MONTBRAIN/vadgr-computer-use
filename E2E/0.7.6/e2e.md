@@ -321,6 +321,13 @@ browser after filing evidence and restore temporary native registrations.
 No host suspend, network change, additional account, elevation, or API
 billing is required. Native Linux and macOS do not execute this launcher.
 
+Also run the E03 startup with an incompatible parent `PSModulePath`, as can
+happen when PowerShell 7 starts the agent through another process. Put a
+test-owned incompatible utility module before the Windows system modules in
+the MCP child's environment only. The public startup and fixture read must
+still succeed. Do not change the owner's shell, installed modules or persisted
+environment. Record that the parent value remains unchanged.
+
 | id | precondition and setup | action or goal | expected observable and oracle | evidence and cleanup | WSL | Linux | Windows | macOS |
 |---|---|---|---|---|---|---|---|---|
 | E01 | Fresh environment outside checkout | Install only the built wheel and start `vadgr-cua` through its entry point | Version is 0.7.6, readiness succeeds, the Unicode segmenter and fitted profile load, and source checkout is absent from import paths | Install log, path, version, wheel hash; remove environment | not run: rerun on the heartbeat-EOF repaired installation; prior observations retained | pass: fresh noneditable 17fbe37 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed | not run: rerun on the concurrent installer publication repair; prior result retained | pass: fresh noneditable b207269 wheel starts outside checkout; public readiness, Unicode segmentation and fitted profile loading succeed |

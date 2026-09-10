@@ -97,6 +97,9 @@ def test_launch_paths_travel_as_data_not_powershell_source(monkeypatch):
         "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
     ]
     assert bundle not in captured["command"][-1]
+    assert captured["command"][-1].startswith(
+        "$env:PSModulePath = $PSHOME + '\\Modules'; "
+    )
     assert json.loads(captured["options"]["input"]) == {
         "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
         "directory": bundle,

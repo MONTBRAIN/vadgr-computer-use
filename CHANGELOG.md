@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Use Windows PowerShell's built-in modules for broker installation and launch,
+  without inheriting incompatible modules from a PowerShell 7 parent.
 - Publish the Windows broker bundle without nesting a second install inside
   the first when native Windows or WSL clients start concurrently.
 - Reconnect before the next browser operation when a heartbeat has already

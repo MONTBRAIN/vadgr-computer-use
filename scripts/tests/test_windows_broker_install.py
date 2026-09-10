@@ -3,11 +3,11 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +22,10 @@ def installer_root():
 
 @pytest.mark.skipif(sys.platform != "win32", reason="native Windows installer filesystem")
 @pytest.mark.parametrize("winner_valid", [True, False])
-def test_installer_never_nests_staging_inside_a_concurrent_winner(installer_root, winner_valid):
+@pytest.mark.parametrize("foreign_modules", [False, True])
+def test_installer_never_nests_staging_inside_a_concurrent_winner(
+    installer_root, winner_valid, foreign_modules,
+):
     tmp_path = installer_root
     root = Path(__file__).resolve().parents[2]
     installer = root / "computer_use/browser/winbroker/install.ps1"
@@ -48,6 +51,23 @@ def test_installer_never_nests_staging_inside_a_concurrent_winner(installer_root
     probe.write_text(source.replace(anchor, competing_publish + anchor), encoding="utf-8")
     local = tmp_path / "local data"
     env = dict(os.environ, LOCALAPPDATA=str(local))
+    if foreign_modules:
+        # Model a PowerShell 7 parent passing incompatible modules through Python.
+        modules = tmp_path / "foreign modules"
+        utility = modules / "Microsoft.PowerShell.Utility"
+        utility.mkdir(parents=True)
+        (utility / "Microsoft.PowerShell.Utility.psd1").write_text(
+            "@{ ModuleVersion = '7.0.0'; RootModule = 'foreign.psm1'; "
+            "FunctionsToExport = @('Get-FileHash', 'ConvertFrom-Json') }",
+            encoding="utf-8",
+        )
+        (utility / "foreign.psm1").write_text(
+            "function ConvertFrom-Json { throw 'incompatible parent module fixture' }; "
+            "function Get-FileHash { throw 'incompatible parent module fixture' }",
+            encoding="utf-8",
+        )
+        system_modules = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/Modules"
+        env["PSModulePath"] = str(modules) + os.pathsep + str(system_modules)
     result = subprocess.run([
         "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
         "-File", str(probe), "-Archive", str(archive), "-Manifest", str(manifest),

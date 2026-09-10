@@ -122,6 +122,9 @@ def launch_windows_broker() -> None:
     # paths as ASCII JSON on stdin so spaces, quotes and Unicode stay data on
     # native Windows and through WSL's executable boundary.
     command = (
+        # Python can inherit PowerShell 7 modules that Windows PowerShell cannot
+        # load. Restrict only this child to its own built-in modules.
+        "$env:PSModulePath = $PSHOME + '\\Modules'; "
         "$Launch = [Console]::In.ReadToEnd() | ConvertFrom-Json; "
         "if (-not (Test-Path -LiteralPath $Launch.executable -PathType Leaf)) { exit 2 }; "
         "Start-Process -FilePath $Launch.executable -ArgumentList @('serve') "
