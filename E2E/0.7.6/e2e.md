@@ -223,7 +223,7 @@ Runbook-only verdict commits do not change the frozen product identity.
 The WSL restart round found a further stale-client error-ordering defect.
 Both first stale content requests returned `extension_missing` before the
 required `target_lost` rejection. Source commit
-`9167aaa6130b9928dd4fd94add6d67be71870720` moves the existing stale-identity
+`75e958fefeb39f13b4160cbb0456a4825bd7d872` moves the existing stale-identity
 check before profile lookup for implicit content operations. It does not
 change explicit selection, normal setup diagnoses or the extension.
 The rebuilt Windows bundle SHA-256 is

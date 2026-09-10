@@ -149,7 +149,7 @@
     "version": "3.12.14"
   },
   "schema": 1,
-  "source_commit": "9167aaa6130b9928dd4fd94add6d67be71870720",
+  "source_commit": "75e958fefeb39f13b4160cbb0456a4825bd7d872",
   "source_files": [
     {
       "path": "computer_use/__init__.py",
