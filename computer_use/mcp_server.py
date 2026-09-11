@@ -837,8 +837,8 @@ def tabs(
 ):
     """Enumerate and manage browser tabs, through the MV3 extension (Tier 1).
 
-    The agent SEES every window/tab (its own and yours) but ACTS only on the
-    pinned target; a tab becomes the target only when you open or switch to it.
+    Listings show every window/tab and its ownership. Target-bound operations
+    require this client's lease; listing alone never claims a target.
 
     Sub-ops:
     - list -> {windows:[{window_id, focused, owned, tabs:[{tab_id, url, title,
@@ -846,15 +846,23 @@ def tabs(
       after any drift, list -> use_target the real tab -> resume)
     - open(url=None, window_id=None, background=True)
       -> {window_id, tab_id, url, created}  (a new OWNED tab; sets the target)
+    - claim(tab_id, window_id=None) -> {window_id, tab_id, ownership}
+      (claims an unowned or orphaned tab and sets the logical target without
+      activating it; a foreign window lease or tab owner refuses the claim)
+    - release(tab_id) -> {released, tab_id, revision}
+      (releases this client's tab lease without closing the tab; inherited
+      window ownership must be released through windows.release instead)
     - switch(tab_id, window_id=None) -> {window_id, tab_id, url, is_current}
-      (moves the target + activates the tab in its window; does NOT raise the
-      window over your foreground)
-    - close(tab_id, force=False) -> {closed, tab_id}  (refuses one of YOUR tabs
-      unless force=True; closing the current tab makes the next op raise
+      (requires the window lease; moves the target and activates the tab without
+      raising the window over your foreground)
+    - close(tab_id, force=False) -> {closed, tab_id}  (requires ownership;
+      closing the current tab makes the next op raise
       target_lost - run list then use_target to recover)
 
-    Every result also carries `target: {window_id, tab_id, url}` so you always
-    see which tab you are on.
+    Another client's target returns target_owned_by_another_client; force
+    never bypasses ownership. Results may carry this client's
+    `target: {window_id, tab_id, url}`; release and closed-target results need
+    not carry a target.
     """
     return _browser_impl.tabs(
         op=op,
@@ -882,11 +890,19 @@ def windows(
       (READ_ONLY; the thin variant of tabs.list)
     - open(url=None, focused=False) -> {window_id, tab_id, created}  (a new OWNED
       window, unfocused by default; sets the target)
+    - claim(window_id) -> {window_id, tab_id, ownership}
+      (claims an unowned or orphaned window and its tabs; sets the logical
+      target; refuses a foreign window owner or foreign child-tab owner)
+    - release(window_id) -> {released, window_id, revision}
+      (releases this client's window and inherited tab leases without closing
+      the window or its tabs)
     - focus(window_id) -> {focused, window_id}  (the EXPLICIT raise - the agent
-      never brings a window forward automatically, so it never steals your
-      screen)
-    - close(window_id, force=False) -> {closed, window_id}  (owned only unless
-      force=True)
+      requires the window lease and never raises a window automatically)
+    - close(window_id, force=False) -> {closed, window_id}
+      (requires the window lease)
+
+    Listing never claims. Another client's window or child-tab lease returns
+    target_owned_by_another_client; force never bypasses ownership.
     """
     return _browser_impl.windows(
         op=op,

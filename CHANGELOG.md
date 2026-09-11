@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Describe the existing tab and window claim/release operations in the MCP
+  tool catalog, including lease requirements and release-without-close behavior.
 - Reject a stale browser target immediately after broker replacement, before
   extension recovery can mask the required explicit-reclaim error.
 - Protect browser credentials and their dedicated directories before the first
