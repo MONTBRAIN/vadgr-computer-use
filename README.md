@@ -84,6 +84,9 @@ supports native text inputs and textareas; rich contenteditable editors remain
 on the bulk path until their structure-preserving paced path is proven. A
 trusted `press` against an inactive target fails by name instead of silently
 activating the target or claiming an input Chromium discarded.
+Trusted browser clicks temporarily emulate focus inside the exact target while
+dispatching their pointer sequence. They do not activate its tab or foreground
+its window.
 
 The profile's residual timing data derives from the CC BY 4.0 KeyRecs dataset
 by Tiago Dias, João Vitorino, Eva Maia, Orlando Sousa, and Isabel Praça

@@ -302,8 +302,9 @@ export class CdpExecutor implements Executor {
   // `pointerup` - the pattern every headless-browser library uses. Coordinates are
   // viewport CSS pixels straight from getBoundingClientRect(), which is exactly
   // what dispatchMouseEvent wants: no DPR correction, no window-chrome offset, so
-  // the whole pixel coordinate-mismatch class is structurally absent, and it works
-  // with the window unfocused or occluded.
+  // the whole pixel coordinate-mismatch class is structurally absent. Focus
+  // emulation keeps Chromium's trusted input path live for an inactive target
+  // without activating its tab or foregrounding its window.
   //
   // Self-verify by diffing a state signature across the click; a widget that
   // exposes no state yields no `ok` rather than a fabricated one.
@@ -312,9 +313,14 @@ export class CdpExecutor implements Executor {
     const before = await this.stateSignature(send, selector);
     const c = await this.centre(send, selector, p.force === true);
     const base = { x: c.x, y: c.y, button: "left", clickCount: 1 };
-    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: c.x, y: c.y, buttons: 0 });
-    await send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", buttons: 1 });
-    await send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", buttons: 0 });
+    await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    try {
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: c.x, y: c.y, buttons: 0 });
+      await send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", buttons: 1 });
+      await send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", buttons: 0 });
+    } finally {
+      await send("Emulation.setFocusEmulationEnabled", { enabled: false });
+    }
     const out: Record<string, unknown> = { clicked: true, via: "cdp", x: c.x, y: c.y };
     if (before !== null) {
       const after = await this.stateSignature(send, selector);

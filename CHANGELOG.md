@@ -41,6 +41,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Deliver trusted browser clicks to an exact inactive tab by emulating page
+  focus only for the CDP pointer sequence. The tab stays inactive and its window
+  stays unfocused.
 - Describe the existing tab and window claim/release operations in the MCP
   tool catalog, including lease requirements and release-without-close behavior.
 - Reject a stale browser target immediately after broker replacement, before
