@@ -111,36 +111,44 @@ def _pump(src, dst) -> None:
         return
 
 
-def _windows_pipe_readable(stream, stop: threading.Event, timeout: float) -> bool:
-    """Poll a Windows native-messaging pipe without entering a blocking read."""
+def _stream_readable(stream, timeout: float) -> bool:
+    """Wait briefly for POSIX input while retaining a cancellation point."""
+    ready, _, _ = select.select([stream], [], [], timeout)
+    return bool(ready)
+
+
+def _cancel_windows_io(thread: threading.Thread) -> None:
+    """Cancel a synchronous Windows read issued by the exact relay thread."""
+    if os.name != "nt" or not thread.is_alive():
+        return
+
     import ctypes
-    import msvcrt
+    from ctypes import wintypes
 
-    available = ctypes.c_ulong()
-    handle = ctypes.c_void_p(msvcrt.get_osfhandle(stream.fileno()))
+    native_id = thread.native_id
+    if native_id is None:
+        raise RuntimeError("native input thread has no Windows thread identifier")
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    peek = kernel32.PeekNamedPipe
-    peek.restype = ctypes.c_int
-    if peek(handle, None, 0, None, ctypes.byref(available), None):
-        if available.value:
-            return True
-        stop.wait(timeout)
-        return False
-    error = ctypes.get_last_error()
-    if error in {109, 233}:  # ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED
-        return True
-    raise OSError(error, os.strerror(error))
-
-
-def _stream_readable(stream, stop: threading.Event, timeout: float) -> bool:
-    """Wait briefly for input while retaining a bounded cancellation point."""
+    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.CancelSynchronousIo.argtypes = [wintypes.HANDLE]
+    kernel32.CancelSynchronousIo.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    thread_terminate = 0x0001
+    handle = kernel32.OpenThread(thread_terminate, False, native_id)
+    if not handle:
+        error = ctypes.get_last_error()
+        if not thread.is_alive():
+            return
+        raise OSError(error, os.strerror(error))
     try:
-        ready, _, _ = select.select([stream], [], [], timeout)
-        return bool(ready)
-    except (OSError, TypeError, ValueError):
-        if os.name != "nt":
-            raise
-        return _windows_pipe_readable(stream, stop, timeout)
+        if not kernel32.CancelSynchronousIo(handle):
+            error = ctypes.get_last_error()
+            if error != 1168:  # ERROR_NOT_FOUND: no pending read remains.
+                raise OSError(error, os.strerror(error))
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 class _InterruptibleReader:
@@ -153,7 +161,7 @@ class _InterruptibleReader:
     def read(self, size: int) -> bytes:
         data = bytearray()
         while len(data) < size and not self._stop.is_set():
-            if not _stream_readable(self._stream, self._stop, 0.05):
+            if os.name != "nt" and not _stream_readable(self._stream, 0.05):
                 continue
             chunk = self._stream.read(size - len(data))
             if not chunk:
@@ -193,6 +201,7 @@ def _relay(chrome_in, chrome_out, cua_sock, cua_sock_file) -> None:
     finally:
         stop.set()
         _shutdown_socket(cua_sock)
+        _cancel_windows_io(up)
         up.join()
 
 
