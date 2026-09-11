@@ -155,6 +155,11 @@ class TestEndToEndShim:
             result = session.request("navigate", {"url": "https://x"})
             ext.join(timeout=2)
             assert result == {"url": "https://x", "title": "X"}
+            # This handshake test uses a socketpair as synthetic Chrome stdin.
+            # On Windows that socket read is not the cancellable native pipe
+            # exercised by TestNativeHostShutdown, so close the synthetic
+            # writer explicitly before asserting relay cleanup.
+            chrome_to_shim.close_writer()
             cua_sock.shutdown(socket.SHUT_RDWR)
             relay.join(timeout=2)
             assert not relay.is_alive()
@@ -259,6 +264,10 @@ class _Pipe:
         self._w = w
         self.reader = r.makefile("rb", buffering=0)
         self.writer = w.makefile("wb")
+
+    def close_writer(self):
+        self._w.shutdown(socket.SHUT_WR)
+        self.writer.close()
 
 
 def _extension_answer_one(chrome_to_shim, shim_to_chrome, result):
