@@ -41,6 +41,9 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Retire a definitively dead or replaced browser-broker transport before the
+  next dispatch. The first stale client now reaches the replacement epoch's
+  explicit `target_lost` fence without replaying an uncertain operation.
 - Stop and join the native host's standard-input reader when either Chrome or
   the browser broker disconnects, avoiding an interpreter shutdown abort.
 - Deliver trusted browser clicks to an exact inactive tab by emulating page

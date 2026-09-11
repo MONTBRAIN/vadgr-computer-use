@@ -66,8 +66,24 @@ def test_broker_client_does_not_replay_after_operation_dispatch(monkeypatch, fai
     stale = io.BytesIO()
     replacement = object()
     client._file = stale
+    client._broker_identity = {
+        "broker_pid": 41,
+        "broker_process_started_ns": "same-start",
+        "broker_epoch": "same-epoch",
+    }
     writes = []
     connects = []
+    monkeypatch.setattr(broker_client, "_running_under_wsl", lambda: False)
+    monkeypatch.setattr(broker_client, "_endpoint_pid_alive", lambda _endpoint, _pid: True)
+    monkeypatch.setattr(
+        broker_client,
+        "read_endpoint",
+        lambda: {
+            "pid": 41,
+            "process_started_ns": "same-start",
+            "epoch": "same-epoch",
+        },
+    )
     monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
 
     def read(file):
@@ -93,6 +109,71 @@ def test_broker_client_does_not_replay_after_operation_dispatch(monkeypatch, fai
     assert client.send("read_text") == 7
     assert connects == [True]
     assert [message["op"] for _, message in writes] == ["click", "read_text"]
+
+
+@pytest.mark.parametrize("replacement_published", [False, True])
+def test_dead_broker_reconnects_before_first_post_restart_dispatch(
+    monkeypatch, replacement_published
+):
+    client = broker_client.BrokerClient()
+    stale = io.BytesIO()
+    transport = io.BytesIO()
+    replacement = object()
+    client._file, client._transport = stale, transport
+    client._client_id, client._secret = "fixture-client", "fixture-secret"
+    client._broker_identity = {
+        "broker_pid": 41,
+        "broker_process_started_ns": "old-start",
+        "broker_epoch": "old-epoch",
+    }
+    writes = []
+    connects = []
+
+    monkeypatch.setattr(broker_client, "_running_under_wsl", lambda: False)
+    monkeypatch.setattr(
+        broker_client,
+        "_endpoint_pid_alive",
+        lambda _endpoint, _pid: replacement_published,
+    )
+    monkeypatch.setattr(
+        broker_client,
+        "read_endpoint",
+        lambda: {
+            "pid": 42 if replacement_published else 41,
+            "process_started_ns": "new-start" if replacement_published else "old-start",
+            "epoch": "new-epoch" if replacement_published else "old-epoch",
+        },
+    )
+    monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
+    monkeypatch.setattr(
+        client,
+        "_read",
+        lambda file: (
+            {
+                "ok": False,
+                "error": {
+                    "code": "target_lost",
+                    "message": "the previous browser client identity is no longer valid",
+                },
+            }
+            if file is replacement
+            else None
+        ),
+    )
+
+    def reconnect():
+        connects.append(True)
+        client._file = replacement
+
+    monkeypatch.setattr(client, "_connect", reconnect)
+
+    with pytest.raises(BrowserError) as captured:
+        client.send("read_text")
+
+    assert captured.value.code.value == "target_lost"
+    assert connects == [True]
+    assert stale.closed and transport.closed
+    assert writes == [(replacement, {"id": 1, "op": "read_text", "params": {}})]
 
 
 def test_broker_client_eof_cancels_an_active_request():

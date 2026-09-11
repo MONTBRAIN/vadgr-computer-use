@@ -185,6 +185,7 @@ class BrokerClient:
                             "broker_pid": reply.get("pid"),
                             "broker_process_started_ns": reply.get("process_started_ns"),
                             "broker_bundle_hash": reply.get("bundle_hash"),
+                            "broker_epoch": reply.get("epoch"),
                         }
                         self._start_heartbeat()
                         return
@@ -251,6 +252,7 @@ class BrokerClient:
                         "broker_pid": reply.get("pid"),
                         "broker_process_started_ns": reply.get("process_started_ns"),
                         "broker_bundle_hash": reply.get("bundle_hash"),
+                        "broker_epoch": reply.get("epoch"),
                     }
                     self._start_heartbeat()
                     return
@@ -303,9 +305,40 @@ class BrokerClient:
             except OSError:
                 pass
 
+    def _transport_is_definitively_stale(self) -> bool:
+        """Return true only when no request can reach the cached broker."""
+        if isinstance(self._transport, subprocess.Popen) and self._transport.poll() is not None:
+            return True
+        endpoint = read_endpoint()
+        expected_pid = self._broker_identity.get("broker_pid")
+        if (
+            not _running_under_wsl()
+            and isinstance(expected_pid, int)
+            and not _endpoint_pid_alive(endpoint, expected_pid)
+        ):
+            return True
+        if endpoint is None:
+            return False
+        expected = {
+            "pid": expected_pid,
+            "process_started_ns": self._broker_identity.get("broker_process_started_ns"),
+            "bundle_hash": self._broker_identity.get("broker_bundle_hash"),
+            "epoch": self._broker_identity.get("broker_epoch"),
+        }
+        return any(
+            value is not None and endpoint.get(key) != value for key, value in expected.items()
+        )
+
     def send(self, op: str, /, **params: Any) -> Any:
         cancelled = params.pop("_cancelled", None)
         with self._lock:
+            # A confirmed broker exit cannot have received this operation. Drop
+            # that generation before dispatch so rejected reconnect credentials
+            # reach the replacement broker's target_lost fence on the first
+            # caller-controlled request. An ambiguous transport failure still
+            # follows the no-replay path below.
+            if self._file is not None and self._transport_is_definitively_stale():
+                self._close()
             if self._file is None:
                 self._connect()
             self._request_id += 1
