@@ -18,13 +18,44 @@ jobs:
     env:
       SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
+      - name: Preserve repository bytes in the Windows checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          ref: ${{ env.SOURCE_COMMIT }}
+      - name: Prove the exact source checkout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $head = (& git rev-parse HEAD).Trim()
+          if ($head -ne $env:SOURCE_COMMIT) { throw "checked out $head instead of $env:SOURCE_COMMIT" }
+          $sourceFiles = @(
+            "computer_use/__init__.py",
+            "computer_use/browser/bridge.py",
+            "computer_use/browser/broker.py",
+            "computer_use/browser/native_host.py",
+            "computer_use/browser/ownership.py",
+            "computer_use/browser/private_file.py",
+            "computer_use/browser/protocol.py",
+            "computer_use/browser/server.py",
+            "computer_use/browser/windows_acl.py",
+            "computer_use/browser/windows_broker_entry.py",
+            "computer_use/setup/extension_setup.py"
+          )
+          foreach ($relative in $sourceFiles) {
+            $expected = (& git rev-parse "HEAD:$relative").Trim()
+            $actual = (& git hash-object --no-filters -- $relative).Trim()
+            if ($actual -ne $expected) { throw "$relative differs from its Git blob" }
+            Write-Output "$relative $actual"
+          }
       - name: Install the pinned Windows build toolchain
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $pythonArchive = Join-Path $env:RUNNER_TEMP "python.tar.gz"
           $uvArchive = Join-Path $env:RUNNER_TEMP "uv.zip"
           Invoke-WebRequest -Uri "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.12.14%2B20260825-x86_64-pc-windows-msvc-install_only.tar.gz" -OutFile $pythonArchive
@@ -41,24 +72,34 @@ jobs:
           $uv = Join-Path $env:RUNNER_TEMP "uv\uv.exe"
           $buildEnv = Join-Path $env:RUNNER_TEMP "broker-build"
           & $uv venv --python $python $buildEnv
+          if ($LASTEXITCODE -ne 0) { throw "uv venv failed with exit code $LASTEXITCODE" }
           $buildPython = Join-Path $buildEnv "Scripts\python.exe"
           & $uv pip install --python $buildPython ".[dev]" "pyinstaller==6.22.2"
+          if ($LASTEXITCODE -ne 0) { throw "uv pip install failed with exit code $LASTEXITCODE" }
           & $python --version
+          if ($LASTEXITCODE -ne 0) { throw "pinned Python failed with exit code $LASTEXITCODE" }
           & $uv --version
+          if ($LASTEXITCODE -ne 0) { throw "pinned uv failed with exit code $LASTEXITCODE" }
           & $buildPython -c "import importlib.metadata; print(importlib.metadata.version('pyinstaller'))"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller version check failed with exit code $LASTEXITCODE" }
       - name: Prove relay shutdown and build the broker
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $python = Join-Path $env:RUNNER_TEMP "broker-build\Scripts\python.exe"
           & $python -m pytest -q computer_use/tests/test_browser_native_host.py::TestNativeHostShutdown
+          if ($LASTEXITCODE -ne 0) { throw "relay shutdown tests failed with exit code $LASTEXITCODE" }
           $output = Join-Path $env:RUNNER_TEMP "winbroker"
           & $python scripts/build_windows_broker.py --source-commit $env:SOURCE_COMMIT --output $output
+          if ($LASTEXITCODE -ne 0) { throw "broker build failed with exit code $LASTEXITCODE" }
           Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.zip") computer_use/browser/winbroker/
           Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.manifest.json") computer_use/browser/winbroker/
           Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.spdx.json") computer_use/browser/winbroker/
           & $python scripts/check_windows_broker_bundle.py
+          if ($LASTEXITCODE -ne 0) { throw "broker bundle check failed with exit code $LASTEXITCODE" }
           & $python scripts/smoke_windows_broker.py
+          if ($LASTEXITCODE -ne 0) { throw "broker smoke failed with exit code $LASTEXITCODE" }
       - name: Upload only the broker artifact boundary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
