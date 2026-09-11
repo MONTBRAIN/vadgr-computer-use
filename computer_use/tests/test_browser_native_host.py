@@ -170,7 +170,7 @@ class TestNativeHostShutdown:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
         listener.settimeout(3)
-        discovery = tmp_path / "browser.port"
+        discovery = tmp_path / "state" / "browser.port"
         S.write_discovery(listener.getsockname()[1], "shutdown-test", path=discovery)
         env = os.environ.copy()
         env["VADGR_CUA_BROWSER_DISCOVERY"] = str(discovery)
@@ -212,7 +212,7 @@ class TestNativeHostShutdown:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
         listener.settimeout(3)
-        discovery = tmp_path / "browser.port"
+        discovery = tmp_path / "state" / "browser.port"
         S.write_discovery(listener.getsockname()[1], "chrome-eof", path=discovery)
         env = os.environ.copy()
         env["VADGR_CUA_BROWSER_DISCOVERY"] = str(discovery)
