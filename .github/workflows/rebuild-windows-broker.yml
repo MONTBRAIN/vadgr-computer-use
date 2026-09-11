@@ -1,5 +1,7 @@
 name: rebuild-windows-broker
 
+# Temporary build-only workflow for the native-host shutdown repair.
+
 on:
   push:
     branches: [feature/0.7.6-browser-reliability]

@@ -154,14 +154,23 @@ def _cancel_windows_io(thread: threading.Thread) -> None:
 class _InterruptibleReader:
     """Exact-size reads which broker shutdown can cancel between pipe chunks."""
 
-    def __init__(self, stream: BinaryIO, stop: threading.Event) -> None:
+    def __init__(
+        self,
+        stream: BinaryIO,
+        stop: threading.Event,
+        *,
+        poll: bool = True,
+        waitable: Any = None,
+    ) -> None:
         self._stream = stream
         self._stop = stop
+        self._poll = poll
+        self._waitable = stream if waitable is None else waitable
 
     def read(self, size: int) -> bytes:
         data = bytearray()
         while len(data) < size and not self._stop.is_set():
-            if os.name != "nt" and not _stream_readable(self._stream, 0.05):
+            if self._poll and not _stream_readable(self._waitable, 0.05):
                 continue
             chunk = self._stream.read(size - len(data))
             if not chunk:
@@ -177,7 +186,7 @@ def _shutdown_socket(sock: socket.socket) -> None:
         pass
 
 
-def _relay(chrome_in, chrome_out, cua_sock, cua_sock_file) -> None:
+def _relay(chrome_in, chrome_out, cua_sock, cua_sock_in, cua_sock_out) -> None:
     """Pump frames both ways between the Chrome stdio pair and the cua socket.
 
     Two independent pumps (Chrome->cua and cua->Chrome) so the handshake - where
@@ -189,7 +198,10 @@ def _relay(chrome_in, chrome_out, cua_sock, cua_sock_file) -> None:
 
     def pump_up() -> None:
         try:
-            _pump(_InterruptibleReader(chrome_in, stop), cua_sock_file)
+            _pump(
+                _InterruptibleReader(chrome_in, stop, poll=os.name != "nt"),
+                cua_sock_out,
+            )
         finally:
             stop.set()
             _shutdown_socket(cua_sock)
@@ -197,7 +209,10 @@ def _relay(chrome_in, chrome_out, cua_sock, cua_sock_file) -> None:
     up = threading.Thread(target=pump_up, name="vadgr-cua-native-input")
     up.start()
     try:
-        _pump(cua_sock_file, chrome_out)
+        _pump(
+            _InterruptibleReader(cua_sock_in, stop, waitable=cua_sock),
+            chrome_out,
+        )
     finally:
         stop.set()
         _shutdown_socket(cua_sock)
@@ -226,11 +241,16 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - subprocess
              "error": {"code": "not_connected", "message": str(e)}},
         )
         return 1
-    with cua_sock, cua_sock.makefile("rwb") as cua_file:
-        # Authenticate to the listener before relaying Chrome frames.
-        if token:
-            write_message(cua_file, {"type": "auth", "token": token})
-        _relay(chrome_in, chrome_out, cua_sock, cua_file)
+    with cua_sock:
+        with (
+            cua_sock.makefile("rb", buffering=0) as cua_in,
+            cua_sock.makefile("wb") as cua_out,
+        ):
+            # Keep input unbuffered so readiness always describes the next byte.
+            # Output stays buffered so each framed write is complete on flush.
+            if token:
+                write_message(cua_out, {"type": "auth", "token": token})
+            _relay(chrome_in, chrome_out, cua_sock, cua_in, cua_out)
     return 0
 
 

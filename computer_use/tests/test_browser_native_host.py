@@ -112,10 +112,11 @@ class TestEndToEndShim:
         try:
             # Connect the shim to the listener exactly as main() would.
             cua_sock, token = NH._connect_cua(discovery=disc)
-            cua_file = cua_sock.makefile("rwb")
+            cua_in = cua_sock.makefile("rb", buffering=0)
+            cua_out = cua_sock.makefile("wb")
 
             # The shim sends the auth frame before relaying Chrome frames.
-            NH.write_message(cua_file, {"type": "auth", "token": token})
+            NH.write_message(cua_out, {"type": "auth", "token": token})
 
             # Chrome stdin: the extension's hello, then it waits for cua's hello.
             # Emulate the extension half on a background thread driving the shim.
@@ -125,7 +126,7 @@ class TestEndToEndShim:
             relay = threading.Thread(
                 target=NH._relay,
                 args=(chrome_to_shim.reader, shim_to_chrome.writer,
-                      cua_sock, cua_file),
+                      cua_sock, cua_in, cua_out),
                 daemon=True,
             )
             relay.start()
@@ -157,7 +158,8 @@ class TestEndToEndShim:
             cua_sock.shutdown(socket.SHUT_RDWR)
             relay.join(timeout=2)
             assert not relay.is_alive()
-            cua_file.close()
+            cua_in.close()
+            cua_out.close()
             cua_sock.close()
         finally:
             srv.stop()
