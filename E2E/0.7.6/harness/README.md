@@ -56,6 +56,11 @@ direct child, separate from endpoint storage. The helper copies only the
 committed `publication_fault/sitecustomize.py` into it. No product source is
 copied or placed on `PYTHONPATH`.
 
+On macOS, the fault comparison recognizes the system `/tmp` and `/var`
+aliases for `/private/tmp` and `/private/var`. It verifies only those system
+prefixes and does not resolve links inside the isolated root. Prefer canonical
+paths consistently in live setup; arbitrary linked fixture paths remain refused.
+
 Set `PYTHONPATH` to that copied directory in only the failing installed MCP
 child's environment. Preserve the caller environment. The subscribed agent
 still invokes the installed public entry point and requests readiness. Python's

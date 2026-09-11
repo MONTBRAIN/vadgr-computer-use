@@ -24,7 +24,18 @@ def install():
         return
 
     def audit(event, args):
-        if event != "os.rename" or Path(args[1]).absolute() != endpoint:
+        if event != "os.rename":
+            return
+        destination = Path(args[1]).absolute()
+        if sys.platform == "darwin":
+            # macOS exposes system-owned aliases for its private temp trees.
+            # Normalize only those prefixes, never links inside the test root.
+            for alias in (Path("/tmp"), Path("/var")):
+                canonical = Path("/private") / alias.name
+                if destination.is_relative_to(alias) and alias.resolve() == canonical:
+                    destination = canonical / destination.relative_to(alias)
+                    break
+        if destination != endpoint:
             return
         if time.time() >= expires or (directory / "disarmed").exists():
             return

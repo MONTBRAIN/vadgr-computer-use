@@ -32,6 +32,27 @@ def isolated():
 @pytest.mark.skipif(os.name != "posix", reason="POSIX child audit fixture")
 @pytest.mark.parametrize("restoration", ["disarm", "expiry"])
 def test_fault_reaches_publication_and_child_exits_then_restores(isolated, restoration):
+    _check_fault_and_restoration(isolated, restoration)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS system temporary aliases")
+@pytest.mark.parametrize("alias", ["tmp", "var"])
+def test_fault_matches_macos_system_alias(alias):
+    if alias == "tmp":
+        parent = Path("/tmp")
+    else:
+        canonical = Path(tempfile.gettempdir()).resolve()
+        if not canonical.is_relative_to("/private/var"):
+            pytest.skip("the system temporary directory has no /var alias")
+        parent = Path("/") / canonical.relative_to("/private")
+    with tempfile.TemporaryDirectory(prefix="vadgr-cua-publication-alias-", dir=parent) as temporary:
+        root = Path(temporary)
+        root.chmod(0o700)
+        assert root.absolute() != root.resolve()
+        _check_fault_and_restoration(root, "disarm")
+
+
+def _check_fault_and_restoration(isolated, restoration):
     fixture = load("publication_fault")
     endpoint = isolated / "broker" / "browser-broker.json"
     endpoint.parent.mkdir(mode=0o700)
