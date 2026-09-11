@@ -52,6 +52,8 @@ self-contained Windows process bound only to Windows loopback. WSL reaches it
 through the packaged Windows stdio proxy, so NAT and mirrored WSL networking
 use the same path. This requires neither Windows Python nor a firewall, DNS,
 route, adapter, proxy, VPN, or WSL networking change.
+The native host closes both relay directions together and joins its input
+reader before exit, including when the browser broker disconnects first.
 
 Fast input remains the default. Use human-paced input only when a field needs
 real intermediate key events:

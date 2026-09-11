@@ -10,9 +10,13 @@
 
 import io
 import json
+import os
 import socket
 import struct
+import subprocess
+import sys
 import threading
+import time
 
 import pytest
 
@@ -120,7 +124,8 @@ class TestEndToEndShim:
 
             relay = threading.Thread(
                 target=NH._relay,
-                args=(chrome_to_shim.reader, shim_to_chrome.writer, cua_file),
+                args=(chrome_to_shim.reader, shim_to_chrome.writer,
+                      cua_sock, cua_file),
                 daemon=True,
             )
             relay.start()
@@ -149,9 +154,96 @@ class TestEndToEndShim:
             result = session.request("navigate", {"url": "https://x"})
             ext.join(timeout=2)
             assert result == {"url": "https://x", "title": "X"}
+            cua_sock.shutdown(socket.SHUT_RDWR)
+            relay.join(timeout=2)
+            assert not relay.is_alive()
+            cua_file.close()
             cua_sock.close()
         finally:
             srv.stop()
+
+
+class TestNativeHostShutdown:
+    def test_broker_eof_does_not_abort_with_blocked_chrome_stdin(self, tmp_path):
+        """Broker-first shutdown must not leave a buffered daemon read alive."""
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(3)
+        discovery = tmp_path / "browser.port"
+        S.write_discovery(listener.getsockname()[1], "shutdown-test", path=discovery)
+        env = os.environ.copy()
+        env["VADGR_CUA_BROWSER_DISCOVERY"] = str(discovery)
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "computer_use.browser.native_host"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        try:
+            conn, _ = listener.accept()
+            with conn, conn.makefile("rwb") as peer:
+                assert NH.read_message(peer) == {
+                    "type": "auth",
+                    "token": "shutdown-test",
+                }
+                assert proc.stdin is not None
+                proc.stdin.write(b"\x01")
+                proc.stdin.flush()
+                time.sleep(0.1)
+                conn.shutdown(socket.SHUT_RDWR)
+            returncode = proc.wait(timeout=3)
+            assert proc.stderr is not None
+            stderr = proc.stderr.read().decode("utf-8", errors="replace")
+            assert returncode == 0, stderr
+            assert "_enter_buffered_busy" not in stderr
+        finally:
+            listener.close()
+            if proc.stdin is not None:
+                proc.stdin.close()
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=3)
+
+    def test_chrome_eof_stops_the_broker_read_and_exits(self, tmp_path):
+        """Chrome-first shutdown must wake the opposite relay direction."""
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(3)
+        discovery = tmp_path / "browser.port"
+        S.write_discovery(listener.getsockname()[1], "chrome-eof", path=discovery)
+        env = os.environ.copy()
+        env["VADGR_CUA_BROWSER_DISCOVERY"] = str(discovery)
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "computer_use.browser.native_host"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        try:
+            conn, _ = listener.accept()
+            with conn, conn.makefile("rwb") as peer:
+                assert NH.read_message(peer) == {
+                    "type": "auth",
+                    "token": "chrome-eof",
+                }
+                assert proc.stdin is not None
+                proc.stdin.close()
+                returncode = proc.wait(timeout=3)
+                assert proc.stderr is not None
+                stderr = proc.stderr.read().decode("utf-8", errors="replace")
+                assert returncode == 0, stderr
+                assert peer.read(1) == b""
+        finally:
+            listener.close()
+            if proc.stdin is not None:
+                proc.stdin.close()
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=3)
 
 
 # --- helpers for the e2e shim test ---
@@ -163,7 +255,7 @@ class _Pipe:
         r, w = socket.socketpair()
         self._r = r
         self._w = w
-        self.reader = r.makefile("rb")
+        self.reader = r.makefile("rb", buffering=0)
         self.writer = w.makefile("wb")
 
 

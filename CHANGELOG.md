@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Stop and join the native host's standard-input reader when either Chrome or
+  the browser broker disconnects, avoiding an interpreter shutdown abort.
 - Deliver trusted browser clicks to an exact inactive tab by emulating page
   focus only for the CDP pointer sequence. The tab stays inactive and its window
   stays unfocused.

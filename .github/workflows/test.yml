@@ -11,6 +11,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rebuild-windows-broker:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Install the pinned Windows build toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pythonArchive = Join-Path $env:RUNNER_TEMP "python.tar.gz"
+          $uvArchive = Join-Path $env:RUNNER_TEMP "uv.zip"
+          Invoke-WebRequest -Uri "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.12.14%2B20260825-x86_64-pc-windows-msvc-install_only.tar.gz" -OutFile $pythonArchive
+          if ((Get-FileHash -Algorithm SHA256 $pythonArchive).Hash.ToLower() -ne "15d25c455ea25d6b24d7e58eabdf744fd0db3cfb977934ae08fd2237acd8ccc1") {
+            throw "python-build-standalone archive hash mismatch"
+          }
+          Invoke-WebRequest -Uri "https://github.com/astral-sh/uv/releases/download/0.12.6/uv-x86_64-pc-windows-msvc.zip" -OutFile $uvArchive
+          if ((Get-FileHash -Algorithm SHA256 $uvArchive).Hash.ToLower() -ne "df7cb9f243eae1621400d4fcf5b1b3d90f20e264ece91b64deb3b0078abca6ef") {
+            throw "uv archive hash mismatch"
+          }
+          tar -xzf $pythonArchive -C $env:RUNNER_TEMP
+          Expand-Archive -Path $uvArchive -DestinationPath (Join-Path $env:RUNNER_TEMP "uv")
+          $python = Join-Path $env:RUNNER_TEMP "python\python.exe"
+          $uv = Join-Path $env:RUNNER_TEMP "uv\uv.exe"
+          $buildEnv = Join-Path $env:RUNNER_TEMP "broker-build"
+          & $uv venv --python $python $buildEnv
+          $buildPython = Join-Path $buildEnv "Scripts\python.exe"
+          & $uv pip install --python $buildPython ".[dev]" "pyinstaller==6.22.2"
+          & $python --version
+          & $uv --version
+          & $buildPython -c "import importlib.metadata; print(importlib.metadata.version('pyinstaller'))"
+      - name: Prove relay shutdown and build the broker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $python = Join-Path $env:RUNNER_TEMP "broker-build\Scripts\python.exe"
+          & $python -m pytest -q computer_use/tests/test_browser_native_host.py::TestNativeHostShutdown
+          $output = Join-Path $env:RUNNER_TEMP "winbroker"
+          & $python scripts/build_windows_broker.py --source-commit $env:SOURCE_COMMIT --output $output
+          Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.zip") computer_use/browser/winbroker/
+          Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.manifest.json") computer_use/browser/winbroker/
+          Copy-Item -Force (Join-Path $output "vadgr-cua-browser-broker-win-x64.spdx.json") computer_use/browser/winbroker/
+          & $python scripts/check_windows_broker_bundle.py
+          & $python scripts/smoke_windows_broker.py
+      - name: Upload only the broker artifact boundary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-broker-${{ env.SOURCE_COMMIT }}
+          path: |
+            computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.zip
+            computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.manifest.json
+            computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.spdx.json
+          if-no-files-found: error
+
   extension:
     runs-on: ${{ matrix.os }}
     strategy:
