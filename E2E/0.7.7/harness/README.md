@@ -32,3 +32,6 @@ agent leases only its named inactive fixture and writes its public marker.
 `browser_oracle.py` prepares those two windows through the isolated DevTools
 port and independently records target/window identity, page value, visibility,
 focus and decoy state before and after the product operations.
+`summarize_agent_stream.py` reduces each local Codex JSONL stream to event
+counts, CUA MCP tool names and allowlisted public browser errors. Prompts,
+paths, account data, tool arguments and result text never enter its output.
