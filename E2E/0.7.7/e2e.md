@@ -1,7 +1,8 @@
 # 0.7.7 - browser broker discovery recovery: e2e runbook
 
 > **vadgr-computer-use 0.7.7 implementation:**
-> `fix/0.7.7-browser-broker-recovery`; sealed product and artifact head
+> [implementation PR #104](https://github.com/MONTBRAIN/vadgr-computer-use/pull/104);
+> sealed product and artifact head
 > `76a235c34ed46f2a9c1f09e1fcde0319974b5854`.
 > **vadgr-computer-use 0.7.7 evidence PR:**
 > private evidence PR #161.
