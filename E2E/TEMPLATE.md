@@ -167,12 +167,18 @@ present in a given runbook, the entry is all there is.
     task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
-23. **The driver is the CLI whose session is driving the pass.** A pass running
-    under Claude Code launches its drivers with `claude`, under Codex with
-    `codex`, each with the login and bypass rule 22 describes. Not the other
-    one: a driver on an account this session cannot see is one it cannot check,
-    top up, or read the state of when it stops.
-    [The approach: a headless agent CLI session]
+24. **The driver is the CLI whose session is driving the pass.** A pass running
+   under Claude Code launches its drivers with `claude`, under Codex with
+   `codex`, each with the login and bypass rule 23 describes. Not the other
+   one: a driver on an account this session cannot see is one it cannot check,
+   top up, or read the state of when it stops.
+   [The approach: a headless agent CLI session]
+
+25. **A long-lived helper is tested as a state machine, not only from a clean
+   start.** Cross its process, lock, discovery endpoint, registration and
+   version states in isolated storage. Prove missing and stale state recovers,
+   or returns the exact designed error and matching remedy. [Persistent helper
+   lifecycle recovery]
 
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
@@ -506,6 +512,46 @@ operating system. A headed desktop or `xvfb` can provide the display according
 to the cell, but both use the same isolation rule.
 
 [chrome-for-testing-downloads]: https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
+
+## Persistent helper lifecycle recovery
+
+> Complete this section whenever the release starts or changes a broker,
+> daemon, native host, proxy, worker or other long-lived helper. A clean-start
+> smoke test is only one state. The runbook must enumerate the meaningful
+> product of these axes: helper process alive or dead; lock present or absent;
+> discovery endpoint present, missing, corrupt or stale; registration present
+> or stale; installed bundle current or mismatched; first client, concurrent
+> client or reconnecting client.
+>
+> Give each applicable state its own cell. At minimum, prove all of the
+> following through the installed public entry point:
+>
+> 1. A clean first client starts the helper, publishes every required endpoint
+>    and reports ready only after an independent connection succeeds.
+> 2. A concurrent second client attaches safely or receives the designed
+>    conflict. A held lock must never become a false successful start.
+> 3. A live helper whose discovery endpoint is removed or corrupted either
+>    republishes it atomically or returns the exact designed state error. The
+>    remedy must name that state; a generic network, interop or setup remedy
+>    fails the cell.
+> 4. A dead helper with a stale lock, endpoint or registration recovers without
+>    deleting unrelated state or replaying an uncertain operation.
+> 5. An old or mismatched helper and bundle follow the declared upgrade rule.
+>    The new client must not attach to an unverified endpoint.
+> 6. The final client exit, extension disconnect and idle expiry leave the
+>    declared process and artifact state, and a later client starts cleanly.
+>
+> Fault injection belongs to a validated isolated home and application-data
+> root. Never remove, corrupt or replace an owner's real endpoint, lock,
+> registration or process. A helper may create the fault and capture process,
+> lock, endpoint, registration and hash observations. The agent still drives
+> the recovery through `vadgr-cua`, and its JSON result remains the verdict.
+>
+> Record the helper PID and start identity, lock owner, endpoint identity,
+> bundle hash, public status result, error code and remedy before and after each
+> fault. `doctor` is not the sole oracle when it probes a different helper or
+> transport. A cell passes only when the external state and the public result
+> agree.
 
 ## Setup
 
