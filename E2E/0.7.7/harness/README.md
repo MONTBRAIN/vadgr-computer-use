@@ -29,3 +29,6 @@ assign cell verdicts.
 validated root over loopback, open `?agent=one` and `?agent=two` in separate
 Chrome for Testing windows, and keep a decoy tab selected in each window. Each
 agent leases only its named inactive fixture and writes its public marker.
+`browser_oracle.py` prepares those two windows through the isolated DevTools
+port and independently records target/window identity, page value, visibility,
+focus and decoy state before and after the product operations.
