@@ -1,18 +1,18 @@
 # 0.7.7 - browser broker discovery recovery: e2e runbook
 
 > **vadgr-computer-use 0.7.7 implementation:**
-> `fix/0.7.7-browser-broker-recovery`; seal the exact product head before the
-> first live cell.
+> `fix/0.7.7-browser-broker-recovery`; sealed product and artifact head
+> `76a235c34ed46f2a9c1f09e1fcde0319974b5854`.
 > **vadgr-computer-use 0.7.7 evidence PR:**
-> resolve the single private evidence PR before the first live cell.
+> private evidence PR #161.
 
 Read this file and [`../README.md`](../README.md) completely before any live
 cell. Build the exact branch-head wheel and install it without editable mode in
 a fresh environment outside the checkout. The MCP configuration must call that
 environment's `vadgr-cua` entry point.
 
-> **Status: not run.** The runbook is complete before implementation. Product
-> head, installed identity, evidence PR and results are sealed before execution.
+> **Status: not run.** The runbook, product head and evidence PR are sealed.
+> Installed identity and results are recorded during execution.
 
 ## The rules
 
