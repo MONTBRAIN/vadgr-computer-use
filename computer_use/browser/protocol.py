@@ -102,6 +102,11 @@ class BrowserErrorCode(str, Enum):
     TARGET_DISCARDED = "target_discarded"
     TARGET_FROZEN = "target_frozen"
     TARGET_RESTRICTED = "target_restricted"
+    BROKER_START_TIMEOUT = "browser_broker_start_timeout"
+    BROKER_DISCOVERY_INVALID = "browser_broker_discovery_invalid"
+    BROKER_BUNDLE_MISMATCH = "browser_broker_bundle_mismatch"
+    BROKER_UNREACHABLE = "browser_broker_unreachable"
+    WINDOWS_INTEROP_UNAVAILABLE = "windows_interop_unavailable"
 
 
 # Codes that are transient and worth an automatic retry. Everything else is

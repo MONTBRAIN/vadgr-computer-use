@@ -652,6 +652,22 @@ class BrokerServer:
         self.browser_server = BrowserServer(bridge=self.broker.bridge, windows_copy=win_copy)
 
     @staticmethod
+    def _endpoint_matches(path: Path, endpoint: dict[str, Any]) -> bool:
+        """Return true only for this broker's complete published identity."""
+        return read_endpoint(path) == endpoint
+
+    @classmethod
+    def _ensure_endpoint_publication(
+        cls,
+        endpoint: dict[str, Any],
+        paths: tuple[Path | None, ...],
+    ) -> None:
+        """Atomically restore this lock owner's missing or damaged discovery."""
+        for path in paths:
+            if path is not None and not cls._endpoint_matches(path, endpoint):
+                _write_private(path, endpoint)
+
+    @staticmethod
     def _read_line(file) -> dict[str, Any] | None:
         line = file.readline()
         return json.loads(line) if line else None
@@ -838,10 +854,11 @@ class BrokerServer:
         windows_path = windows_broker_endpoint_path()
         try:
             self.browser_server.start()
-            _write_private(broker_endpoint_path(), endpoint)
-            if windows_path is not None and windows_path != broker_endpoint_path():
-                _write_private(windows_path, endpoint)
+            paths = tuple(dict.fromkeys((broker_endpoint_path(), windows_path)))
+            self._ensure_endpoint_publication(endpoint, paths)
             while not self._stop.is_set():
+                if sys.platform == "win32":
+                    self._ensure_endpoint_publication(endpoint, paths)
                 self.broker.reap()
                 try:
                     conn, _ = self._sock.accept()

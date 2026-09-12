@@ -1,4 +1,5 @@
 import io
+import json
 import socket
 import threading
 import time
@@ -12,6 +13,33 @@ from computer_use.browser.bridge import BridgeStatus
 from computer_use.browser.broker import LEASE_GRACE_SECONDS, BrokerServer, BrowserBroker
 from computer_use.browser.ownership import OwnershipConflict
 from computer_use.browser.protocol import SUPPORTED_OPS, BrowserError
+
+
+def test_live_broker_repairs_missing_and_corrupt_discovery(tmp_path):
+    endpoint_path = tmp_path / "broker" / "browser-broker.json"
+    broker_module.private_directory(endpoint_path.parent)
+    endpoint = {
+        "host": "127.0.0.1",
+        "port": 12345,
+        "token": "test-token",
+        "pid": 41,
+        "platform": "win32",
+        "epoch": "test-epoch",
+        "process_started_ns": "123",
+        "bundle_hash": "a" * 64,
+    }
+
+    BrokerServer._ensure_endpoint_publication(endpoint, (endpoint_path,))
+    assert broker_module.read_endpoint(endpoint_path) == endpoint
+
+    endpoint_path.unlink()
+    BrokerServer._ensure_endpoint_publication(endpoint, (endpoint_path,))
+    assert broker_module.read_endpoint(endpoint_path) == endpoint
+
+    endpoint_path.write_text("not-json", encoding="utf-8")
+    BrokerServer._ensure_endpoint_publication(endpoint, (endpoint_path,))
+    assert broker_module.read_endpoint(endpoint_path) == endpoint
+    assert not list(endpoint_path.parent.glob(".*.tmp"))
 
 
 def test_heartbeat_eof_reconnects_before_the_next_operation(monkeypatch):
@@ -35,7 +63,8 @@ def test_heartbeat_eof_reconnects_before_the_next_operation(monkeypatch):
     original_read = client._read
     monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
     monkeypatch.setattr(
-        client, "_read",
+        client,
+        "_read",
         lambda file: original_read(file) if file is stale else {"ok": True, "result": 7},
     )
 
@@ -438,7 +467,9 @@ def test_mutation_target_envelope_is_caller_specific(action):
                 result = {"tab_id": params["tab_id"]}
                 if sub == "close":
                     for window in self.windows:
-                        window["tabs"] = [tab for tab in window["tabs"] if tab["tab_id"] != params["tab_id"]]
+                        window["tabs"] = [
+                            tab for tab in window["tabs"] if tab["tab_id"] != params["tab_id"]
+                        ]
                     result["closed"] = True
             else:
                 result = super().send(op, **params)
@@ -455,7 +486,9 @@ def test_mutation_target_envelope_is_caller_specific(action):
     other = broker.request(two, "use_target", {"mode": "owned"})
     second = broker.request(one, "tabs", {"op": "open", "window_id": first["window_id"]})
     extension.foreign = {
-        "window_id": other["window_id"], "tab_id": other["tab_id"], "url": "https://foreign.test",
+        "window_id": other["window_id"],
+        "tab_id": other["tab_id"],
+        "url": "https://foreign.test",
     }
     peer_before = (two.window_id, two.tab_id, two.revision)
     actions = {
@@ -482,9 +515,12 @@ def test_client_result_preserves_only_matching_target_url():
     state = SimpleNamespace(window_id=1, tab_id=10)
     source = {"target": {"window_id": 1, "tab_id": 10, "url": "https://one.test"}}
     assert BrowserBroker._client_result(state, source) == source
-    assert "url" not in BrowserBroker._client_result(
-        state, {"target": {"window_id": 1, "tab_id": 11, "url": "https://other.test"}}
-    )["target"]
+    assert (
+        "url"
+        not in BrowserBroker._client_result(
+            state, {"target": {"window_id": 1, "tab_id": 11, "url": "https://other.test"}}
+        )["target"]
+    )
     without_target = {"closed": True}
     assert BrowserBroker._client_result(state, without_target) is without_target
 
@@ -765,18 +801,31 @@ def test_fresh_client_can_still_create_default_workspace_for_content():
     assert len(extension.windows) == 2
 
 
-@pytest.mark.parametrize("reason", [
-    "extension_missing", "extension_disabled", "not_set_up", "waking", None,
-])
-@pytest.mark.parametrize("op,params", [
-    (op, {}) for op in SUPPORTED_OPS
-    if op not in {"status", "profiles", "tabs", "windows", "use_target"}
-] + [("tabs", {"op": "open"})])
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "extension_missing",
+        "extension_disabled",
+        "not_set_up",
+        "waking",
+        None,
+    ],
+)
+@pytest.mark.parametrize(
+    "op,params",
+    [
+        (op, {})
+        for op in SUPPORTED_OPS
+        if op not in {"status", "profiles", "tabs", "windows", "use_target"}
+    ]
+    + [("tabs", {"op": "open"})],
+)
 def test_rejected_reconnect_precedes_profile_lookup(monkeypatch, reason, op, params):
     """Each case starts after rejected credentials, with no connected profiles."""
     extension = ExtensionBridge()
     monkeypatch.setattr(
-        extension, "status",
+        extension,
+        "status",
         lambda: BridgeStatus(False, [], reason != "not_set_up", reason, []),
     )
     calls = []
@@ -788,10 +837,14 @@ def test_rejected_reconnect_precedes_profile_lookup(monkeypatch, reason, op, par
 
     monkeypatch.setattr(extension, "send", send)
     clock = SimpleNamespace(now=0.0)
-    monkeypatch.setattr(broker_module, "time", SimpleNamespace(
-        monotonic=lambda: clock.now,
-        sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
-    ))
+    monkeypatch.setattr(
+        broker_module,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock.now,
+            sleep=lambda seconds: setattr(clock, "now", clock.now + seconds),
+        ),
+    )
     broker = BrowserBroker(extension, recovered_epoch=True)
     client = broker.connect("old-client", "old-secret")
 
@@ -806,14 +859,17 @@ def test_rejected_reconnect_precedes_profile_lookup(monkeypatch, reason, op, par
     assert client.profile_id is client.window_id is client.tab_id is None
 
 
-@pytest.mark.parametrize("op,params", [
-    ("windows", {"op": "claim", "window_id": 1}),
-    ("tabs", {"op": "claim", "tab_id": 10}),
-    ("windows", {"op": "open"}),
-    ("use_target", {"mode": "owned"}),
-    ("use_target", {"mode": "owned", "window_id": 1}),
-    ("use_target", {"mode": "attach", "tab_id": 10, "profile_id": "profile-one"}),
-])
+@pytest.mark.parametrize(
+    "op,params",
+    [
+        ("windows", {"op": "claim", "window_id": 1}),
+        ("tabs", {"op": "claim", "tab_id": 10}),
+        ("windows", {"op": "open"}),
+        ("use_target", {"mode": "owned"}),
+        ("use_target", {"mode": "owned", "window_id": 1}),
+        ("use_target", {"mode": "attach", "tab_id": 10, "profile_id": "profile-one"}),
+    ],
+)
 def test_rejected_reconnect_allows_explicit_workspace_selection(op, params):
     """A replacement broker retains the browser but rejects the old identity."""
     broker = BrowserBroker(ExtensionBridge(), recovered_epoch=True)
@@ -955,10 +1011,68 @@ def test_wsl_missing_interop_returns_the_named_remedy(monkeypatch):
     with pytest.raises(BrowserError) as captured:
         client._connect_through_windows_proxy()
 
-    assert captured.value.code.value == "not_connected"
+    assert captured.value.code.value == "windows_interop_unavailable"
     assert captured.value.remediation == (
         "enable Windows interop and retry; cua never changes WSL networking"
     )
+
+
+@pytest.mark.parametrize(
+    ("reported_code", "expected_code"),
+    [
+        ("browser_broker_discovery_invalid", "browser_broker_discovery_invalid"),
+        ("browser_broker_unreachable", "browser_broker_unreachable"),
+    ],
+)
+def test_wsl_proxy_preserves_the_broker_diagnosis(monkeypatch, reported_code, expected_code):
+    client = broker_client.BrokerClient(connect_timeout=0.02)
+    monkeypatch.setattr(
+        "computer_use.browser.windows_broker.expected_bundle_hash", lambda: "a" * 64
+    )
+    monkeypatch.setattr(client, "_start_broker", lambda: None)
+
+    class FailedProxy:
+        def poll(self):
+            return None
+
+        def terminate(self):
+            return None
+
+    class FailedPipe:
+        def __init__(self, reply):
+            self.reply = (json.dumps(reply) + "\n").encode()
+
+        def write(self, value):
+            return len(value)
+
+        def flush(self):
+            return None
+
+        def readline(self):
+            reply, self.reply = self.reply, b""
+            return reply
+
+        def close(self):
+            return None
+
+    def failed_transport(_endpoint):
+        reply = {
+            "ok": False,
+            "error": {
+                "code": reported_code,
+                "message": "specific broker failure",
+                "remediation": "specific broker remedy",
+            },
+        }
+        return FailedProxy(), FailedPipe(reply)
+
+    monkeypatch.setattr(client, "_open_transport", failed_transport)
+    with pytest.raises(BrowserError) as captured:
+        client._connect_through_windows_proxy()
+
+    assert captured.value.code.value == expected_code
+    assert captured.value.remediation == "specific broker remedy"
+    assert "interop" not in captured.value.remediation
 
 
 def test_broker_socket_transport_never_maps_loopback_to_the_wsl_gateway():

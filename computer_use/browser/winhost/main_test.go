@@ -68,3 +68,22 @@ func TestBrokerProxyInjectsWindowsTokenAndForwardsLines(t *testing.T) {
 		t.Fatalf("unexpected proxy output: %q", output.String())
 	}
 }
+
+func TestBrokerProxyReportsMissingDiscovery(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	var output bytes.Buffer
+	if code := brokerProxy(bytes.NewBuffer(nil), &output); code == 0 {
+		t.Fatal("brokerProxy accepted missing discovery")
+	}
+	var reply map[string]any
+	if err := json.Unmarshal(output.Bytes(), &reply); err != nil {
+		t.Fatalf("invalid broker error: %v", err)
+	}
+	errorBody := reply["error"].(map[string]any)
+	if errorBody["code"] != "browser_broker_discovery_invalid" {
+		t.Fatalf("unexpected code: %#v", errorBody["code"])
+	}
+	if errorBody["remediation"] == "enable Windows interop" {
+		t.Fatal("broker discovery failure was reported as interop")
+	}
+}

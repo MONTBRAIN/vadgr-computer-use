@@ -17,7 +17,7 @@ from pathlib import Path
 
 EXPECTED_PYTHON = "3.12.14"
 EXPECTED_PYINSTALLER = "6.22.2"
-VERSION = "0.7.6"
+VERSION = "0.7.7"
 ARCHIVE_NAME = "vadgr-cua-browser-broker-win-x64.zip"
 MANIFEST_NAME = "vadgr-cua-browser-broker-win-x64.manifest.json"
 SBOM_NAME = "vadgr-cua-browser-broker-win-x64.spdx.json"
@@ -131,10 +131,18 @@ def build(source_commit: str, output: Path) -> None:
         root = Path(temporary)
         dist = root / "dist"
         env = dict(os.environ)
-        env.update({"PYTHONHASHSEED": "0", "SOURCE_DATE_EPOCH": "1788220800"})
+        env.update(
+            {
+                "PYTHONHASHSEED": "0",
+                "PYTHONNOUSERSITE": "1",
+                "PYINSTALLER_CONFIG_DIR": str(root / "pyinstaller-config"),
+                "SOURCE_DATE_EPOCH": "1788220800",
+            }
+        )
         subprocess.run(
             [
                 sys.executable,
+                "-I",
                 "-m",
                 "PyInstaller",
                 "--noconfirm",
