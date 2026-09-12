@@ -35,10 +35,12 @@ def main() -> int:
     types = collections.Counter(str(event.get("type", "unknown")) for event in events)
     names = sorted(
         {
-            name
+            str(item.get("tool"))
             for event in events
-            for name in strings(event, "name")
-            if name.startswith("mcp__cua__")
+            if isinstance((item := event.get("item")), dict)
+            and item.get("type") == "mcp_tool_call"
+            and item.get("server") == "cua"
+            and isinstance(item.get("tool"), str)
         }
     )
     codes = sorted(
@@ -46,7 +48,7 @@ def main() -> int:
             code
             for event in events
             for code in strings(event, "code")
-            if code.startswith(("browser_", "target_", "window_"))
+            if code.startswith(("browser_", "extension_", "target_", "window_"))
         }
     )
     print(
