@@ -7,8 +7,8 @@
     ]
   },
   "dataLicense": "CC0-1.0",
-  "documentNamespace": "https://github.com/MONTBRAIN/vadgr-computer-use/sbom/0.7.6/fd2c57b76f57d06d3df3d7c964fa544b798e8f32ec460470bf326a46140696df",
-  "name": "vadgr-cua-browser-broker-0.7.6-windows-x64",
+  "documentNamespace": "https://github.com/MONTBRAIN/vadgr-computer-use/sbom/0.7.7/1745cc86a52413d4802ffda0db07266aa8890e7be447e7b475bbbd4e60ee260c",
+  "name": "vadgr-cua-browser-broker-0.7.7-windows-x64",
   "packages": [
     {
       "SPDXID": "SPDXRef-Package-vadgr-cua",
@@ -17,7 +17,7 @@
       "licenseConcluded": "Apache-2.0",
       "licenseDeclared": "Apache-2.0",
       "name": "vadgr-computer-use",
-      "versionInfo": "0.7.6"
+      "versionInfo": "0.7.7"
     },
     {
       "SPDXID": "SPDXRef-Package-CPython",
