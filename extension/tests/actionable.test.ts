@@ -5,7 +5,14 @@
 // a hidden non-authoritative mirror, e.g. Gmail's compose textarea).
 
 import { describe, it, expect, vi } from "vitest";
-import { isVisible, isDisabled, assertActionable, receivesEvents } from "../src/content/actionable";
+import {
+  isVisible,
+  isDisabled,
+  assertActionable,
+  receivesEvents,
+  composedContains,
+  deepElementFromPoint,
+} from "../src/content/actionable";
 
 describe("isVisible", () => {
   it("true for a plain attached element", () => {
@@ -97,12 +104,66 @@ describe("receivesEvents", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps hit-testing a throttled extension document with a zero root box", () => {
+    document.body.innerHTML = `<input id="a"><div id="cover"></div>`;
+    const el = document.querySelector("#a") as HTMLElement;
+    const cover = document.querySelector("#cover") as HTMLElement;
+    vi.stubGlobal("chrome", { runtime: { id: "test-extension" } });
+    vi.spyOn(document.documentElement, "getBoundingClientRect").mockReturnValue(
+      { height: 0, width: 0 } as DOMRect,
+    );
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+      { width: 100, height: 20, left: 10, top: 10 } as DOMRect,
+    );
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(cover);
+    expect(receivesEvents(el)).toBe(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("rejects a positive-z overlay when a hidden target returns no hit", () => {
+    document.body.innerHTML = `<input id="a"><div id="cover" style="position:absolute;z-index:20"></div>`;
+    const el = document.querySelector("#a") as HTMLElement;
+    const cover = document.querySelector("#cover") as HTMLElement;
+    vi.stubGlobal("chrome", { runtime: { id: "test-extension" } });
+    vi.spyOn(document.documentElement, "getBoundingClientRect").mockReturnValue(
+      { height: 0, width: 0 } as DOMRect,
+    );
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue(
+      { width: 100, height: 20, left: 10, right: 110, top: 10, bottom: 30 } as DOMRect,
+    );
+    vi.spyOn(cover, "getBoundingClientRect").mockReturnValue(
+      { width: 120, height: 40, left: 0, right: 120, top: 0, bottom: 40 } as DOMRect,
+    );
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
+    expect(receivesEvents(el)).toBe(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("true when the hit-test can't resolve (null) - occluded/throttled owned window, not a DOM overlay", () => {
     document.body.innerHTML = `<input id="a">`;
     const el = document.querySelector("#a") as HTMLElement;
     liveLayout(el);
     vi.spyOn(document, "elementFromPoint").mockReturnValue(null);
     expect(receivesEvents(el)).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it("walks nested open shadow roots and composed containment", () => {
+    document.body.innerHTML = `<div id="host"></div>`;
+    const host = document.querySelector("#host") as HTMLElement;
+    const first = host.attachShadow({ mode: "open" });
+    const nestedHost = document.createElement("div");
+    first.appendChild(nestedHost);
+    const second = nestedHost.attachShadow({ mode: "open" });
+    const input = document.createElement("input");
+    second.appendChild(input);
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(host);
+    Object.defineProperty(first, "elementFromPoint", { value: () => nestedHost });
+    Object.defineProperty(second, "elementFromPoint", { value: () => input });
+    expect(deepElementFromPoint(document, 20, 20)).toBe(input);
+    expect(composedContains(host, input)).toBe(true);
     vi.restoreAllMocks();
   });
 });

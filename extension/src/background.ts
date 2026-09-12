@@ -17,7 +17,7 @@
 // The pure router + op handlers are unit-tested (router.test / ops.test); the
 // connect wiring is unit-tested in background.test.ts with a chrome.* stub.
 
-import { buildRouter, sharedResolver } from "./ops";
+import { abortAllHumanTypingStreams, buildRouter, sharedResolver } from "./ops";
 import {
   PROTOCOL_VERSION,
   OpMessage,
@@ -27,11 +27,14 @@ import { ReconnectController } from "./reconnect";
 import { Lifecycle } from "./target/lifecycle";
 import { ensureProfileId, buildProfileContext } from "./target/profile";
 import type { WindowsEnumApi } from "./target/enumeration";
+import { okResult } from "./protocol";
+import { cancelTyping } from "./typing-cancellation";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.5";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.6";
 
 let port: chrome.runtime.Port | null = null;
+let helloPort: chrome.runtime.Port | null = null;
 const router = buildRouter();
 
 // Auto-reconnect: MV3 service workers idle-terminate and the native host can
@@ -64,14 +67,19 @@ export function connect(): void {
     return;
   }
   port = p;
-  p.onMessage.addListener(onMessage);
+  helloPort = null;
+  p.onMessage.addListener((msg) => {
+    void onMessage(p, msg);
+  });
   p.onDisconnect.addListener(() => {
-    port = null;
+    if (port === p) port = null;
+    if (helloPort === p) helloPort = null;
+    abortAllHumanTypingStreams();
     // Schedule a backed-off reconnect so the session self-heals.
     reconnect.onDisconnect();
   });
-  // The port is connected; reset the backoff so the next drop starts at base.
-  reconnect.onConnected();
+  // A returned Port is only a candidate. The native host can fail before it
+  // reaches the broker, so the broker hello below is what confirms success.
   // cua sends its hello first; we reply with ours. Send ours proactively too,
   // so a cua that listens-first still negotiates. The hello carries this
   // profile's stable id + recognition context (0.6.1) so cua can tell profiles
@@ -105,14 +113,23 @@ async function sendHello(p: chrome.runtime.Port): Promise<void> {
   }
   // The port may have dropped while we awaited; guard before posting.
   if (port !== p) return;
-  p.postMessage(serverHello(EXT_VERSION, detectBrowser(), profileId, profile));
+  try {
+    p.postMessage(serverHello(EXT_VERSION, detectBrowser(), profileId, profile));
+  } catch {
+    if (port === p) port = null;
+    if (helloPort === p) helloPort = null;
+    reconnect.onDisconnect();
+  }
 }
 
-async function onMessage(msg: any): Promise<void> {
-  if (!port) return;
+export async function onMessage(source: chrome.runtime.Port, msg: any): Promise<void> {
   if (msg?.type === "hello") {
+    if (port === source) {
+      helloPort = source;
+      reconnect.onConnected();
+    }
     if (msg.proto !== PROTOCOL_VERSION) {
-      port.postMessage({
+      source.postMessage({
         type: "result",
         id: msg.id ?? 0,
         ok: false,
@@ -125,8 +142,17 @@ async function onMessage(msg: any): Promise<void> {
     return;
   }
   if (msg?.type === "op") {
-    const result = await router.handle(msg as OpMessage);
-    port.postMessage(result);
+    if (msg.op === "_cancel") {
+      cancelTyping(Number(msg.params?.request_id));
+      source.postMessage(okResult(msg.id, { cancelled: true }));
+      return;
+    }
+    const request = msg as OpMessage;
+    const result = await router.handle({
+      ...request,
+      params: { ...(request.params ?? {}), _request_id: request.id },
+    });
+    source.postMessage(result);
   }
 }
 
@@ -197,7 +223,8 @@ chrome.alarms?.onAlarm?.addListener((alarm) => {
 chrome.runtime.onMessage?.addListener((msg) => {
   if (msg?.type === "keepalive") {
     void ensureOffscreen();
-    connect();
+    if (port === null) connect();
+    else void sendHello(port);
   }
 });
 

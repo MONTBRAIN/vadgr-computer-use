@@ -38,7 +38,32 @@ hash and PR head. Never replace the entry point with `python -m`, a product
 import or a private function. A helper can prepare state, capture streams and
 parse evidence. It cannot drive the goal or replace the real agent session.
 
+## Isolate every installed startup
+
+Before starting an installed product, including a clean-install smoke check,
+set its child environment's home, state and native-registration paths to the
+validated isolated roots. An isolated virtual environment or working directory
+alone does not isolate startup side effects. Apply the host's relevant home
+and application-data variables explicitly, and verify where its launcher will
+publish registrations before invoking it. Keep the subscription driver's normal
+login environment separate from the product child's isolated environment.
+
+Record metadata and hashes of normal host registrations and launcher wrappers
+before and after startup, without copying their contents or credentials into
+evidence. If a platform cannot redirect a registration, use only its explicitly
+approved scoped setup and restoration procedure. Stop on an unexpected change.
+Never remove or trash a runtime still referenced by an owner launcher, even if
+that runtime resides under an earlier test root. Resolve that dependency before
+cleanup and preserve the owner's processes.
+
 ## Where the JSON is
+
+The CUA-only subscription-driver rule in `../AGENTS.md` and `../CLAUDE.md`
+applies to every runbook here. Until the Vadgr-native harness is ready, use the
+existing subscription login with `codex --yolo exec --json` or
+`claude --dangerously-skip-permissions`. Do not use provider API keys for the
+agent driver or stop a subscription run at an API-price-equivalent budget.
+Real account limits and all safety, evidence and cleanup requirements remain.
 
 1. **The captured run stream (preferred).** Run the agent CLI headless and tee
    its stream to a file; the `claude -p` form (translate the flags for the CLI

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CUA 0.7.6 local fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 2rem; max-width: 64rem; }
+    main { display: grid; gap: 1rem; }
+    section { border: 1px solid #999; border-radius: .6rem; padding: 1rem; position: relative; }
+    input, textarea, button { font: inherit; padding: .5rem; margin: .25rem; }
+    #hover-reveal { display: none; }
+    #hover-target:hover #hover-reveal { display: inline; }
+    #report { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .overlay { position: absolute; inset: .5rem; z-index: 20; background: rgb(30 30 30 / 70%); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CUA 0.7.6 local fixture</h1>
+    <section id="plain-section">
+      <form id="plain-form"><label>Instrumented field <input id="plain" autocomplete="off"></label></form>
+      <label>Instrumented multiline field <textarea id="multiline" autocomplete="off"></textarea></label>
+      <output id="counter">0</output>
+      <output id="validation">empty</output>
+      <output id="typeahead">hidden</output>
+      <button id="plain-button" type="button">Fixture button</button>
+      <div id="hover-target" tabindex="0">Hover fixture <span id="hover-reveal">revealed</span></div>
+      <label>Upload fixture <input id="upload" type="file"></label>
+      <label>Select fixture <select id="choice"><option value="one">One</option><option value="two">Two</option></select></label>
+      <button id="dialog-button" type="button">Dialog fixture</button>
+    </section>
+    <section id="unicode-section">
+      <label>Unicode field <input id="unicode" autocomplete="off"></label>
+    </section>
+    <section id="mismatch-section">
+      <label>Mismatch field <input id="mismatch" autocomplete="off"></label>
+      <button id="arm-mismatch" type="button">Arm one mismatch</button>
+    </section>
+    <section id="shadow-section"><div id="shadow-host"></div></section>
+    <section>
+      <button id="cover-plain" type="button">Cover plain target</button>
+      <button id="cover-shadow" type="button">Cover nested shadow target</button>
+      <button id="remove-overlays" type="button">Remove overlays</button>
+      <button id="reset" type="button">Reset fixture</button>
+      <button id="refresh-report" type="button">Refresh report</button>
+      <button id="open-popup" type="button">Open popup</button>
+    </section>
+    <pre id="report" aria-live="polite">{"ready":true}</pre>
+  </main>
+  <script>
+    const eventKinds = ["keydown", "beforeinput", "input", "keyup", "change"];
+    const records = new Map();
+    const counters = { clicks: 0, debounce: 0, mismatch: 0, submits: 0 };
+    let mismatchArmed = false;
+
+    function track(element, name) {
+      const events = [];
+      records.set(name, { element, events });
+      for (const kind of eventKinds) {
+        element.addEventListener(kind, (event) => events.push({
+          kind,
+          at: performance.now(),
+          trusted: event.isTrusted,
+        }));
+      }
+    }
+
+    const plain = document.querySelector("#plain");
+    const multiline = document.querySelector("#multiline");
+    const unicode = document.querySelector("#unicode");
+    const mismatch = document.querySelector("#mismatch");
+    track(plain, "plain");
+    track(multiline, "multiline");
+    track(unicode, "unicode");
+    track(mismatch, "mismatch");
+    let debounceTimer;
+    plain.addEventListener("input", () => {
+      document.querySelector("#counter").textContent = String(plain.value.length);
+      document.querySelector("#validation").textContent = plain.value.length ? "valid" : "empty";
+      document.querySelector("#typeahead").textContent = plain.value.length >= 2 ? "shown" : "hidden";
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { counters.debounce += 1; }, 120);
+    });
+    mismatch.addEventListener("input", () => {
+      if (!mismatchArmed) return;
+      mismatchArmed = false;
+      mismatch.value = mismatch.value.slice(0, Math.max(0, mismatch.value.length - 1));
+      counters.mismatch += 1;
+    });
+    document.querySelector("#plain-button").addEventListener("click", () => { counters.clicks += 1; });
+    document.querySelector("#dialog-button").addEventListener("click", () => { window.confirm("fixture dialog"); });
+    document.querySelector("#plain-form").addEventListener("submit", (event) => { event.preventDefault(); counters.submits += 1; });
+    document.querySelector("#arm-mismatch").addEventListener("click", () => { mismatchArmed = true; });
+
+    const shadow = document.querySelector("#shadow-host").attachShadow({ mode: "open" });
+    shadow.innerHTML = `<style>:host{display:block;padding:1rem;border:1px dashed #777}.slot{position:relative}</style><div class="slot"><button id="shadow-button">Shadow button</button><div id="nested-host"></div></div>`;
+    const nested = shadow.querySelector("#nested-host").attachShadow({ mode: "open" });
+    nested.innerHTML = `<label>Nested shadow field <input id="nested-input" autocomplete="off"></label>`;
+    const nestedInput = nested.querySelector("#nested-input");
+    track(nestedInput, "nested");
+    shadow.querySelector("#shadow-button").addEventListener("click", () => { counters.clicks += 1; });
+
+    function overlay(parent) {
+      const item = document.createElement("div");
+      item.className = "overlay";
+      // The fixture also inserts overlays inside a shadow root, where the
+      // document stylesheet cannot apply. Keep the geometry on the node so
+      // both light-DOM and shadow-DOM coverage exercise the same obstruction.
+      item.style.cssText = "position:absolute;inset:.5rem;z-index:20;background:rgb(30 30 30 / 70%)";
+      item.setAttribute("data-fixture-overlay", "true");
+      parent.append(item);
+    }
+    document.querySelector("#cover-plain").addEventListener("click", () => overlay(document.querySelector("#plain-section")));
+    document.querySelector("#cover-shadow").addEventListener("click", () => overlay(shadow.querySelector(".slot")));
+    document.querySelector("#remove-overlays").addEventListener("click", () => {
+      document.querySelectorAll("[data-fixture-overlay]").forEach((item) => item.remove());
+      shadow.querySelectorAll("[data-fixture-overlay]").forEach((item) => item.remove());
+    });
+    document.querySelector("#open-popup").addEventListener("click", () => window.open(location.href, "_blank", "popup,width=520,height=500"));
+
+    async function digest(value) {
+      const bytes = new TextEncoder().encode(value);
+      const hash = await crypto.subtle.digest("SHA-256", bytes);
+      return [...new Uint8Array(hash)].map((part) => part.toString(16).padStart(2, "0")).join("");
+    }
+    async function report() {
+      const fields = {};
+      for (const [name, record] of records) {
+        const intervals = record.events.slice(1).map((event, index) => Math.round(event.at - record.events[index].at));
+        const keydowns = record.events.filter((event) => event.kind === "keydown");
+        const keydownIntervals = keydowns.slice(1).map((event, index) => Math.round(event.at - keydowns[index].at));
+        fields[name] = {
+          length: record.element.value.length,
+          sha256: await digest(record.element.value),
+          event_kinds: Object.fromEntries(eventKinds.map((kind) => [kind, record.events.filter((event) => event.kind === kind).length])),
+          trust_flags: Object.fromEntries(eventKinds.map((kind) => [kind, [...new Set(record.events.filter((event) => event.kind === kind).map((event) => event.trusted))]])),
+          intervals_ms: intervals,
+          keydown_intervals_ms: keydownIntervals,
+        };
+      }
+      const state = { ready: true, counters: { ...counters }, fields };
+      document.querySelector("#report").textContent = JSON.stringify(state);
+      return state;
+    }
+    function reset() {
+      for (const record of records.values()) { record.element.value = ""; record.events.length = 0; }
+      counters.clicks = counters.debounce = counters.mismatch = counters.submits = 0;
+      mismatchArmed = false;
+      document.querySelector("#counter").textContent = "0";
+      document.querySelector("#validation").textContent = "empty";
+      document.querySelector("#typeahead").textContent = "hidden";
+      document.querySelectorAll("[data-fixture-overlay]").forEach((item) => item.remove());
+      shadow.querySelectorAll("[data-fixture-overlay]").forEach((item) => item.remove());
+      return report();
+    }
+    document.querySelector("#refresh-report").addEventListener("click", report);
+    document.querySelector("#reset").addEventListener("click", reset);
+    window.cuaE2E = { report, reset, records, counters };
+  </script>
+</body>
+</html>

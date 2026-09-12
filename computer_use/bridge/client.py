@@ -32,13 +32,16 @@ def _is_wsl2_mirrored() -> bool:
             # Try via powershell
             result = subprocess.run(
                 ["powershell.exe", "-NoProfile", "-Command", "$env:USERPROFILE"],
-                capture_output=True, text=True, timeout=3,
+                capture_output=True,
+                text=True,
+                timeout=3,
             )
             if result.returncode == 0:
                 win_profile = result.stdout.strip()
                 wsl_path = subprocess.run(
                     ["wslpath", "-u", win_profile],
-                    capture_output=True, text=True,
+                    capture_output=True,
+                    text=True,
                 ).stdout.strip()
                 wslconfig = Path(wsl_path) / ".wslconfig"
 
@@ -122,14 +125,12 @@ class BridgeClient:
 
     def call(self, method: str, params: dict | None = None, timeout: float = 10.0) -> dict:
         with self._lock:
-            return self._call_locked(method, params, timeout, retry=True)
+            request = make_request(method, params)
+            return self._call_locked(request, timeout, retry=True)
 
-    def _call_locked(
-        self, method: str, params: dict | None, timeout: float, retry: bool
-    ) -> dict:
+    def _call_locked(self, request: dict, timeout: float, retry: bool) -> dict:
         try:
             self._ensure_connected(timeout)
-            request = make_request(method, params)
             self._send(encode_message(request))
             response = self._receive(timeout)
             if not response.get("ok", False):
@@ -139,7 +140,9 @@ class BridgeClient:
             self._close_socket()
             if retry:
                 logger.debug("Connection lost, retrying: %s", e)
-                return self._call_locked(method, params, timeout, retry=False)
+                # Reuse the request id. The daemon's bounded response cache
+                # makes this an idempotent response retry, not a second action.
+                return self._call_locked(request, timeout, retry=False)
             raise BridgeError(f"Bridge connection failed: {e}") from e
 
     def _ensure_connected(self, timeout: float) -> None:

@@ -8,6 +8,8 @@
 
 """BrowserBridge contract: FakeBridge, status probe, session routing."""
 
+import json
+
 import pytest
 
 from computer_use.browser import bridge as B
@@ -38,9 +40,7 @@ class TestFakeBridge:
         assert ei.value.code == BrowserErrorCode.NOT_CONNECTED
 
     def test_callable_response_gets_params(self):
-        fake = B.FakeBridge(
-            responses={"read_text": lambda **p: p.get("selector", "BODY")}
-        )
+        fake = B.FakeBridge(responses={"read_text": lambda **p: p.get("selector", "BODY")})
         assert fake.send("read_text", selector="#h") == "#h"
 
 
@@ -48,9 +48,7 @@ class TestBridgeStatus:
     def test_status_shape(self):
         fake = B.FakeBridge(
             connected=True,
-            status=B.BridgeStatus(
-                connected=True, browsers=["chrome"], setup=True, reason=None
-            ),
+            status=B.BridgeStatus(connected=True, browsers=["chrome"], setup=True, reason=None),
         )
         st = fake.status()
         assert st.connected is True
@@ -59,11 +57,13 @@ class TestBridgeStatus:
         assert st.reason is None
 
     def test_status_as_dict(self):
-        st = B.BridgeStatus(connected=False, browsers=[], setup=False,
-                            reason="not_set_up")
+        st = B.BridgeStatus(connected=False, browsers=[], setup=False, reason="not_set_up")
         assert st.as_dict() == {
-            "connected": False, "browsers": [], "setup": False,
-            "reason": "not_set_up", "profiles": [],
+            "connected": False,
+            "browsers": [],
+            "setup": False,
+            "reason": "not_set_up",
+            "profiles": [],
         }
 
 
@@ -73,8 +73,10 @@ class TestManifestProbe:
         chrome_dir = tmp_path / "google-chrome" / "NativeMessagingHosts"
         chrome_dir.mkdir(parents=True)
         (chrome_dir / "com.vadgr.cua.json").write_text("{}")
-        paths = {"chrome": chrome_dir / "com.vadgr.cua.json",
-                 "edge": tmp_path / "edge" / "com.vadgr.cua.json"}
+        paths = {
+            "chrome": chrome_dir / "com.vadgr.cua.json",
+            "edge": tmp_path / "edge" / "com.vadgr.cua.json",
+        }
         found = B.probe_manifests(paths)
         assert "chrome" in found
         assert "edge" not in found
@@ -87,9 +89,103 @@ class TestManifestProbe:
         # The Linux table from browser.md must be representable.
         paths = B.manifest_paths(platform="linux")
         assert "chrome" in paths
-        assert str(paths["chrome"]).endswith(
+        assert paths["chrome"].as_posix().endswith(
             "google-chrome/NativeMessagingHosts/com.vadgr.cua.json"
         )
+
+    def test_wsl_is_detected_without_an_explicit_platform(self, tmp_path, monkeypatch):
+        from computer_use.core.types import Platform
+
+        monkeypatch.setattr("computer_use.platform.detect.detect_platform", lambda: Platform.WSL2)
+        monkeypatch.setattr(B, "windows_user_home_mnt", lambda _user=None: tmp_path)
+
+        assert B._browser_platform() == "wsl"
+        paths = B.manifest_paths()
+        assert paths["chrome"] == (
+            tmp_path
+            / "AppData"
+            / "Local"
+            / "Google"
+            / "Chrome"
+            / "User Data"
+            / "NativeMessagingHosts"
+            / "com.vadgr.cua.json"
+        )
+
+
+class TestExtensionStateProbe:
+    @pytest.mark.parametrize("browser_directory", ["Google/Chrome", "Microsoft/Edge"])
+    def test_windows_redirected_appdata_controls_disabled_diagnosis(
+        self, tmp_path, monkeypatch, browser_directory,
+    ):
+        from computer_use.setup.extension_setup import EXTENSION_ID
+
+        home = tmp_path / "home"
+        redirected = tmp_path / "redirected local data"
+        for local, entry in ((home / "AppData/Local", {}),
+                             (redirected, {"disable_reasons": [1]})):
+            profile = local / browser_directory / "User Data/Default"
+            profile.mkdir(parents=True)
+            (profile / "Secure Preferences").write_text(
+                json.dumps({"extensions": {"settings": {EXTENSION_ID: entry}}}),
+                encoding="utf-8",
+            )
+        monkeypatch.setattr(B.Path, "home", lambda: home)
+        monkeypatch.setenv("LOCALAPPDATA", str(redirected))
+        monkeypatch.setattr(B, "_browser_platform", lambda platform=None: "win32")
+        bridge = B.NativeMessagingBridge()
+        monkeypatch.setattr(bridge, "_probe_setup", lambda: ["chrome"])
+        assert bridge.status().reason == "extension_disabled"
+
+    @pytest.mark.parametrize("local_override", [None, ""])
+    def test_windows_profile_root_falls_back_when_appdata_is_unset(
+        self, tmp_path, monkeypatch, local_override,
+    ):
+        monkeypatch.setattr(B.Path, "home", lambda: tmp_path)
+        if local_override is None:
+            monkeypatch.delenv("LOCALAPPDATA", raising=False)
+        else:
+            monkeypatch.setenv("LOCALAPPDATA", local_override)
+        assert B._browser_profile_roots("win32") == [
+            tmp_path / "AppData/Local/Google/Chrome/User Data",
+            tmp_path / "AppData/Local/Microsoft/Edge/User Data",
+        ]
+
+    @pytest.mark.parametrize("preference_name", ["Secure Preferences", "Preferences"])
+    @pytest.mark.parametrize(
+        ("entry", "expected"),
+        [
+            pytest.param({"disable_reasons": []}, "enabled", id="current-enabled"),
+            pytest.param({}, "enabled", id="current-no-disable-reasons"),
+            pytest.param({"disable_reasons": [1]}, "disabled", id="current-disabled"),
+            pytest.param(
+                {"state": 1, "disable_reasons": 0}, "enabled", id="legacy-enabled"
+            ),
+            pytest.param(
+                {"state": 0, "disable_reasons": 1}, "disabled", id="legacy-disabled"
+            ),
+            pytest.param(
+                {"state": 0, "disable_reasons": 0},
+                "disabled",
+                id="legacy-disabled-state",
+            ),
+            pytest.param(None, "missing", id="missing-entry"),
+        ],
+    )
+    def test_reads_extension_preferences(
+        self, tmp_path, monkeypatch, preference_name, entry, expected
+    ):
+        from computer_use.setup.extension_setup import EXTENSION_ID
+
+        profile = tmp_path / "Default"
+        profile.mkdir()
+        settings = {} if entry is None else {EXTENSION_ID: entry}
+        (profile / preference_name).write_text(
+            json.dumps({"extensions": {"settings": settings}}), encoding="utf-8"
+        )
+        monkeypatch.setattr(B, "_browser_profile_roots", lambda _platform: [tmp_path])
+
+        assert B.probe_extension_state() == expected
 
 
 class TestNativeMessagingBridgeStatus:
@@ -102,18 +198,27 @@ class TestNativeMessagingBridgeStatus:
         assert st.setup is False
         assert st.reason == "not_set_up"
 
-    def test_not_connected_when_manifest_but_no_session(self, monkeypatch):
+    def test_waking_when_enabled_extension_has_no_session(self, monkeypatch):
         b = B.NativeMessagingBridge()
         monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
         monkeypatch.setattr(b, "_active_session", lambda: None)
+        monkeypatch.setattr(B, "probe_extension_state", lambda: "enabled")
         st = b.status()
         assert st.connected is False
         assert st.setup is True
-        assert st.reason == "not_connected"
+        assert st.reason == "waking"
+
+    def test_disabled_extension_is_distinct(self, monkeypatch):
+        b = B.NativeMessagingBridge()
+        monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
+        monkeypatch.setattr(b, "_active_session", lambda: None)
+        monkeypatch.setattr(B, "probe_extension_state", lambda: "disabled")
+        assert b.status().reason == "extension_disabled"
 
     def test_connected_when_session_present(self, monkeypatch):
-        sess = B.BrowserSession(browser="chrome", ext_version="0.4.0",
-                                supported_ops=list(B_SUPPORTED()))
+        sess = B.BrowserSession(
+            browser="chrome", ext_version="0.4.0", supported_ops=list(B_SUPPORTED())
+        )
         b = B.NativeMessagingBridge()
         monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
         monkeypatch.setattr(b, "_active_session", lambda: sess)
@@ -146,15 +251,30 @@ class TestSelfRegisterWiring:
         b._probe_setup()
         assert calls == []
 
+    def test_windows_probe_reads_real_registry(self, monkeypatch):
+        import computer_use.setup.extension_setup as S
+
+        monkeypatch.setattr(B, "_browser_platform", lambda *a, **k: "win32")
+        monkeypatch.setattr(S, "ensure_registered", lambda: None)
+        monkeypatch.setattr(S, "probe_windows_registry", lambda: ["edge"])
+        monkeypatch.setattr(
+            B,
+            "probe_manifests",
+            lambda paths: (_ for _ in ()).throw(AssertionError("wrong probe")),
+        )
+
+        assert B.NativeMessagingBridge()._probe_setup() == ["edge"]
+
 
 class TestNativeMessagingBridgeSend:
-    def test_send_without_session_raises_not_connected(self, monkeypatch):
+    def test_send_without_session_raises_waking(self, monkeypatch):
         b = B.NativeMessagingBridge()
         monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
         monkeypatch.setattr(b, "_active_session", lambda: None)
+        monkeypatch.setattr(B, "probe_extension_state", lambda: "enabled")
         with pytest.raises(BrowserError) as ei:
             b.send("click", selector="#x")
-        assert ei.value.code == BrowserErrorCode.NOT_CONNECTED
+        assert ei.value.code == BrowserErrorCode.WAKING
 
     def test_send_without_setup_raises_not_set_up(self, monkeypatch):
         b = B.NativeMessagingBridge()
@@ -165,8 +285,9 @@ class TestNativeMessagingBridgeSend:
         assert ei.value.code == BrowserErrorCode.NOT_SET_UP
 
     def test_op_unsupported_when_session_too_old(self, monkeypatch):
-        sess = B.BrowserSession(browser="chrome", ext_version="0.3.0",
-                                supported_ops=["navigate"])  # no 'click'
+        sess = B.BrowserSession(
+            browser="chrome", ext_version="0.3.0", supported_ops=["navigate"]
+        )  # no 'click'
         b = B.NativeMessagingBridge()
         monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
         monkeypatch.setattr(b, "_active_session", lambda: sess)
@@ -183,8 +304,7 @@ class TestNativeMessagingBridgeSend:
                 sent["params"] = params
                 return {"clicked": True}
 
-        sess = _Sess(browser="chrome", ext_version="0.4.0",
-                     supported_ops=["click"])
+        sess = _Sess(browser="chrome", ext_version="0.4.0", supported_ops=["click"])
         b = B.NativeMessagingBridge()
         monkeypatch.setattr(b, "_probe_setup", lambda: ["chrome"])
         monkeypatch.setattr(b, "_active_session", lambda: sess)
@@ -195,6 +315,7 @@ class TestNativeMessagingBridgeSend:
 
 def B_SUPPORTED():
     from computer_use.browser.protocol import SUPPORTED_OPS
+
     return SUPPORTED_OPS
 
 
@@ -235,16 +356,16 @@ class TestMultiConnectionRegistry:
         b = B.NativeMessagingBridge(auto_register=False)
         # A 0.6.0 extension: BrowserSession with no profile_id.
         b.register_session(
-            B.BrowserSession(browser="chrome", ext_version="0.6.0",
-                             supported_ops=["navigate"])
+            B.BrowserSession(browser="chrome", ext_version="0.6.0", supported_ops=["navigate"])
         )
         assert ("chrome", "default") in b._sessions
 
     def test_single_connection_auto_uses_it(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
-        sess = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate"], profile_id="only")
+        sess = _RoutedSession(
+            browser="chrome", ext_version="0.6.1", supported_ops=["navigate"], profile_id="only"
+        )
         b.register_session(sess)
         out = b.send("navigate", url="https://e.com")
         assert out == {"routed_to": "only", "op": "navigate"}
@@ -272,15 +393,28 @@ class TestMultiConnectionRegistry:
             def request(self, op, params):
                 assert (op, params) == ("profiles", {"op": "list"})
                 # the extension reports the CURRENT state: the window was closed -> 0
-                return {"profiles": [{"profile_id": self.profile_id,
-                                      "browser": "chrome", "window_count": 0,
-                                      "tab_count": 0, "sample_tab_titles": []}]}
+                return {
+                    "profiles": [
+                        {
+                            "profile_id": self.profile_id,
+                            "browser": "chrome",
+                            "window_count": 0,
+                            "tab_count": 0,
+                            "sample_tab_titles": [],
+                        }
+                    ]
+                }
 
         sess = _LiveSession(
-            browser="chrome", ext_version="0.6.1",
-            supported_ops=["navigate", "profiles"], profile_id="work",
-            profile_context={"window_count": 1, "tab_count": 4,
-                             "sample_tab_titles": ["Outlier", "Top topics"]},
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="work",
+            profile_context={
+                "window_count": 1,
+                "tab_count": 4,
+                "sample_tab_titles": ["Outlier", "Top topics"],
+            },
         )
         b.register_session(sess)
         entry = b._profiles_op({"op": "list"})["profiles"][0]
@@ -297,10 +431,11 @@ class TestMultiConnectionRegistry:
                 raise RuntimeError("unreachable")
 
         sess = _DeadSession(
-            browser="chrome", ext_version="0.6.1",
-            supported_ops=["navigate", "profiles"], profile_id="work",
-            profile_context={"window_count": 2, "tab_count": 5,
-                             "sample_tab_titles": ["A"]},
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="work",
+            profile_context={"window_count": 2, "tab_count": 5, "sample_tab_titles": ["A"]},
         )
         b.register_session(sess)
         entry = b._profiles_op({"op": "list"})["profiles"][0]
@@ -309,12 +444,18 @@ class TestMultiConnectionRegistry:
     def test_explicit_selection_routes_current(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
-        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate", "profiles"],
-                              profile_id="work-uuid")
-        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate", "profiles"],
-                              profile_id="home-uuid")
+        work = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="work-uuid",
+        )
+        home = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="home-uuid",
+        )
         b.register_session(work)
         b.register_session(home)
         b.send("profiles", op="use", profile_id="work-uuid")
@@ -324,24 +465,42 @@ class TestMultiConnectionRegistry:
     def test_env_pin_selects_by_profile_id_prefix(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.setenv("CUA_BROWSER_PROFILE", "home")
-        b.register_session(_RoutedSession(
-            browser="chrome", ext_version="0.6.1", supported_ops=["navigate"],
-            profile_id="work-9f2c"))
-        b.register_session(_RoutedSession(
-            browser="chrome", ext_version="0.6.1", supported_ops=["navigate"],
-            profile_id="home-1a2b"))
+        b.register_session(
+            _RoutedSession(
+                browser="chrome",
+                ext_version="0.6.1",
+                supported_ops=["navigate"],
+                profile_id="work-9f2c",
+            )
+        )
+        b.register_session(
+            _RoutedSession(
+                browser="chrome",
+                ext_version="0.6.1",
+                supported_ops=["navigate"],
+                profile_id="home-1a2b",
+            )
+        )
         out = b.send("navigate", url="https://e.com")
         assert out["routed_to"] == "home-1a2b"
 
     def test_env_pin_selects_by_sample_tab_title_substring(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.setenv("CUA_BROWSER_PROFILE", "figma")
-        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate"], profile_id="w",
-                              profile_context={"sample_tab_titles": ["Work Gmail", "Figma"]})
-        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate"], profile_id="h",
-                              profile_context={"sample_tab_titles": ["Personal Gmail"]})
+        work = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate"],
+            profile_id="w",
+            profile_context={"sample_tab_titles": ["Work Gmail", "Figma"]},
+        )
+        home = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate"],
+            profile_id="h",
+            profile_context={"sample_tab_titles": ["Personal Gmail"]},
+        )
         b.register_session(work)
         b.register_session(home)
         out = b.send("navigate", url="https://e.com")
@@ -350,10 +509,18 @@ class TestMultiConnectionRegistry:
     def test_dropped_current_makes_next_op_loud(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
-        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate", "profiles"], profile_id="work")
-        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["navigate", "profiles"], profile_id="home")
+        work = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="work",
+        )
+        home = _RoutedSession(
+            browser="chrome",
+            ext_version="0.6.1",
+            supported_ops=["navigate", "profiles"],
+            profile_id="home",
+        )
         b.register_session(work)
         b.register_session(home)
         b.send("profiles", op="use", profile_id="work")
@@ -382,8 +549,7 @@ class TestProfilesOp:
         b.register_session(_profile_session("work-uuid"))
         b.register_session(_profile_session("home-uuid"))
         out = b.send("profiles", op="use", profile_id="work-uuid")
-        assert out == {"profile_id": "work-uuid", "browser": "chrome",
-                       "is_current": True}
+        assert out == {"profile_id": "work-uuid", "browser": "chrome", "is_current": True}
         # And the list now marks it current.
         listed = b.send("profiles", op="list")
         current = [p for p in listed["profiles"] if p["is_current"]]
@@ -403,8 +569,12 @@ class TestProfilesOp:
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
         b.register_session(
-            B.BrowserSession(browser="chrome", ext_version="0.6.0",
-                             supported_ops=["navigate", "click"], profile_id="default")
+            B.BrowserSession(
+                browser="chrome",
+                ext_version="0.6.0",
+                supported_ops=["navigate", "click"],
+                profile_id="default",
+            )
         )
         with pytest.raises(BrowserError) as ei:
             b.send("profiles", op="list")
@@ -413,14 +583,15 @@ class TestProfilesOp:
     def test_use_target_profile_id_selects_before_routing(self, monkeypatch):
         b = B.NativeMessagingBridge(auto_register=False)
         monkeypatch.delenv("CUA_BROWSER_PROFILE", raising=False)
-        work = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["use_target"], profile_id="work")
-        home = _RoutedSession(browser="chrome", ext_version="0.6.1",
-                              supported_ops=["use_target"], profile_id="home")
+        work = _RoutedSession(
+            browser="chrome", ext_version="0.6.1", supported_ops=["use_target"], profile_id="work"
+        )
+        home = _RoutedSession(
+            browser="chrome", ext_version="0.6.1", supported_ops=["use_target"], profile_id="home"
+        )
         b.register_session(work)
         b.register_session(home)
-        out = b.send("use_target", profile_id="home", window_id=None, tab_id=None,
-                     mode="owned")
+        out = b.send("use_target", profile_id="home", window_id=None, tab_id=None, mode="owned")
         assert out["routed_to"] == "home"
         # profile_id is consumed by cua (selection), never forwarded to the extension.
         assert "profile_id" not in home.last[1]

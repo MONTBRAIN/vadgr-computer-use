@@ -12,6 +12,7 @@ pytestmark = pytest.mark.skipif(
 
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.types import Region
+from computer_use.core.typing import TypingCancelled, TypingPlan, TypingUnit
 from computer_use.platform.wsl2 import (
     VK_CODES,
     PersistentPowerShell,
@@ -293,9 +294,7 @@ class TestPersistentPowerShell:
             for line in text.strip().split("\n")
             if line.startswith("Write-Output '")
         ]
-        proc.stdout.readline.side_effect = lambda: (
-            sentinels[-1] + "\n" if sentinels else "\n"
-        )
+        proc.stdout.readline.side_effect = lambda: sentinels[-1] + "\n" if sentinels else "\n"
 
         ps = PersistentPowerShell()
         ps._start()
@@ -312,9 +311,7 @@ class TestPersistentPowerShell:
             for line in text.strip().split("\n")
             if line.startswith("Write-Output '")
         ]
-        proc.stdout.readline.side_effect = lambda: (
-            sentinels[-1] + "\n" if sentinels else "\n"
-        )
+        proc.stdout.readline.side_effect = lambda: sentinels[-1] + "\n" if sentinels else "\n"
 
         ps = PersistentPowerShell()
         ps._start()
@@ -471,28 +468,61 @@ class TestWSL2ActionExecutor:
         with pytest.raises(ActionError, match="Double-click failed"):
             exe.double_click(10, 20)
 
-    @patch("computer_use.platform.wsl2._run_ps")
-    def test_type_text_escapes_special_chars(self, mock_ps):
+    @patch("computer_use.platform.wsl2._run_ps_sensitive")
+    def test_type_text_keeps_special_chars_out_of_process_arguments(self, mock_ps):
         exe = WSL2ActionExecutor()
         exe.type_text("hello+world{test}")
         script = mock_ps.call_args[0][0]
-        # + should become {+}, { should become {{}, } should become {}}
-        assert "{+}" in script
-        assert "{{}" in script  # escaped {
-        assert "{}}" in script  # escaped }
+        assert "hello+world{test}" not in script
+        assert "FromBase64String" in script
+        assert "regex" in script
 
-    @patch("computer_use.platform.wsl2._run_ps")
-    def test_type_text_plain(self, mock_ps):
+    @patch("computer_use.platform.wsl2._run_ps_sensitive")
+    def test_type_text_plain_is_piped_as_encoded_input(self, mock_ps):
         exe = WSL2ActionExecutor()
         exe.type_text("abc123")
         script = mock_ps.call_args[0][0]
-        assert "abc123" in script
+        assert "abc123" not in script
+        assert "YWJjMTIz" in script
 
-    @patch("computer_use.platform.wsl2._run_ps", side_effect=RuntimeError("fail"))
+    @patch("computer_use.platform.wsl2._run_ps_sensitive", side_effect=RuntimeError("fail"))
     def test_type_text_wraps_error(self, _ps):
         exe = WSL2ActionExecutor()
         with pytest.raises(ActionError, match="Type text failed"):
             exe.type_text("oops")
+
+    @patch("computer_use.platform.wsl2._run_ps_sensitive")
+    def test_human_plan_stays_on_pipe_and_can_cancel_between_units(self, mock_ps):
+        exe = WSL2ActionExecutor()
+        plan = TypingPlan(
+            True,
+            "test",
+            40,
+            (TypingUnit("a", 0), TypingUnit("b", 0)),
+            0,
+        )
+        checks = iter((False, True))
+        with pytest.raises(TypingCancelled):
+            exe.type_text_plan(plan, cancelled=lambda: next(checks, True))
+        assert mock_ps.call_count == 1
+        script = mock_ps.call_args.args[0]
+        assert "FromBase64String('YQ==')" in script
+
+    @patch("computer_use.platform.wsl2._run_ps_sensitive")
+    def test_human_plan_uses_named_enter_and_tab_without_fallback(self, mock_ps):
+        exe = WSL2ActionExecutor()
+        plan = TypingPlan(
+            True,
+            "test",
+            40,
+            (TypingUnit("\n", 0), TypingUnit("\t", 0)),
+            0,
+        )
+
+        assert exe.type_text_plan(plan) == 0
+        assert all(
+            "{ENTER}" in call.args[0] or "{TAB}" in call.args[0] for call in mock_ps.call_args_list
+        )
 
     @patch("computer_use.platform.wsl2._run_ps")
     def test_key_press_sendkeys_route(self, mock_ps):
@@ -604,7 +634,9 @@ class TestWSL2ActionExecutor:
 
 
 class TestWSL2Backend:
-    @patch("shutil.which", return_value="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
+    @patch(
+        "shutil.which", return_value="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    )
     def test_is_available_true_powershell(self, _which):
         backend = WSL2Backend()
         assert backend.is_available() is True

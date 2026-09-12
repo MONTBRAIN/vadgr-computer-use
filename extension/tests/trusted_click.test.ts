@@ -56,6 +56,90 @@ describe("CdpExecutor.click", () => {
     }
     expect(mouse[1].params).toMatchObject({ button: "left", clickCount: 1, buttons: 1 });
     expect(mouse[2].params).toMatchObject({ button: "left", clickCount: 1, buttons: 0 });
+
+    const focusEmulation = calls.filter(
+      (c) => c.method === "Emulation.setFocusEmulationEnabled",
+    );
+    expect(focusEmulation.map((c) => c.params)).toEqual([
+      { enabled: true },
+      { enabled: false },
+    ]);
+    const centre = calls.find(
+      (c) => c.method === "Runtime.evaluate" &&
+        String(c.params.expression).includes("getBoundingClientRect"),
+    );
+    expect(calls.indexOf(centre!)).toBeLessThan(calls.indexOf(focusEmulation[0]));
+    expect(calls.indexOf(focusEmulation[0])).toBeLessThan(calls.indexOf(mouse[0]));
+    expect(calls.indexOf(mouse.at(-1)!)).toBeLessThan(calls.indexOf(focusEmulation[1]));
+  });
+
+  it("restores focus emulation when trusted pointer dispatch fails", async () => {
+    const { send, calls } = fakeSend((e) =>
+      e.includes("getBoundingClientRect") ? rect() : null,
+    );
+    const failing: CdpSend = async (method, params: any = {}) => {
+      const result = await send(method, params);
+      if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed") {
+        throw new Error("pointer dispatch failed");
+      }
+      return result;
+    };
+
+    await expect(exec(failing).execute("click", { selector: ".btn" })).rejects.toThrow(
+      "pointer dispatch failed",
+    );
+    expect(
+      calls.filter((c) => c.method === "Emulation.setFocusEmulationEnabled")
+        .map((c) => c.params),
+    ).toEqual([{ enabled: true }, { enabled: false }]);
+    expect(
+      calls.filter((c) => c.method === "Input.dispatchMouseEvent")
+        .map((c) => c.params.type),
+    ).toEqual(["mouseMoved", "mousePressed"]);
+  });
+
+  it("delivers trusted pointer input without activating the tab or window", async () => {
+    const calls: Array<{ method: string; params: any }> = [];
+    const browserState = { tabActive: false, windowFocused: false };
+    let pageFocusEmulated = false;
+    let deliveredClicks = 0;
+    const send: CdpSend = async (method, params: any = {}) => {
+      calls.push({ method, params });
+      if (method === "Runtime.evaluate") {
+        return {
+          result: {
+            value: String(params.expression).includes("getBoundingClientRect")
+              ? rect()
+              : null,
+          },
+        };
+      }
+      if (method === "Emulation.setFocusEmulationEnabled") {
+        pageFocusEmulated = params.enabled === true;
+      }
+      if (method === "Page.bringToFront" || method === "Target.activateTarget") {
+        browserState.tabActive = true;
+        browserState.windowFocused = true;
+      }
+      if (
+        method === "Input.dispatchMouseEvent" &&
+        params.type === "mouseReleased" &&
+        pageFocusEmulated
+      ) {
+        deliveredClicks += 1;
+      }
+      return {};
+    };
+
+    await expect(exec(send).execute("click", { selector: ".btn" })).resolves.toMatchObject({
+      clicked: true,
+      via: "cdp",
+    });
+    expect(deliveredClicks).toBe(1);
+    expect(browserState).toEqual({ tabActive: false, windowFocused: false });
+    expect(pageFocusEmulated).toBe(false);
+    expect(calls.some((c) => c.method === "Page.bringToFront")).toBe(false);
+    expect(calls.some((c) => c.method === "Target.activateTarget")).toBe(false);
   });
 
   it("throws when the selector matches nothing", async () => {
@@ -70,10 +154,12 @@ describe("CdpExecutor.click", () => {
       e.includes("getBoundingClientRect")
         ? { x: 1, y: 2, covered: true, found: true }
         : null;
-    const { send } = fakeSend(covered);
+    const { send, calls: coveredCalls } = fakeSend(covered);
     await expect(exec(send).execute("click", { selector: ".btn" })).rejects.toThrow(
       /covered/,
     );
+    expect(coveredCalls.some((c) => c.method === "Emulation.setFocusEmulationEnabled"))
+      .toBe(false);
 
     const { send: send2, calls } = fakeSend(covered);
     const r: any = await exec(send2).execute("click", { selector: ".btn", force: true });

@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { CdpExecutor, type CdpSend } from "../src/executors/cdp";
+import { cancelTyping } from "../src/typing-cancellation";
 
 function fakeSend(readValue: unknown, focusFound = true) {
   const calls: Array<{ method: string; params: any }> = [];
@@ -14,7 +15,13 @@ function fakeSend(readValue: unknown, focusFound = true) {
     calls.push({ method, params });
     if (method === "Runtime.evaluate") {
       const e = String(params.expression);
-      if (e.includes(".focus()")) return { result: { value: focusFound } };
+      if (e.includes("const covered")) {
+        return { result: { value: { x: 10, y: 20, covered: false, found: true } } };
+      }
+      if (e.includes("return el")) {
+        return { result: focusFound ? { objectId: "focus-target" } : { value: null } };
+      }
+      if (e.includes("new KeyboardEvent('keydown'")) return { result: { value: true } };
       return { result: { value: readValue } };
     }
     if (method === "Accessibility.getFullAXTree") {
@@ -53,6 +60,143 @@ describe("CdpExecutor.type/fill (trusted input)", () => {
     await expect(exec(send).execute("fill", { selector: "#missing", text: "x" })).rejects.toThrow(
       /no element/i,
     );
+  });
+
+  it("rejects a covered typing target before focus or key dispatch", async () => {
+    const { send, calls } = fakeSend("");
+    const covered: CdpSend = async (method, params: any = {}) => {
+      if (
+        method === "Runtime.evaluate" &&
+        String(params.expression).includes("const covered")
+      ) {
+        calls.push({ method, params });
+        return { result: { value: { x: 10, y: 20, covered: true, found: true } } };
+      }
+      return send(method, params);
+    };
+
+    await expect(
+      exec(covered).execute("type", {
+        selector: "#covered",
+        text: "x",
+        human: true,
+        typing_plan: {
+          timing_profile: "us_adult_transcription_2026",
+          nominal_wpm: 38,
+          units: [{ text: "x", delay_before_ms: 0 }],
+        },
+      }),
+    ).rejects.toThrow(/covered/);
+    expect(calls.some((call) => call.method === "Input.dispatchKeyEvent")).toBe(false);
+    expect(calls.some((call) => call.method === "DOM.focus")).toBe(false);
+    expect(calls.some((call) => call.method === "Emulation.setFocusEmulationEnabled")).toBe(false);
+  });
+
+  it("human type emulates page focus without foregrounding the window", async () => {
+    const { send, calls } = fakeSend("ab");
+    const r: any = await exec(send).execute("type", {
+      selector: "#b",
+      text: "ab",
+      clear: true,
+      human: true,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [
+          { text: "a", delay_before_ms: 0 },
+          { text: "b", delay_before_ms: 0 },
+        ],
+      },
+    });
+    expect(r).toMatchObject({
+      human: true,
+      timing_profile: "us_adult_transcription_2026",
+      nominal_wpm: 38,
+      units: 2,
+      fallback_units: 0,
+      ok: true,
+    });
+    const events = calls
+      .filter((call) => call.method === "Input.dispatchKeyEvent")
+      .map((call) => call.params.type);
+    expect(events.slice(-4)).toEqual([
+      "rawKeyDown", "keyUp", "rawKeyDown", "keyUp",
+    ]);
+    const printableDowns = calls.filter(
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.type === "rawKeyDown",
+    );
+    expect(printableDowns.slice(-2).map((call) => call.params.key)).toEqual(["a", "b"]);
+    expect(
+      calls.filter((call) => call.method === "Input.insertText").map((call) => call.params),
+    ).toEqual([{ text: "a" }, { text: "b" }]);
+    const reads = calls.filter((call) => call.method === "Runtime.evaluate");
+    expect(reads.some((call) => String(call.params.expression).includes(".trim()"))).toBe(false);
+    expect(reads.some((call) => String(call.params.expression).includes("node.shadowRoot"))).toBe(true);
+    const focusEmulation = calls.filter(
+      (call) => call.method === "Emulation.setFocusEmulationEnabled",
+    );
+    expect(focusEmulation.map((call) => call.params)).toEqual([
+      { enabled: true },
+      { enabled: false },
+    ]);
+    const domFocus = calls.find((call) => call.method === "DOM.focus");
+    expect(domFocus?.params).toEqual({ objectId: "focus-target" });
+    expect(calls.indexOf(focusEmulation[0])).toBeLessThan(calls.indexOf(domFocus!));
+  });
+
+  it("cancels between units and never submits", async () => {
+    const { send, calls } = fakeSend("a");
+    const pending = exec(send).execute("type", {
+      selector: "#b",
+      text: "ab",
+      clear: true,
+      submit: true,
+      human: true,
+      _request_id: 77,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [
+          { text: "a", delay_before_ms: 0 },
+          { text: "b", delay_before_ms: 100 },
+        ],
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    cancelTyping(77);
+    await expect(pending).rejects.toMatchObject({ code: "typing_cancelled" });
+    const enter = calls.filter(
+      (call) => call.method === "Input.dispatchKeyEvent" && call.params.key === "Enter",
+    );
+    expect(enter).toHaveLength(0);
+    expect(calls.filter((call) => call.method === "Emulation.setFocusEmulationEnabled").at(-1)?.params)
+      .toEqual({ enabled: false });
+  });
+
+  it("uses the physical key code and Shift modifier for uppercase text", async () => {
+    const { send, calls } = fakeSend("A");
+    await exec(send).execute("type", {
+      selector: "#b",
+      text: "A",
+      human: true,
+      typing_plan: {
+        timing_profile: "us_adult_transcription_2026",
+        nominal_wpm: 38,
+        units: [{ text: "A", delay_before_ms: 0 }],
+      },
+    });
+
+    const keyDown = calls.find(
+      (call) => call.method === "Input.dispatchKeyEvent" &&
+        call.params.type === "rawKeyDown" && call.params.key === "A",
+    );
+    expect(keyDown?.params).toMatchObject({
+      code: "KeyA",
+      modifiers: 8,
+      windowsVirtualKeyCode: 65,
+    });
+    expect(calls.find((call) => call.method === "Input.insertText")?.params)
+      .toEqual({ text: "A" });
   });
 });
 

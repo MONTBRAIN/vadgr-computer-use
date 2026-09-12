@@ -20,14 +20,15 @@ Loopback TCP (not a unix socket) is deliberate - it is the one transport that
 also crosses the WSL<->Windows boundary (see ``server.py``).
 
 The framing helpers (``read_message`` / ``write_message``) and ``_connect_cua``
-are pure/unit-tested; ``main`` needs a real Chrome and is exercised by the
-manual spike + the in-process e2e shim test.
+are pure/unit-tested. Subprocess tests cover both relay shutdown orders without
+Chrome; the live runbook covers the real browser boundary.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import select
 import socket
 import struct
 import sys
@@ -110,27 +111,125 @@ def _pump(src, dst) -> None:
         return
 
 
-def _relay(chrome_in, chrome_out, cua_sock_file) -> None:
+def _stream_readable(stream, timeout: float) -> bool:
+    """Wait briefly for POSIX input while retaining a cancellation point."""
+    ready, _, _ = select.select([stream], [], [], timeout)
+    return bool(ready)
+
+
+def _cancel_windows_io(thread: threading.Thread) -> None:
+    """Cancel a synchronous Windows read issued by the exact relay thread."""
+    if os.name != "nt" or not thread.is_alive():
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    native_id = thread.native_id
+    if native_id is None:
+        raise RuntimeError("native input thread has no Windows thread identifier")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenThread.restype = wintypes.HANDLE
+    kernel32.CancelSynchronousIo.argtypes = [wintypes.HANDLE]
+    kernel32.CancelSynchronousIo.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    thread_terminate = 0x0001
+    handle = kernel32.OpenThread(thread_terminate, False, native_id)
+    if not handle:
+        error = ctypes.get_last_error()
+        if not thread.is_alive():
+            return
+        raise OSError(error, os.strerror(error))
+    try:
+        if not kernel32.CancelSynchronousIo(handle):
+            error = ctypes.get_last_error()
+            if error != 1168:  # ERROR_NOT_FOUND: no pending read remains.
+                raise OSError(error, os.strerror(error))
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+class _InterruptibleReader:
+    """Exact-size reads which broker shutdown can cancel between pipe chunks."""
+
+    def __init__(
+        self,
+        stream: BinaryIO,
+        stop: threading.Event,
+        *,
+        poll: bool = True,
+        waitable: Any = None,
+    ) -> None:
+        self._stream = stream
+        self._stop = stop
+        self._poll = poll
+        self._waitable = stream if waitable is None else waitable
+
+    def read(self, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size and not self._stop.is_set():
+            if self._poll and not _stream_readable(self._waitable, 0.05):
+                continue
+            chunk = self._stream.read(size - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        return bytes(data)
+
+
+def _shutdown_socket(sock: socket.socket) -> None:
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+
+
+def _relay(chrome_in, chrome_out, cua_sock, cua_sock_in, cua_sock_out) -> None:
     """Pump frames both ways between the Chrome stdio pair and the cua socket.
 
     Two independent pumps (Chrome->cua and cua->Chrome) so the handshake - where
     both sides may send proactively - and the ordered op stream both work.
-    Returns when either direction closes.
+    Either EOF cancels the other direction, and the input reader is joined before
+    return so interpreter shutdown never races a live standard-input read.
     """
-    up = threading.Thread(
-        target=_pump, args=(chrome_in, cua_sock_file), daemon=True
-    )
+    stop = threading.Event()
+
+    def pump_up() -> None:
+        try:
+            _pump(
+                _InterruptibleReader(chrome_in, stop, poll=os.name != "nt"),
+                cua_sock_out,
+            )
+        finally:
+            stop.set()
+            _shutdown_socket(cua_sock)
+
+    up = threading.Thread(target=pump_up, name="vadgr-cua-native-input")
     up.start()
-    _pump(cua_sock_file, chrome_out)
+    try:
+        _pump(
+            _InterruptibleReader(cua_sock_in, stop, waitable=cua_sock),
+            chrome_out,
+        )
+    finally:
+        stop.set()
+        _shutdown_socket(cua_sock)
+        _cancel_windows_io(up)
+        up.join()
 
 
-def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live spike
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover - subprocess
     """Entry point Chrome launches. Bridges Chrome stdio <-> running cua.
 
-    Not unit-covered: requires a real Chrome handshake and a running cua. The
-    in-process e2e shim test + the manual spike exercise this path.
+    Subprocess lifecycle tests supply the same pipes and a local broker without
+    Chrome. The runbook exercises the complete browser launch path.
     """
-    chrome_in = sys.stdin.buffer
+    # BufferedReader may hold its internal lock while a daemon blocks on stdin,
+    # which makes CPython abort during finalization. The relay owns a stoppable,
+    # joined reader over the raw native-messaging pipe instead.
+    chrome_in = getattr(sys.stdin.buffer, "raw", sys.stdin.buffer)
     chrome_out = sys.stdout.buffer
     try:
         cua_sock, token = _connect_cua()
@@ -142,11 +241,16 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live spike
              "error": {"code": "not_connected", "message": str(e)}},
         )
         return 1
-    with cua_sock, cua_sock.makefile("rwb") as cua_file:
-        # Authenticate to the listener before relaying Chrome frames.
-        if token:
-            write_message(cua_file, {"type": "auth", "token": token})
-        _relay(chrome_in, chrome_out, cua_file)
+    with cua_sock:
+        with (
+            cua_sock.makefile("rb", buffering=0) as cua_in,
+            cua_sock.makefile("wb") as cua_out,
+        ):
+            # Keep input unbuffered so readiness always describes the next byte.
+            # Output stays buffered so each framed write is complete on flush.
+            if token:
+                write_message(cua_out, {"type": "auth", "token": token})
+            _relay(chrome_in, chrome_out, cua_sock, cua_in, cua_out)
     return 0
 
 

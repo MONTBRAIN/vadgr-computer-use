@@ -20,7 +20,10 @@ these tests exist to prove what a foreign MCP host sees.
 """
 
 import asyncio
+import re
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -79,6 +82,22 @@ class TestWireSurfaceIsTheWholeCatalog:
         # 0.6.6 proved stable across the mcp major bump. The 26 stay byte-for-byte;
         # the surface is added to, never altered.
         assert len(WIRE_TOOLS) == 33
+
+
+@pytest.mark.parametrize("name", ["tabs", "windows"])
+def test_browser_ownership_operations_are_discoverable(name):
+    from computer_use import mcp_server
+
+    tools = asyncio.run(mcp_server.mcp.list_tools())
+    description = next(tool.description for tool in tools if tool.name == name)
+    expected = {"list", "open", "close", "claim", "release"}
+    expected.add("switch" if name == "tabs" else "focus")
+    assert set(re.findall(r"^\s*- (\w+)(?:\(| ->)", description, re.MULTILINE)) == expected
+    target_id = "tab_id" if name == "tabs" else "window_id"
+    assert f"claim({target_id}" in description
+    assert f"release({target_id})" in description
+    assert "without closing" in description
+    assert "target_owned_by_another_client" in description
 
 
 class TestRemovedModuleIsNotImported:

@@ -225,7 +225,11 @@ class TestShell:
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("USERPROFILE", str(home))
 
-        result = shell.shell(op="run", command=["pwd"], cwd="~/project")
+        result = shell.shell(
+            op="run",
+            command=[sys.executable, "-c", "import os; print(os.getcwd())"],
+            cwd="~/project",
+        )
 
         assert result["returncode"] == 0
         assert str((home / "project").resolve()) in result["stdout"]
@@ -233,7 +237,7 @@ class TestShell:
     def test_run_captures_stdout(self):
         from computer_use.tools.system import shell
 
-        result = shell.shell(op="run", command=["echo", "hi"])
+        result = shell.shell(op="run", command=[sys.executable, "-c", "print('hi')"])
         assert result["returncode"] == 0
         assert result["stdout"].strip() == "hi"
 
@@ -244,21 +248,27 @@ class TestShell:
         # file, which blames the machine for the argument shape.
         from computer_use.tools.system import shell
 
-        result = shell.shell(op="run", command="echo hi there")
+        result = shell.shell(
+            op="run", command=f'"{sys.executable}" -c "print(\'hi there\')"'
+        )
         assert result["returncode"] == 0
         assert result["stdout"].strip() == "hi there"
 
     def test_run_keeps_quoted_argument_together(self):
         from computer_use.tools.system import shell
 
-        result = shell.shell(op="run", command="echo 'one two'")
+        result = shell.shell(
+            op="run", command=f'"{sys.executable}" -c "print(\'one two\')"'
+        )
         assert result["stdout"].strip() == "one two"
 
     @pytest.mark.asyncio
     async def test_async_run_splits_a_string_command_into_argv(self):
         from computer_use.tools.system import shell
 
-        result = await shell.shell_async(op="run", command="echo hi there")
+        result = await shell.shell_async(
+            op="run", command=f'"{sys.executable}" -c "print(\'hi there\')"'
+        )
         assert result["returncode"] == 0
         assert result["stdout"].strip() == "hi there"
 

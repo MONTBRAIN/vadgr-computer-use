@@ -37,6 +37,73 @@ vadgr-cua doctor
 
 On WSL2, the bridge daemon auto-launches the first time a tool is called. On other platforms it's a no-op; direct backends handle everything.
 
+### Browser workspaces and paced typing
+
+The browser tier uses one local per-user broker. Multiple Claude, Codex, vadgr,
+or direct MCP clients can use the same extension at once. Each client normally
+gets an owned browser window with any number of tabs. Registry listings still
+show other clients' targets, but an action against one returns
+`target_owned_by_another_client`. Use `windows(op="claim"|"release")` for a
+whole window. Use `tabs(op="claim"|"release")` only for one tab in a shared
+user window.
+
+When native Windows and WSL share Windows Chrome, the broker is a verified
+self-contained Windows process bound only to Windows loopback. WSL reaches it
+through the packaged Windows stdio proxy, so NAT and mirrored WSL networking
+use the same path. This requires neither Windows Python nor a firewall, DNS,
+route, adapter, proxy, VPN, or WSL networking change.
+The native host closes both relay directions together and joins its input
+reader before exit, including when the browser broker disconnects first.
+
+Fast input remains the default. Use human-paced input only when a field needs
+real intermediate key events:
+
+```text
+browser(op="type", selector="#search", text="...", human=true)
+type_text(text="...", human=true)
+```
+
+Both tools use the versioned `us_adult_transcription_2026` timing profile by
+default. It draws from the released within-word, after-space, and after-sentence
+empirical gap tables. A fitted stationary four-bin rank chain adds nearby
+cadence while preserving those marginal distributions. The runtime has no
+latent motor, pause, or learned model. Ordinary spaces add no artificial pause and their
+complete total gaps remain within 20 through 1,500 milliseconds. The generator
+does not rescale a complete message to force an exact duration. An advanced
+caller can instead provide both `wpm` from 10 through 200 and `iki_cv` from 0
+through 1. These options tune the same sequence model.
+Human-paced input has no implicit total deadline, so long text continues while
+complete units make progress. A caller may provide a positive `timeout` in
+milliseconds as an explicit total budget. Browser pacing transports long plans
+in bounded progress-confirmed chunks and never replays a chunk whose dispatch
+result is uncertain.
+`browser(op="fill")` stays a bulk value operation. Paced input models event
+cadence for input-driven interfaces. It does not claim stealth or biometric
+human identity. Browser pacing sends page-visible synthetic DOM events to the
+exact leased tab; it does not claim physical input or `Event.isTrusted`, and it
+does not activate an inactive tab or foreground its window. Paced browser input
+supports native text inputs and textareas; rich contenteditable editors remain
+on the bulk path until their structure-preserving paced path is proven. A
+trusted `press` against an inactive target fails by name instead of silently
+activating the target or claiming an input Chromium discarded.
+Trusted browser clicks temporarily emulate focus inside the exact target while
+dispatching their pointer sequence. They do not activate its tab or foreground
+its window.
+
+The profile's residual timing data derives from the CC BY 4.0 KeyRecs dataset
+by Tiago Dias, João Vitorino, Eva Maia, Orlando Sousa, and Isabel Praça
+([dataset](https://doi.org/10.5281/zenodo.7886743),
+[data article](https://doi.org/10.1016/j.dib.2023.109509)). The checked-in
+artifact records the exact source hashes, filtering, weighting, and derivation
+script. Participant-grouped inner folds select empirical shrinkage and four-bin
+rank dependence from training participants only. A fixed KeyRecs pilot sets
+simulation precision, and five participant-disjoint outer folds select the
+smallest eligible model. Independent participant-clustered confirmation accepts
+that model only when normalized gap CRPS is superior, sequence energy has a
+favorable point estimate and a 95 percent upper bound below the operational
+`0.10` standardized-energy loss margin, and the predeclared secondary
+non-inferiority, rate, boundary, and bounded-support gates all clear.
+
 ---
 
 ## Wire it into your agent
@@ -197,7 +264,7 @@ The Linux backend is selected per session by a capability resolver (run
 | Linux / Wayland (GNOME 49-50) | XDG Screenshot portal | Mutter RemoteDesktop via `jeepney` | one consent prompt on first capture (persisted) |
 | Linux / Wayland (KDE, wlroots) | `grim` (wlroots) / portal | pure-Python uinput | `vadgr-cua install-deps` for `/dev/uinput` access |
 | Windows native | Win32 GDI | SendInput | nothing extra |
-| WSL2 → Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
+| WSL2 to Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
 | macOS | `mss` | Quartz `CGEvent` (via `pyobjc`) | nothing extra; deps pulled by pip. Grant Accessibility + Screen Recording on first run |
 
 `pip install vadgr-computer-use` pulls `jeepney`, `python-xlib` and `dbus-fast` automatically on Linux (pure-Python, no compilation). The pixel-input fallback uses a pure-Python `/dev/uinput` writer, so **no C compiler is needed**; the optional `evdev`-backed path is available via `pip install vadgr-computer-use[linux-uinput]`. The clipboard backend (`wl-clipboard`), the accessibility stack (`at-spi2-core` plus the ATK bridge) and `/dev/uinput` access are OS-level and installed by `vadgr-cua install-deps`. The Tier 1 structured tools and Wayland foreground-window detection speak AT-SPI over `dbus-fast` (a plain wheel, no PyGObject), so they work on a stock desktop with no extra install.
@@ -275,8 +342,8 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 
 ### Tier 1: browser (5)
 - `browser(op, ...)`: drive your real Chrome through the MV3 extension with direct DOM ops (`navigate`, `click`, `fill`, `query`, `read_text`, `wait_for`, `hover`, `dialog`, `upload`, `element_state`, `snapshot`, `use_target`, `back`/`forward`, and more). The DOM is the ground truth, so a mutating op is confirmed by a structured read-back rather than a screenshot. Every result also carries a `target: {window_id, tab_id, url}` so you always see which tab you acted on. Requires the companion extension - install it from the Chrome Web Store, or load the release asset `vadgr-cua-extension-<ver>.zip` unpacked; the native-host manifest allowlists both install flavors.
-- `tabs(op, ...)`: enumerate and manage tabs. `list` returns the full `window -> tabs -> {tab_id, url, title, active, owned, is_current}` map (the agent's own window and yours, tagged by provenance); `open` / `switch` / `close` manage them. The agent sees every tab but acts only on the pinned target; `switch` moves the target without raising the window over your foreground, and closing one of your tabs needs `force=True`.
-- `windows(op, ...)`: enumerate and manage windows: `list` (the thin variant), `open` (a new owned window, unfocused by default), `focus` (the explicit raise), `close` (owned only unless `force=True`).
+- `tabs(op, ...)`: enumerate and manage tabs. `list` returns the full window/tab map with per-client ownership and current-target labels. `open` / `switch` / `close` manage tabs; `claim(tab_id)` claims an unowned or orphaned tab without activating it, and `release(tab_id)` releases a tab lease without closing the tab. Switching requires the window lease; closing requires ownership. `force=True` never overrides another client. Release and closed-target results need not carry a target.
+- `windows(op, ...)`: enumerate and manage windows: `list` (the thin variant), `open` (a new owned window, unfocused by default), `claim(window_id)` (claim an unowned or orphaned window and its tabs), `release(window_id)` (release ownership without closing), `focus` (the explicit raise), and `close`. A foreign child-tab lease blocks a window claim. Focus and close require the window lease; `force=True` never overrides another client.
 - `profiles(op, ...)`: enumerate and select the connected browser profile when the extension is installed in more than one Chrome profile (personal, work, several Google accounts). `list` shows each profile with recognition context (window / tab counts and a few open tab titles, e.g. "the one with work Gmail and Figma"); `use(profile_id)` pins which profile the browser / tabs / windows ops act within. A single connected profile is used automatically; with more than one connected and none selected, the next op raises a terminal `profile_ambiguous` listing the choices (never a silent guess). You can also pin a default with `CUA_BROWSER_PROFILE` (a profile_id prefix or a tab-title substring).
 - `browser_eval(expression)`: evaluate an expression in the page, for verification and debugging.
 

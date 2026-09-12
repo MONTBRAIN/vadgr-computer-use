@@ -2,6 +2,130 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.6] - 2026-09-01
+
+### Added
+
+- Add one detached per-user browser broker for concurrent local MCP clients.
+  Each client has its own profile selection and exact current target.
+- Run the shared Windows/WSL broker as one verified self-contained Windows
+  process. WSL uses the packaged stdio proxy, so NAT and mirrored networking
+  converge without Windows Python or network-setting changes.
+- Add `vadgr-cua --version` so clean-install and support checks can identify the
+  installed distribution without importing source files.
+- Add window leases as the normal multi-tab browser workspace. Add explicit tab
+  claims for a single tab in a shared user window. Registry listings show mine,
+  other, unowned, and orphaned targets without hiding foreign targets.
+- Add opt-in human-paced browser and pixel typing. Both surfaces use one
+  validated schedule, a versioned 68 WPM default profile, or an explicit WPM
+  and within-session IKI coefficient of variation.
+
+### Changed
+
+- Route browser operations by exact profile, window, and tab identifiers.
+  Concurrent requests no longer share one mutable target or one response lock.
+- Make browser actionability descend through nested open shadow roots and use
+  composed-tree containment while retaining real-overlay rejection.
+- Keep `browser fill`, fast browser `type`, and fast pixel `type_text` as the
+  backward-compatible bulk or existing backend paths.
+- Remove the implicit total deadline from human-paced browser and pixel typing.
+  An optional caller timeout remains one explicit monotonic budget. Browser
+  typing now streams bounded, progress-confirmed chunks with a per-chunk
+  inactivity backstop and never replays an uncertain dispatch.
+- Replace independent key delays and whole-message normalization with the
+  released empirical gap tables plus one stationary four-bin rank chain. The
+  chain adds local cadence while preserving each timing distribution. Ordinary
+  spaces add no separate pause.
+- Use Unicode grapheme clusters as timed units. Custom human timing accepts an
+  IKI coefficient of variation from 0 through 1 and keeps the same rank chain.
+
+### Fixed
+
+- Retire a definitively dead or replaced browser-broker transport before the
+  next dispatch. The first stale client now reaches the replacement epoch's
+  explicit `target_lost` fence without replaying an uncertain operation.
+- Stop and join the native host's standard-input reader when either Chrome or
+  the browser broker disconnects, avoiding an interpreter shutdown abort.
+- Deliver trusted browser clicks to an exact inactive tab by emulating page
+  focus only for the CDP pointer sequence. The tab stays inactive and its window
+  stays unfocused.
+- Describe the existing tab and window claim/release operations in the MCP
+  tool catalog, including lease requirements and release-without-close behavior.
+- Reject a stale browser target immediately after broker replacement, before
+  extension recovery can mask the required explicit-reclaim error.
+- Protect browser credentials and their dedicated directories before the first
+  write, replace discovery files atomically, and refuse unsafe paths or failed
+  permission setup. Windows publication verifies an owner-and-SYSTEM-only ACL.
+- Require native-host authentication before sending a hello or registering a
+  browser session. Reject missing, malformed and incorrect credentials.
+- Allow an explicit child-tab claim after its window lease expires without
+  granting the parent window or clearing the remaining siblings' orphan fences.
+- Preserve explicit releases when refreshing opener-derived tabs and popup
+  windows, including descendants received out of order.
+- Report profile selection and ambiguity for the requesting browser client,
+  without inheriting another client's selection or changing setup diagnoses.
+- Update vulnerable extension development dependencies while preserving the
+  shipped extension bytes and separate scientific tests from shared gate tests.
+- Use Windows PowerShell's built-in modules for broker installation and launch,
+  without inheriting incompatible modules from a PowerShell 7 parent.
+- Publish the Windows broker bundle without nesting a second install inside
+  the first when native Windows or WSL clients start concurrently.
+- Reconnect before the next browser operation when a heartbeat has already
+  detected a closed broker connection, without replaying dispatched operations.
+- Find Windows browser profiles under redirected local application data when
+  reporting a disabled development extension.
+- Preserve Windows broker deployment paths containing spaces or shell syntax
+  when native Windows and WSL launch the broker through PowerShell.
+- Keep browser mutation response targets local to the requesting client,
+  including when a window or tab closes while another client remains active.
+- Preserve named browser-evaluation errors in diagnostic redaction without
+  retaining private page details.
+- Keep browser test setup responsive when its management tab is hidden.
+- Preserve supplementary Unicode characters and joined emoji in macOS pixel
+  typing by passing their complete UTF-16 length to the native event API.
+- Keep macOS synthetic keyboard state in a private event source and balance
+  modifier presses and releases, including interrupted typing and key chords.
+- Report missing or disabled browser setup for an already selected profile,
+  with the matching remedy, instead of waiting for recovery that cannot succeed.
+- Restore a connected browser client's liveness when its authenticated
+  heartbeat resumes, so a temporary heartbeat gap does not orphan its leases.
+- Detect missing Windows native-host setup from the real HKCU registration
+  instead of a separate broker manifest copy.
+- Keep an explicitly selected browser profile and its owned target pinned while
+  its MV3 worker reconnects, instead of silently retargeting a remaining browser
+  profile and rejecting the original operation as foreign ownership.
+- Return the named Windows interop remedy when WSL cannot launch the shared
+  browser broker, instead of collapsing the setup failure to a generic tool error.
+- Preserve a released current target as a stale fenced selection. The next page
+  dispatch now fails before extension execution instead of silently creating a
+  replacement window, so lease revisions remain observable and race-safe.
+- Keep covered-element rejection mandatory in real extension documents when a
+  hidden or throttled target transiently reports a zero root layout box or no
+  compositor hit, while preserving ordinary inactive-target operations.
+- Deliver each human-paced browser unit through the exact leased tab's content
+  channel, with ordered keydown, before-input, input and keyup events plus
+  per-unit read-back. Inactive tabs and unfocused windows no longer discard
+  paced input, and the path never activates or foregrounds its target.
+- Keep hidden background tabs from waiting forever for an animation frame while
+  verifying a state-bearing DOM click.
+- Reject trusted keyboard commands by name when their exact tab or window is
+  inactive, instead of reporting a discarded CDP key event as success or
+  activating the target. Discarded, frozen and restricted targets now fail by
+  name too.
+- Keep native Windows auto-registration on the packaged, content-addressed
+  native-host executable. Starting a Windows MCP client no longer replaces the
+  working Chrome registration with a Python batch launcher.
+- Honor `profile_id` carried by `browser(use_target)` before the shared broker
+  performs its multi-profile ambiguity check.
+- Confirm a native port only after the broker hello arrives, and probe an
+  apparently open port from the MV3 heartbeat so a failed host can reconnect.
+- Distinguish missing native-host setup, a missing extension, a disabled
+  extension, an enabled but sleeping worker, and a bounded recovery timeout.
+- Stop returning typed input in the pixel tool result. The result now reports
+  counts and timing metadata only.
+- Keep WSL input-bearing PowerShell scripts on the persistent process pipe.
+  They no longer fall back to a temporary script file.
+
 ## [0.7.5] - 2026-08-29
 
 ### Fixed

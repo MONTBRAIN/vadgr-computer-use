@@ -151,15 +151,20 @@ present in a given runbook, the entry is all there is.
     daemon.** Two drivers sharing one daemon read each other's work and neither
     verdict means anything. [Repeatability] [../README.md]
 
-21. **Every browser-tier cell uses a versioned Chrome for Testing executable
+21. **This runbook gates only the minor that contains it.** A sibling minor in
+    the same iteration is never a prerequisite, cell, blocker or overall-gate
+    input here. Put an integration proof in the runbook for the minor that
+    builds the integrated artifact. [Paired surfaces this pass depends on]
+
+22. **Every browser-tier cell uses a versioned Chrome for Testing executable
     with a fresh isolated profile and the matching development extension.**
     Never attach to the owner's normal browser process or profile. A normal
     Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
 
-22. **The agent driver uses the CLI's existing interactive login and permission
-    bypass.** Do not require, read, export or pass an OpenAI or Anthropic API key
-    solely to drive this e2e. Until the Vadgr-native e2e harness is ready, start
-    each live task with `codex --yolo exec --json` or Claude Code with
+23. **The agent driver uses the CLI's existing interactive login and permission
+    bypass.** Do not require, read, export or pass a provider API key solely to
+    drive this e2e. Until the Vadgr-native e2e harness is ready, start each live
+    task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
 23. **The driver is the CLI whose session is driving the pass.** A pass running
@@ -287,19 +292,38 @@ Code session is the authentication requirement for the driver. The driver does
 not need an OpenAI or Anthropic API key from `.env`. Do not inspect, source,
 export or pass either provider key solely to run this e2e.
 
-Until the Vadgr-native e2e harness is production-ready, every live task uses
-the matching permission-bypass form:
+### Temporary permission-bypass standard
+
+Until an approved design and implementation declares the Vadgr-native e2e
+harness production-ready, invoke every live agent task in one of these modes:
 
 ```text
-codex --yolo exec --json --model <qualified-model> <MCP, directory and prompt options>
-claude --dangerously-skip-permissions --output-format stream-json <MCP, directory and prompt options>
+codex --yolo exec --json <normal model, MCP, working-directory and prompt options>
+claude --dangerously-skip-permissions --print --output-format stream-json <normal model, MCP, working-directory and prompt options>
 ```
 
 The MCP configuration invokes the exact isolated-wheel `vadgr-cua` entry point.
 Run the command from an isolated working directory. Pipe its JSON stream through
 the runbook's redactor. The bypass prevents an unattended approval stall. It
 does not broaden the cell, approve a destructive action, waive an owner action,
-change the model ceiling, or replace the required oracle and cleanup.
+change the qualified model, or replace the required oracle and cleanup.
+
+This is a subscription-authenticated CUA driver, not an API-key client. Do not
+invent API-price-equivalent dollar or token ceilings or stop the pass to ask
+for a higher ceiling. Record actual usage when available. Respect real account
+limits; do not enable paid extra usage or switch to API billing without owner
+approval. This rule is specific to CUA and lasts until the approved native
+harness is production-ready.
+
+Record the exact command shape, CLI version, selected model, reasoning level and
+MCP entry point without recording credentials or owner-private paths. The
+unrestricted agent driver owns the goal, including ordinary local setup, product
+tool calls, independent read-back and cleanup.
+
+Repository harness helpers may prepare deterministic fixtures, coordinate
+concurrency, redact streams and capture evidence. They do not impersonate the
+agent or become an acceptance surface. Investigate a helper-only failure as a
+harness failure before it becomes a product finding.
 
 If neither CLI has an active login, mark the affected agent-driven cells
 `blocked: authenticated agent CLI unavailable`. Do not convert an API key into
@@ -319,6 +343,11 @@ a substitute login and do not select an unapproved driver.
 > behind the route, name the version the part depends on in a table here, and
 > write a part whose surface arrives later into that release's runbook instead,
 > stating its absence rather than leaving it silent.
+>
+> **A same-iteration sibling minor never becomes a dependency merely because it
+> packages, launches or consumes this runtime.** Its runbook owns that combined
+> proof. Do not add the sibling's future artifact as a cell here, and never let
+> its absence block this minor's part or overall result.
 >
 > | repository | released version | what this pass relies on |
 > |---|---|---|
@@ -372,12 +401,12 @@ never appears in.
 
 ## Billed model selection
 
-> Complete this table from current official provider pages and the
-> authenticated account catalog on the execution date. Pick the least expensive
-> model that supports the exact agent task and MCP/tool-use contract. Do not
-> start a billed call with a blank ceiling or an unrecorded escalation path.
-> The table tracks an API-list-price equivalent for a subscription-authenticated
-> CLI session. It does not require an API key and does not claim an extra charge.
+> For a separately authorized test of a billed API, complete this table from
+> current official sources and declare the actual billing limit. This table
+> never authorizes an API-key replacement for the CUA subscription driver.
+> For the CUA driver, record subscription login as authentication, real account
+> limits where known, and `not applicable: subscription driver` in the price
+> and synthetic cost-ceiling fields. Do not invent API-equivalent budgets.
 
 | parts or cells | provider/auth | required capabilities | selected model | official source and date | input/output price | hard iterations/tokens/cost | escalation condition |
 |---|---|---|---|---|---|---|---|
@@ -387,7 +416,8 @@ never appears in.
 > part of the delivered user path. Repeated provider-neutral work names an
 > explicit cost-effective model. Add another model only for a distinct protocol
 > or capability class or a prewritten model-specific cell. Record actual usage
-> and cost, and stop when any ceiling is reached. Pixel or screenshot CUA
+> and any actual billed cost; stop at an explicit billed-API ceiling only for
+> those separately authorized API tests. Pixel or screenshot CUA
 > requires image input for the selected endpoint and image-bearing tool-result
 > continuation into the next model turn; record both under required
 > capabilities. A text-only model cannot close that visual group.
@@ -443,15 +473,24 @@ claude --dangerously-skip-permissions --print --output-format stream-json --mode
 
 Every cua browser-tier cell uses Chrome for Testing from the
 [official versioned downloads][chrome-for-testing-downloads]. Record the exact
-browser version, download URL and downloaded archive hash. Do not silently use an installed normal Chrome,
-Chromium or Edge executable when Chrome for Testing is unavailable. Mark the
-affected cells `blocked` instead.
+browser version, download URL and downloaded archive hash. Do not silently use
+an installed normal Chrome, Chromium or Edge executable when Chrome for Testing
+is unavailable. Mark the affected cells `blocked` instead.
 
 Create a new `--user-data-dir` below the pass's isolated test root. Load only
 the matching built `extension/dist` as an unpacked development extension. Do
 not reuse or copy an owner profile, cookies, sign-in, preferences or extensions.
 Do not enable browser sync. A test account required by a written cell remains a
 declared credential and is entered only in this isolated profile.
+
+On native Linux and macOS, keep the fresh profile below the isolated home at a
+profile root that `vadgr-cua browser-setup` and setup diagnosis both support.
+Use `$HOME/.config/google-chrome` on Linux and
+`$HOME/Library/Application Support/Google/Chrome` on macOS. Pass that exact
+path to Chrome for Testing with `--user-data-dir`. The executable remains the
+versioned Chrome for Testing build. Run `vadgr-cua browser-setup` before Chrome
+starts, then verify `browser(op='status')` reports `connected: true`. Windows
+continues to use its registered native host.
 
 Each independent pass owns its Chrome for Testing process, profile directory,
 debugging endpoint and extension state. A concurrency cell can deliberately
@@ -554,6 +593,14 @@ system discovering a blocker four groups in.
 > Cancel the live MCP request while that child is active. Prove the request has
 > no later successful result and the entire owned process tree exits within the
 > written bound. Test this on every OS the subprocess path supports.
+
+> A release that changes pixel text input includes a real stock-editor cell on
+> every affected OS, not only an instrumented fixture. Open a fresh unsaved
+> document through the public tools, establish the exact foreground window,
+> type a fixed sensitive-file value through pixel `type_text`, save it through
+> the editor UI into the isolated test root, and independently compare the file
+> bytes by hash. Record only redacted input, timing metadata, foreground identity
+> and hashes. Delete only that test file and close the test document.
 
 ## Part &lt;X&gt;: &lt;what it proves&gt;
 

@@ -28,8 +28,9 @@ import random
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 
-from computer_use.core.actions import ActionExecutor
+from computer_use.core.actions import ActionExecutor, consume_typing_plan
 from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.core.screenshot import ScreenCapture
 from computer_use.core.smooth_move import (
@@ -46,6 +47,7 @@ from computer_use.core.smooth_move import (
     windmouse_path,
 )
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
+from computer_use.core.typing import TypingPlan
 from computer_use.platform.base import AvailabilityReport, PlatformBackend
 
 logger = logging.getLogger("computer_use.platform.macos")
@@ -70,23 +72,107 @@ except ImportError:
 # but pyobjc does not export them by name; the values are stable across
 # every macOS release since 10.5.
 _CGKEYCODE: dict[str, int] = {
-    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8,
-    "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
-    "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23,
-    "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
-    "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35,
-    "enter": 36, "return": 36,
-    "l": 37, "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42,
-    ",": 43, "/": 44, "n": 45, "m": 46, ".": 47,
-    "tab": 48, "space": 49, " ": 49, "`": 50,
-    "backspace": 51, "delete": 51,
-    "escape": 53, "esc": 53,
-    "f1": 122, "f2": 120, "f3": 99, "f4": 118,
-    "f5": 96, "f6": 97, "f7": 98, "f8": 100,
-    "f9": 101, "f10": 109, "f11": 103, "f12": 111,
-    "left": 123, "right": 124, "down": 125, "up": 126,
-    "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
+    "a": 0,
+    "s": 1,
+    "d": 2,
+    "f": 3,
+    "h": 4,
+    "g": 5,
+    "z": 6,
+    "x": 7,
+    "c": 8,
+    "v": 9,
+    "b": 11,
+    "q": 12,
+    "w": 13,
+    "e": 14,
+    "r": 15,
+    "y": 16,
+    "t": 17,
+    "1": 18,
+    "2": 19,
+    "3": 20,
+    "4": 21,
+    "6": 22,
+    "5": 23,
+    "=": 24,
+    "9": 25,
+    "7": 26,
+    "-": 27,
+    "8": 28,
+    "0": 29,
+    "]": 30,
+    "o": 31,
+    "u": 32,
+    "[": 33,
+    "i": 34,
+    "p": 35,
+    "enter": 36,
+    "return": 36,
+    "l": 37,
+    "j": 38,
+    "'": 39,
+    "k": 40,
+    ";": 41,
+    "\\": 42,
+    ",": 43,
+    "/": 44,
+    "n": 45,
+    "m": 46,
+    ".": 47,
+    "tab": 48,
+    "space": 49,
+    " ": 49,
+    "`": 50,
+    "backspace": 51,
+    "delete": 51,
+    "escape": 53,
+    "esc": 53,
+    "f1": 122,
+    "f2": 120,
+    "f3": 99,
+    "f4": 118,
+    "f5": 96,
+    "f6": 97,
+    "f7": 98,
+    "f8": 100,
+    "f9": 101,
+    "f10": 109,
+    "f11": 103,
+    "f12": 111,
+    "left": 123,
+    "right": 124,
+    "down": 125,
+    "up": 126,
+    "home": 115,
+    "end": 119,
+    "pageup": 116,
+    "pagedown": 121,
     "del": 117,
+}
+
+_SHIFTED_ASCII: dict[str, str] = {
+    "~": "`",
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    "$": "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
+    "_": "-",
+    "+": "=",
+    "{": "[",
+    "}": "]",
+    "|": "\\",
+    ":": ";",
+    '"': "'",
+    "<": ",",
+    ">": ".",
+    "?": "/",
 }
 
 
@@ -107,8 +193,15 @@ def _modifier_flag(name: str) -> int:
 
 def _is_modifier(name: str) -> bool:
     return name.lower() in {
-        "ctrl", "control", "alt", "option", "shift",
-        "cmd", "command", "super", "win",
+        "ctrl",
+        "control",
+        "alt",
+        "option",
+        "shift",
+        "cmd",
+        "command",
+        "super",
+        "win",
     }
 
 
@@ -125,10 +218,7 @@ def _is_modifier(name: str) -> bool:
 
 
 def _settings_open(pane: str) -> None:
-    url = (
-        "x-apple.systempreferences:com.apple.preference.security"
-        f"?Privacy_{pane}"
-    )
+    url = f"x-apple.systempreferences:com.apple.preference.security?Privacy_{pane}"
     try:
         subprocess.run(["open", url], capture_output=True, timeout=2.0)
     except Exception as e:
@@ -188,9 +278,7 @@ def _shot_to_png_bytes(shot, width: int, height: int) -> bytes:
 class MacOSScreenCapture(ScreenCapture):
     def __init__(self):
         if _mss is None:
-            raise ScreenCaptureError(
-                "mss is missing. Run: pip install vadgr-computer-use"
-            )
+            raise ScreenCaptureError("mss is missing. Run: pip install vadgr-computer-use")
 
     def capture_full(self) -> ScreenState:
         _require_screen_recording()
@@ -254,9 +342,10 @@ class MacOSScreenCapture(ScreenCapture):
 class MacOSActionExecutor(ActionExecutor):
     def __init__(self):
         if _Quartz is None:
-            raise ActionError(
-                "Quartz not available. Run: pip install vadgr-computer-use"
-            )
+            raise ActionError("Quartz not available. Run: pip install vadgr-computer-use")
+        self._keyboard_source = _Quartz.CGEventSourceCreate(_Quartz.kCGEventSourceStatePrivate)
+        if self._keyboard_source is None:
+            raise ActionError("Unable to create private keyboard event source")
         self._tracker = CursorTracker()
         self._sync_tracker_with_system()
 
@@ -277,9 +366,7 @@ class MacOSActionExecutor(ActionExecutor):
     ) -> None:
         ev = _Quartz.CGEventCreateMouseEvent(None, event_type, (x, y), button)
         if click_state is not None:
-            _Quartz.CGEventSetIntegerValueField(
-                ev, _Quartz.kCGMouseEventClickState, click_state
-            )
+            _Quartz.CGEventSetIntegerValueField(ev, _Quartz.kCGMouseEventClickState, click_state)
         if flags is not None:
             _Quartz.CGEventSetFlags(ev, flags)
         _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
@@ -334,13 +421,69 @@ class MacOSActionExecutor(ActionExecutor):
     def type_text(self, text: str) -> None:
         _require_accessibility()
         for ch in text:
-            ev_down = _Quartz.CGEventCreateKeyboardEvent(None, 0, True)
-            _Quartz.CGEventKeyboardSetUnicodeString(ev_down, len(ch), ch)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev_down)
-            ev_up = _Quartz.CGEventCreateKeyboardEvent(None, 0, False)
-            _Quartz.CGEventKeyboardSetUnicodeString(ev_up, len(ch), ch)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev_up)
+            self._type_char(ch)
             time.sleep(0.005)
+
+    def _type_char(self, char: str) -> bool:
+        special = {"\n": "enter", "\r": "enter", "\t": "tab"}
+        if char in special:
+            keycode = _CGKEYCODE[special[char]]
+            self._keyboard_chord([keycode], 0)
+            return False
+        shifted = char.isupper() or char in _SHIFTED_ASCII
+        base = _SHIFTED_ASCII.get(char, char.lower() if char.isupper() else char)
+        keycode = _CGKEYCODE.get(base)
+        fallback = keycode is None
+        flags = _Quartz.kCGEventFlagMaskShift if shifted and not fallback else 0
+        self._keyboard_chord([keycode or 0], flags, char)
+        return fallback
+
+    def _keyboard_chord(self, keycodes: list[int], flags: int, char: str | None = None) -> None:
+        # Keep synthetic key state separate from the owner's physical keyboard.
+        # Register each private key-up before posting its matching key-down so
+        # an interrupted/failed post still unwinds every key this call owns.
+        modifiers = (
+            (59, _Quartz.kCGEventFlagMaskControl),
+            (58, _Quartz.kCGEventFlagMaskAlternate),
+            (56, _Quartz.kCGEventFlagMaskShift),
+            (55, _Quartz.kCGEventFlagMaskCommand),
+        )
+
+        def event(keycode: int, down: bool, event_flags: int, text: str | None = None):
+            result = _Quartz.CGEventCreateKeyboardEvent(self._keyboard_source, keycode, down)
+            if result is None:
+                raise ActionError("Unable to create keyboard event")
+            _Quartz.CGEventSetFlags(result, event_flags)
+            if text is not None:
+                # Quartz counts UTF-16 UniChar elements, not Python code points.
+                utf16_units = len(text.encode("utf-16-le")) // 2
+                _Quartz.CGEventKeyboardSetUnicodeString(result, utf16_units, text)
+            return result
+
+        with ExitStack() as releases:
+            active_flags = 0
+            for keycode, mask in modifiers:
+                if not flags & mask:
+                    continue
+                up = event(keycode, False, active_flags)
+                active_flags |= mask
+                down = event(keycode, True, active_flags)
+                releases.callback(_Quartz.CGEventPost, _Quartz.kCGHIDEventTap, up)
+                _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, down)
+            for keycode in keycodes:
+                up = event(keycode, False, active_flags, char)
+                down = event(keycode, True, active_flags, char)
+                releases.callback(_Quartz.CGEventPost, _Quartz.kCGHIDEventTap, up)
+                _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, down)
+
+    def type_text_plan(self, plan: TypingPlan, *, cancelled=None, deadline=None) -> int:
+        _require_accessibility()
+        return consume_typing_plan(
+            plan,
+            self._type_char,
+            cancelled=cancelled,
+            deadline=deadline,
+        )
 
     def key_press(self, keys: list[str]) -> None:
         if not keys:
@@ -359,22 +502,14 @@ class MacOSActionExecutor(ActionExecutor):
                 continue
             keycodes.append(kc)
 
-        for kc in keycodes:
-            ev = _Quartz.CGEventCreateKeyboardEvent(None, kc, True)
-            _Quartz.CGEventSetFlags(ev, flags)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
-        for kc in reversed(keycodes):
-            ev = _Quartz.CGEventCreateKeyboardEvent(None, kc, False)
-            _Quartz.CGEventSetFlags(ev, flags)
-            _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
+        if keycodes:
+            self._keyboard_chord(keycodes, flags)
 
     def scroll(self, x: int, y: int, amount: int) -> None:
         _require_accessibility()
         self._raw_move(x, y)
         time.sleep(0.05)
-        ev = _Quartz.CGEventCreateScrollWheelEvent(
-            None, _Quartz.kCGScrollEventUnitLine, 1, amount
-        )
+        ev = _Quartz.CGEventCreateScrollWheelEvent(None, _Quartz.kCGScrollEventUnitLine, 1, amount)
         _Quartz.CGEventPost(_Quartz.kCGHIDEventTap, ev)
 
     def drag(
@@ -391,8 +526,13 @@ class MacOSActionExecutor(ActionExecutor):
         btn = _Quartz.kCGMouseButtonLeft
         self._post_mouse(_Quartz.kCGEventLeftMouseDown, start_x, start_y, btn)
         path = windmouse_path(
-            start_x, start_y, end_x, end_y,
-            gravity=DRAG_GRAVITY, wind=DRAG_WIND, max_vel=DRAG_MAX_VEL,
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            gravity=DRAG_GRAVITY,
+            wind=DRAG_WIND,
+            max_vel=DRAG_MAX_VEL,
         )
         delays = generate_delays(len(path), duration)
         for i, (px, py) in enumerate(path):
@@ -415,28 +555,30 @@ _fg_window_cache_mac: "tuple[float, ForegroundWindow | None] | None" = None
 def _query_foreground_window_macos() -> "ForegroundWindow | None":
     script = (
         'tell application "System Events"\n'
-        '  set fp to first process whose frontmost is true\n'
-        '  set appName to name of fp\n'
-        '  set appPID to unix id of fp\n'
+        "  set fp to first process whose frontmost is true\n"
+        "  set appName to name of fp\n"
+        "  set appPID to unix id of fp\n"
         '  set winTitle to ""\n'
-        '  set winX to 0\n'
-        '  set winY to 0\n'
-        '  set winW to 0\n'
-        '  set winH to 0\n'
-        '  try\n'
-        '    set w to window 1 of fp\n'
-        '    set winTitle to name of w\n'
-        '    set {winX, winY} to position of w\n'
-        '    set {winW, winH} to size of w\n'
-        '  end try\n'
+        "  set winX to 0\n"
+        "  set winY to 0\n"
+        "  set winW to 0\n"
+        "  set winH to 0\n"
+        "  try\n"
+        "    set w to window 1 of fp\n"
+        "    set winTitle to name of w\n"
+        "    set {winX, winY} to position of w\n"
+        "    set {winW, winH} to size of w\n"
+        "  end try\n"
         '  return appName & "\\n" & appPID & "\\n" & winTitle & "\\n"'
         ' & winX & "\\n" & winY & "\\n" & winW & "\\n" & winH\n'
-        'end tell'
+        "end tell"
     )
     try:
         result = subprocess.run(
             ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=2.0,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
         )
         if result.returncode != 0:
             return None
@@ -500,7 +642,8 @@ def _fire_ax_prompt() -> None:
         return
     try:
         key = getattr(
-            _HIServices, "kAXTrustedCheckOptionPrompt",
+            _HIServices,
+            "kAXTrustedCheckOptionPrompt",
             "AXTrustedCheckOptionPrompt",
         )
         _HIServices.AXIsProcessTrustedWithOptions({key: True})
@@ -612,8 +755,7 @@ class MacOSBackend(PlatformBackend):
                 available=False,
                 missing=tuple(missing),
                 remediation=(
-                    "Required Python packages are missing. "
-                    "Run: pip install vadgr-computer-use"
+                    "Required Python packages are missing. Run: pip install vadgr-computer-use"
                 ),
             )
         return AvailabilityReport(available=True)

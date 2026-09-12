@@ -35,13 +35,19 @@ from computer_use.platform.resolver.session import SessionContext
 
 
 def _mutter_available() -> bool:
-    from computer_use.platform import linux
+    try:
+        from computer_use.platform import linux
+    except ImportError:
+        return False
 
     return linux._is_mutter_available()
 
 
 def _evdev_present() -> bool:
-    from computer_use.platform import linux
+    try:
+        from computer_use.platform import linux
+    except ImportError:
+        return False
 
     return linux.evdev_import is not None
 

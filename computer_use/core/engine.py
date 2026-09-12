@@ -72,9 +72,7 @@ class ComputerUseEngine:
         """Translate screenshot pixel coords to absolute screen coords."""
         return (x + self._vs_offset_x, y + self._vs_offset_y)
 
-    def screenshot_region(
-        self, x: int, y: int, width: int, height: int
-    ) -> ScreenState:
+    def screenshot_region(self, x: int, y: int, width: int, height: int) -> ScreenState:
         """Capture a rectangular region of the screen."""
         return self._capture.capture_region(Region(x, y, width, height))
 
@@ -98,9 +96,17 @@ class ComputerUseEngine:
         ax, ay = self._to_abs(x, y)
         self._executor.move_mouse(ax, ay)
 
-    def type_text(self, text: str) -> None:
-        """Type a string of text."""
-        self._executor.type_text(text)
+    def type_text(self, text: str, plan=None, *, cancelled=None, deadline=None) -> int:
+        """Type text through the fast path or one validated timing plan."""
+        if plan is None:
+            self._executor.type_text(text)
+            return 0
+        else:
+            return self._executor.type_text_plan(
+                plan,
+                cancelled=cancelled,
+                deadline=deadline,
+            )
 
     def key_press(self, *keys: str) -> None:
         """Press a key combination. e.g. engine.key_press('ctrl', 'c')"""
