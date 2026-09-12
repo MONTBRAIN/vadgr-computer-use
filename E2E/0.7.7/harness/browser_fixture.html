@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CUA 0.7.7 broker recovery fixture</title>
+    <style>
+      body { font: 16px system-ui, sans-serif; margin: 3rem; max-width: 48rem; }
+      textarea { box-sizing: border-box; min-height: 10rem; width: 100%; }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">CUA 0.7.7 broker recovery fixture</h1>
+    <p id="agent"></p>
+    <textarea id="arena" aria-label="Agent arena"></textarea>
+    <script>
+      const id = new URLSearchParams(location.search).get("agent") || "unknown";
+      document.querySelector("#agent").textContent = `Agent ${id}`;
+      document.body.dataset.agent = id;
+    </script>
+  </body>
+</html>

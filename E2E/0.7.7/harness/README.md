@@ -24,3 +24,8 @@ broker status, and reports only public identity fields. `proxy` sends one
 credential-free readiness frame through the packaged Windows proxy and reports
 its public error. These helpers prepare fixtures and observations; they do not
 assign cell verdicts.
+
+`browser_fixture.html` is the local instrumented R1 page. Serve it from the
+validated root over loopback, open `?agent=one` and `?agent=two` in separate
+Chrome for Testing windows, and keep a decoy tab selected in each window. Each
+agent leases only its named inactive fixture and writes its public marker.
