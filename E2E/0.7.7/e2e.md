@@ -11,8 +11,9 @@ cell. Build the exact branch-head wheel and install it without editable mode in
 a fresh environment outside the checkout. The MCP configuration must call that
 environment's `vadgr-cua` entry point.
 
-> **Status: not run.** The runbook, product head and evidence PR are sealed.
-> Installed identity and results are recorded during execution.
+> **Status: complete on required hosts.** Native Windows W1-W6 and WSL S1-S4
+> plus R1 pass. Linux and macOS are Not-Needed because recurring recovery is
+> restricted to the packaged Windows broker. Evidence is on private PR #161.
 
 ## The rules
 
@@ -109,45 +110,45 @@ Impossible or redundant products collapse into the eleven named cells below.
 
 | Part | Axes | Cells | Run | Open |
 |---|---|---:|---:|---:|
-| W: Windows lifecycle | clean, concurrent, missing, corrupt, stale, mismatch | 6 | 0 | 6 |
-| S: WSL proxy diagnosis | clean, missing, failed repair, failed interop | 4 | 0 | 4 |
-| R: recovered browser isolation | Windows and WSL clients, separate inactive targets | 1 | 0 | 1 |
-| | | **11** | **0** | **11** |
+| W: Windows lifecycle | clean, concurrent, missing, corrupt, stale, mismatch | 6 | 6 | 0 |
+| S: WSL proxy diagnosis | clean, missing, failed repair, failed interop | 4 | 4 | 0 |
+| R: recovered browser isolation | Windows and WSL clients, separate inactive targets | 1 | 1 | 0 |
+| | | **11** | **11** | **0** |
 
 ## Part W: native Windows broker lifecycle
 
 | # | Precondition and setup | Goal or action | Expected observable and independent oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| W1 | No broker, lock or endpoint in isolated Windows application data | Start one installed client and request readiness | One broker owns the lock, atomically publishes a matching endpoint, and an independent authenticated probe confirms PID, start identity, epoch and bundle | Candidate identity, safe state transitions, probe result and exit codes | Keep the broker for W2 | not run: candidate not sealed |
-| W2 | W1 broker is live; two clients start concurrently | Both clients request readiness | Both attach to the W1 PID and epoch; one held lock never becomes false success; one broker exists | Both client results, identities, timing and process count | Close the second client; keep the broker | not run: candidate not sealed |
-| W3 | W1 broker and first client remain live; harness validates then removes only the isolated endpoint | A new client requests readiness | The same broker republishes atomically with the same PID, start identity and epoch; old and new clients remain usable | Before/after safe endpoint metadata, identities and client probes | Keep the repaired broker | not run: candidate not sealed |
-| W4 | Live isolated broker; harness replaces only its endpoint with invalid JSON and safe permissions | A new client requests readiness | The owner replaces the corrupt record atomically and authenticates, or returns `browser_broker_discovery_invalid`; no temporary record remains | Corrupt fixture hash, transitions, result code and process identity | Restore through product recovery; keep only a healthy broker | not run: candidate not sealed |
-| W5 | Stop only the recorded isolated broker; leave its endpoint record; prove PID exit and lock release | A new client requests readiness | One contender validates stale discovery, starts one new PID and epoch, publishes and authenticates; it changes no unrelated state | Old/new identities, lock transition, process count and metadata comparison | Keep the new broker for W6 | not run: candidate not sealed |
-| W6 | Isolated discovery or helper reports a verified bundle different from the installed candidate | Request readiness | Product follows its bounded update rule or returns `browser_broker_bundle_mismatch` before attach; it never accepts the mismatch | Expected/observed hashes, public code and process list | Restore matching isolated bundle | not run: candidate not sealed |
+| W1 | No broker, lock or endpoint in isolated Windows application data | Start one installed client and request readiness | One broker owns the lock, atomically publishes a matching endpoint, and an independent authenticated probe confirms PID, start identity, epoch and bundle | Candidate identity, safe state transitions, probe result and exit codes | Keep the broker for W2 | pass: one authenticated broker, protected endpoint and exact bundle |
+| W2 | W1 broker is live; two clients start concurrently | Both clients request readiness | Both attach to the W1 PID and epoch; one held lock never becomes false success; one broker exists | Both client results, identities, timing and process count | Close the second client; keep the broker | pass: both concurrent clients attached to the W1 PID and epoch |
+| W3 | W1 broker and first client remain live; harness validates then removes only the isolated endpoint | A new client requests readiness | The same broker republishes atomically with the same PID, start identity and epoch; old and new clients remain usable | Before/after safe endpoint metadata, identities and client probes | Keep the repaired broker | pass: same PID, start identity and epoch; no temporary record |
+| W4 | Live isolated broker; harness replaces only its endpoint with invalid JSON and safe permissions | A new client requests readiness | The owner replaces the corrupt record atomically and authenticates, or returns `browser_broker_discovery_invalid`; no temporary record remains | Corrupt fixture hash, transitions, result code and process identity | Restore through product recovery; keep only a healthy broker | pass: corrupt record repaired under the same identity with no temporary record |
+| W5 | Stop only the recorded isolated broker; leave its endpoint record; prove PID exit and lock release | A new client requests readiness | One contender validates stale discovery, starts one new PID and epoch, publishes and authenticates; it changes no unrelated state | Old/new identities, lock transition, process count and metadata comparison | Keep the new broker for W6 | pass: validated old PID exited and one new PID and epoch authenticated |
+| W6 | Isolated discovery or helper reports a verified bundle different from the installed candidate | Request readiness | Product follows its bounded update rule or returns `browser_broker_bundle_mismatch` before attach; it never accepts the mismatch | Expected/observed hashes, public code and process list | Restore matching isolated bundle | pass: mismatch was never accepted; replacement published the exact bundle |
 
 ## Part S: WSL to Windows proxy and diagnosis
 
 | # | Precondition and setup | Goal or action | Expected observable and independent oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| S1 | Matching isolated Windows broker; WSL client invokes installed entry point through the packaged proxy | Request readiness from WSL | WSL authenticates to the Windows PID and epoch; no endpoint token or endpoint file appears in WSL storage | WSL stream, proxy exit, broker identity and absence scan | Keep broker and client for S2 | not run: candidate not sealed |
-| S2 | S1 broker remains live; remove only its validated isolated Windows endpoint | A second WSL client requests readiness | Same PID, start identity and epoch republish; both WSL clients attach and remain usable | Before/after safe metadata and both probes | Keep repaired broker | not run: candidate not sealed |
-| S3 | Child-only fixture prevents the isolated broker from repairing discovery while interop still launches Windows commands | Request readiness from WSL | Exact broker discovery or startup error appears; no Windows-interop, DNS, firewall or network remedy appears | Interop control exit, public error and negative remedy scan | Disarm fixture and prove recovery | not run: candidate not sealed |
-| S4 | Child-only test shim makes proxy launch unavailable without changing host interop | Request readiness from WSL | Only `windows_interop_unavailable` and its matching remedy appear; no broker or browser action dispatch occurs | Shim identity, public result and dispatch count | Remove the shim and prove S1 path again | not run: candidate not sealed |
+| S1 | Matching isolated Windows broker; WSL client invokes installed entry point through the packaged proxy | Request readiness from WSL | WSL authenticates to the Windows PID and epoch; no endpoint token or endpoint file appears in WSL storage | WSL stream, proxy exit, broker identity and absence scan | Keep broker and client for S2 | pass: WSL authenticated to the exact Windows PID and epoch; no WSL endpoint copy |
+| S2 | S1 broker remains live; remove only its validated isolated Windows endpoint | A second WSL client requests readiness | Same PID, start identity and epoch republish; both WSL clients attach and remain usable | Before/after safe metadata and both probes | Keep repaired broker | pass: endpoint republished and WSL reattached to the same identity |
+| S3 | Child-only fixture prevents the isolated broker from repairing discovery while interop still launches Windows commands | Request readiness from WSL | Exact broker discovery or startup error appears; no Windows-interop, DNS, firewall or network remedy appears | Interop control exit, public error and negative remedy scan | Disarm fixture and prove recovery | pass: proxy returned `browser_broker_discovery_invalid` with its exact remedy |
+| S4 | Child-only test shim makes proxy launch unavailable without changing host interop | Request readiness from WSL | Only `windows_interop_unavailable` and its matching remedy appear; no broker or browser action dispatch occurs | Shim identity, public result and dispatch count | Remove the shim and prove S1 path again | pass: only `windows_interop_unavailable`; zero dispatch |
 
 ## Part R: post-recovery browser operation
 
 | # | Precondition and setup | Goal or action | Expected observable and independent oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| R1 | S2 recovery completed; isolated Chrome for Testing has two client-owned windows with separate inactive fixture tabs | Two parallel agent clients each update and read its own target without focusing either window | Both structured streams name the expected client and target; DOM oracle shows one exact mutation per target; focus stays unchanged; no cross-route occurs | Driver selection, both streams, broker identity, target leases, DOM and focus read-backs | Release leases; stop test broker and Chrome; remove validated roots after filing | not run: candidate not sealed |
+| R1 | S2 recovery completed; isolated Chrome for Testing has two client-owned windows with separate inactive fixture tabs | Two parallel agent clients each update and read its own target without focusing either window | Both structured streams name the expected client and target; DOM oracle shows one exact mutation per target; focus stays unchanged; no cross-route occurs | Driver selection, both streams, broker identity, target leases, DOM and focus read-backs | Release leases; stop test broker and Chrome; remove validated roots after filing | pass: two parallel agents mutated only their exact hidden target; focus and decoys unchanged |
 
 ## Per-OS results
 
 | Part | WSL | Linux | Windows native | macOS |
 |---|---|---|---|---|
-| W: Windows lifecycle | Not-Needed: native Windows owns the packaged broker state | Not-Needed: no Windows packaged helper | not run | Not-Needed: no Windows packaged helper |
-| S: WSL proxy diagnosis | not run | Not-Needed: no WSL-to-Windows proxy | Not-Needed: WSL origin is required | Not-Needed: no WSL-to-Windows proxy |
-| R: recovered browser isolation | not run | Not-Needed: the patch does not change the POSIX broker lifecycle | not run | Not-Needed: the patch does not change the POSIX broker lifecycle |
-| **overall** | **not run** | **Not-Needed: Windows packaged-helper patch** | **not run** | **Not-Needed: Windows packaged-helper patch** |
+| W: Windows lifecycle | Not-Needed: native Windows owns the packaged broker state | Not-Needed: no Windows packaged helper | pass | Not-Needed: no Windows packaged helper |
+| S: WSL proxy diagnosis | pass | Not-Needed: no WSL-to-Windows proxy | Not-Needed: WSL origin is required | Not-Needed: no WSL-to-Windows proxy |
+| R: recovered browser isolation | pass | Not-Needed: the patch does not change the POSIX broker lifecycle | pass | Not-Needed: the patch does not change the POSIX broker lifecycle |
+| **overall** | **pass** | **Not-Needed: Windows packaged-helper patch** | **pass** | **Not-Needed: Windows packaged-helper patch** |
 
 If implementation changes the POSIX lifecycle path, Linux and macOS lose their
 `Not-Needed` verdicts. Add and run their missing-discovery and stale-state cells
@@ -178,5 +179,14 @@ Report reclaimed space. Never change or compact a mounted WSL virtual disk.
 
 ## Findings
 
-No execution has started. Record reproduced findings, the failing cell, root
-cause, fix commit, regression test and every invalidated cell here as work runs.
+The released failure was reproduced as missing broker discovery while its lock
+owner remained live. The product repair is at `145040a`; its Windows bundle is
+at `76a235c`. W3 and S2 prove same-identity recovery. W4 proves corrupt-record
+recovery. W5 and W6 prove stale and mismatched generations are not accepted.
+
+Three R1 setup attempts remain in evidence. The first used a WSL UNC extension
+path, the second omitted isolated application data from Chrome's environment,
+and neither mutated a fixture. The final attempt used Chrome for Testing
+153.0.8010.36, Codex CLI 0.154.0 with `gpt-5.6-luna` at medium effort, and two
+parallel clients. Both exact values appeared only in their leased hidden tabs;
+focus and both decoys stayed unchanged.
