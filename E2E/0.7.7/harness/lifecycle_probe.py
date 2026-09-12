@@ -104,12 +104,15 @@ def fault(endpoint: Path, action: str) -> int:
 def windows_process_path(pid: int) -> Path:
     command = (
         "$ErrorActionPreference='Stop';"
-        "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$args[0]);"
+        "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:VADGR_CUA_TEST_PID);"
         "if($null -eq $p){exit 3};[Console]::Out.Write($p.ExecutablePath)"
     )
+    environment = dict(os.environ)
+    environment["VADGR_CUA_TEST_PID"] = str(pid)
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command, str(pid)],
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
         capture_output=True,
+        env=environment,
         text=True,
         timeout=10,
     )

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -54,3 +55,18 @@ def test_faults_change_only_validated_endpoint(tmp_path):
     assert outside.read_text() == "owner"
     with pytest.raises(ValueError, match="outside"):
         MODULE.checked_paths(str(root), str(outside))
+
+
+def test_windows_process_identity_passes_pid_as_data(tmp_path, monkeypatch):
+    executable = tmp_path / "vadgr-cua-browser-broker.exe"
+    executable.write_bytes(b"fixture")
+    captured = {}
+
+    def run(command, **options):
+        captured.update(command=command, options=options)
+        return SimpleNamespace(returncode=0, stdout=str(executable))
+
+    monkeypatch.setattr(MODULE.subprocess, "run", run)
+    assert MODULE.windows_process_path(41) == executable.resolve()
+    assert captured["options"]["env"]["VADGR_CUA_TEST_PID"] == "41"
+    assert "41" not in captured["command"]
