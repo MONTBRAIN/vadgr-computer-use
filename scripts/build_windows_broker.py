@@ -131,10 +131,18 @@ def build(source_commit: str, output: Path) -> None:
         root = Path(temporary)
         dist = root / "dist"
         env = dict(os.environ)
-        env.update({"PYTHONHASHSEED": "0", "SOURCE_DATE_EPOCH": "1788220800"})
+        env.update(
+            {
+                "PYTHONHASHSEED": "0",
+                "PYTHONNOUSERSITE": "1",
+                "PYINSTALLER_CONFIG_DIR": str(root / "pyinstaller-config"),
+                "SOURCE_DATE_EPOCH": "1788220800",
+            }
+        )
         subprocess.run(
             [
                 sys.executable,
+                "-I",
                 "-m",
                 "PyInstaller",
                 "--noconfirm",
