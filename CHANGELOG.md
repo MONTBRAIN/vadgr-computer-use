@@ -41,6 +41,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Verify the bundled Windows broker against its exact source inventory after a
+  squash merge, without requiring the feature-branch commit to remain reachable.
 - Retire a definitively dead or replaced browser-broker transport before the
   next dispatch. The first stale client now reaches the replacement epoch's
   explicit `target_lost` fence without replaying an uncertain operation.
