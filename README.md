@@ -52,6 +52,11 @@ self-contained Windows process bound only to Windows loopback. WSL reaches it
 through the packaged Windows stdio proxy, so NAT and mirrored WSL networking
 use the same path. This requires neither Windows Python nor a firewall, DNS,
 route, adapter, proxy, VPN, or WSL networking change.
+The elected broker repairs its missing or damaged owner-only discovery record
+without changing its epoch or disconnecting existing clients. New clients
+report ready only after an authenticated endpoint handshake. Broker discovery,
+bundle, endpoint and Windows interop failures keep separate error codes and
+matching remedies.
 The native host closes both relay directions together and joins its input
 reader before exit, including when the browser broker disconnects first.
 

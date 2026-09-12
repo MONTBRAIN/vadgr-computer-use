@@ -141,6 +141,7 @@ class BrokerClient:
             return
         deadline = time.monotonic() + self._connect_timeout
         started = False
+        last_error: BrowserError | None = None
         while time.monotonic() < deadline:
             endpoint = read_endpoint()
             if (
@@ -189,8 +190,17 @@ class BrokerClient:
                         }
                         self._start_heartbeat()
                         return
-                except (OSError, ValueError):
-                    pass
+                except BrowserError as error:
+                    last_error = error
+                except (OSError, ValueError) as error:
+                    from computer_use.browser.windows_broker import WindowsBrokerStateError
+
+                    if isinstance(error, WindowsBrokerStateError):
+                        last_error = BrowserError(
+                            BrowserErrorCode(error.code),
+                            str(error),
+                            remediation=error.remediation,
+                        )
                 try:
                     if file is not None:
                         file.close()
@@ -208,18 +218,25 @@ class BrokerClient:
                 self._start_broker()
                 started = True
             time.sleep(0.05)
-        raise BrowserError(BrowserErrorCode.NOT_CONNECTED, "browser broker did not become ready")
+        if last_error is not None:
+            raise last_error
+        raise BrowserError(
+            BrowserErrorCode.BROKER_START_TIMEOUT,
+            "browser broker did not become ready before the startup deadline",
+            remediation="retry once; run vadgr-cua doctor if startup still fails",
+        )
 
     def _connect_through_windows_proxy(self) -> None:
         from computer_use.browser.windows_broker import expected_bundle_hash
 
         expected_bundle = expected_bundle_hash()
         deadline = time.monotonic() + self._connect_timeout
+        last_error: BrowserError | None = None
         try:
             self._start_broker()
         except FileNotFoundError as error:
             raise BrowserError(
-                BrowserErrorCode.NOT_CONNECTED,
+                BrowserErrorCode.WINDOWS_INTEROP_UNAVAILABLE,
                 "the Windows browser broker cannot start because Windows interop is unavailable",
                 remediation=("enable Windows interop and retry; cua never changes WSL networking"),
             ) from error
@@ -237,6 +254,17 @@ class BrokerClient:
                     },
                 )
                 reply = self._read(file)
+                if reply and not reply.get("ok") and isinstance(reply.get("error"), dict):
+                    reported = reply["error"]
+                    try:
+                        code = BrowserErrorCode(str(reported.get("code")))
+                    except ValueError:
+                        code = BrowserErrorCode.BROKER_UNREACHABLE
+                    last_error = BrowserError(
+                        code,
+                        str(reported.get("message") or "the Windows browser broker is unavailable"),
+                        remediation=str(reported.get("remediation") or "run vadgr-cua doctor"),
+                    )
                 if (
                     reply
                     and reply.get("ok")
@@ -256,6 +284,12 @@ class BrokerClient:
                     }
                     self._start_heartbeat()
                     return
+                if reply and reply.get("ok") and reply.get("bundle_hash") != expected_bundle:
+                    last_error = BrowserError(
+                        BrowserErrorCode.BROKER_BUNDLE_MISMATCH,
+                        "the Windows browser broker does not match the installed CUA payload",
+                        remediation="complete the CUA update and retry",
+                    )
             except (OSError, ValueError):
                 pass
             if file is not None:
@@ -263,10 +297,12 @@ class BrokerClient:
             if transport is not None and transport.poll() is None:
                 transport.terminate()
             time.sleep(0.05)
+        if last_error is not None:
+            raise last_error
         raise BrowserError(
-            BrowserErrorCode.NOT_CONNECTED,
-            "the Windows browser broker did not become ready through the WSL proxy",
-            remediation="enable Windows interop and retry; cua never changes WSL networking",
+            BrowserErrorCode.BROKER_START_TIMEOUT,
+            "the Windows browser broker did not become ready before the startup deadline",
+            remediation="retry once; run vadgr-cua doctor if startup still fails",
         )
 
     def _start_heartbeat(self) -> None:

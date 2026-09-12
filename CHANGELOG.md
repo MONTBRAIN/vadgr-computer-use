@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.7] - 2026-09-12
+
+### Fixed
+
+- Restore a missing or damaged browser-broker discovery record while the
+  elected broker remains live. Existing clients keep the same broker epoch.
+- Require an authenticated endpoint before startup reports readiness. A held
+  broker lock no longer stands in for a usable connection.
+- Preserve exact broker discovery, bundle and endpoint failures through the WSL
+  proxy. Windows interop advice now appears only when interop itself is absent.
+- Add deterministic and live lifecycle coverage for clean, concurrent, missing,
+  corrupt, stale and mismatched broker state.
+
 ## [0.7.6] - 2026-09-01
 
 ### Added

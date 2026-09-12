@@ -17,7 +17,7 @@ from pathlib import Path
 
 EXPECTED_PYTHON = "3.12.14"
 EXPECTED_PYINSTALLER = "6.22.2"
-VERSION = "0.7.6"
+VERSION = "0.7.7"
 ARCHIVE_NAME = "vadgr-cua-browser-broker-win-x64.zip"
 MANIFEST_NAME = "vadgr-cua-browser-broker-win-x64.manifest.json"
 SBOM_NAME = "vadgr-cua-browser-broker-win-x64.spdx.json"

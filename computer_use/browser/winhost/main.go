@@ -41,6 +41,18 @@ type brokerEndpoint struct {
 	Token string `json:"token"`
 }
 
+func brokerProxyError(output io.Writer, code string, message string, remediation string) int {
+	encoded, _ := json.Marshal(map[string]any{
+		"ok": false,
+		"error": map[string]string{
+			"code": code, "message": message, "remediation": remediation,
+		},
+	})
+	encoded = append(encoded, '\n')
+	_, _ = output.Write(encoded)
+	return 1
+}
+
 // readFrame reads one length-prefixed native-messaging frame.
 func readFrame(r io.Reader) ([]byte, error) {
 	var hdr [4]byte
@@ -87,10 +99,20 @@ func brokerProxy(input io.Reader, output io.Writer) int {
 	var endpoint brokerEndpoint
 	raw, err := os.ReadFile(brokerEndpointPath())
 	if err != nil || json.Unmarshal(raw, &endpoint) != nil {
-		return 1
+		return brokerProxyError(
+			output,
+			"browser_broker_discovery_invalid",
+			"the Windows browser broker discovery record is missing or invalid",
+			"run vadgr-cua doctor and repair the owner-local CUA install if instructed",
+		)
 	}
-	if endpoint.Host != "127.0.0.1" || endpoint.Port < 1 || endpoint.Port > 65535 {
-		return 1
+	if endpoint.Host != "127.0.0.1" || endpoint.Port < 1 || endpoint.Port > 65535 || endpoint.Token == "" {
+		return brokerProxyError(
+			output,
+			"browser_broker_discovery_invalid",
+			"the Windows browser broker discovery record failed identity verification",
+			"run vadgr-cua doctor and repair the owner-local CUA install if instructed",
+		)
 	}
 	conn, err := net.DialTimeout(
 		"tcp",
@@ -98,7 +120,12 @@ func brokerProxy(input io.Reader, output io.Writer) int {
 		5*time.Second,
 	)
 	if err != nil {
-		return 1
+		return brokerProxyError(
+			output,
+			"browser_broker_unreachable",
+			"the verified Windows browser broker endpoint is unreachable",
+			"run vadgr-cua doctor and restart only the CUA browser broker if instructed",
+		)
 	}
 	defer conn.Close()
 	bufferedInput := bufio.NewReaderSize(input, 64*1024)

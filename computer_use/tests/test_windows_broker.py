@@ -39,6 +39,9 @@ def test_endpoint_identity_requires_the_exact_packaged_bundle(tmp_path, monkeypa
     endpoint = {
         "platform": "win32",
         "host": "127.0.0.1",
+        "port": 12345,
+        "token": "test-token",
+        "epoch": "test-epoch",
         "bundle_hash": manifest["archive_sha256"],
         "pid": 123,
         "process_started_ns": "456",
@@ -46,8 +49,16 @@ def test_endpoint_identity_requires_the_exact_packaged_bundle(tmp_path, monkeypa
     assert windows_broker.validate_endpoint(endpoint) == manifest["archive_sha256"]
 
     endpoint["bundle_hash"] = "f" * 64
-    with pytest.raises(OSError, match="identity verification"):
+    with pytest.raises(windows_broker.WindowsBrokerStateError, match="does not match") as caught:
         windows_broker.validate_endpoint(endpoint)
+    assert caught.value.code == "browser_broker_bundle_mismatch"
+
+    del endpoint["bundle_hash"]
+    with pytest.raises(
+        windows_broker.WindowsBrokerStateError, match="identity verification"
+    ) as caught:
+        windows_broker.validate_endpoint(endpoint)
+    assert caught.value.code == "browser_broker_discovery_invalid"
 
 
 def test_windows_mount_path_is_converted_without_a_shell():
@@ -61,9 +72,8 @@ def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
     sentinel = object()
     captured = {}
 
-    monkeypatch.setattr(
-        "computer_use.setup.extension_setup.ensure_relay_exe", lambda: proxy
-    )
+    monkeypatch.setattr("computer_use.setup.extension_setup.ensure_relay_exe", lambda: proxy)
+
     def fake_popen(command, **kwargs):
         captured["command"] = command
         captured["kwargs"] = kwargs
@@ -94,12 +104,13 @@ def test_launch_paths_travel_as_data_not_powershell_source(monkeypatch):
     windows_broker.launch_windows_broker()
     assert len(captured["command"]) == 5
     assert captured["command"][:4] == [
-        "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
     ]
     assert bundle not in captured["command"][-1]
-    assert captured["command"][-1].startswith(
-        "$env:PSModulePath = $PSHOME + '\\Modules'; "
-    )
+    assert captured["command"][-1].startswith("$env:PSModulePath = $PSHOME + '\\Modules'; ")
     assert json.loads(captured["options"]["input"]) == {
         "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
         "directory": bundle,
@@ -125,8 +136,9 @@ def test_native_launch_path_roundtrip_without_launching_a_process(monkeypatch, s
         "param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle) "
     )
     replacements += (
-        "throw 'fixture launch failure' }; " if start_fails else
-        "@{executable=$FilePath;directory=$WorkingDirectory;"
+        "throw 'fixture launch failure' }; "
+        if start_fails
+        else "@{executable=$FilePath;directory=$WorkingDirectory;"
         "arguments=@($ArgumentList);window=$WindowStyle}|ConvertTo-Json -Compress }; "
     )
 
@@ -148,5 +160,7 @@ def test_native_launch_path_roundtrip_without_launching_a_process(monkeypatch, s
         assert observed["result"].returncode == 0
         assert json.loads(observed["result"].stdout) == {
             "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
-            "directory": bundle, "arguments": ["serve"], "window": "Hidden",
+            "directory": bundle,
+            "arguments": ["serve"],
+            "window": "Hidden",
         }

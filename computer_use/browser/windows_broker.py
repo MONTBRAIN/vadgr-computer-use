@@ -17,6 +17,15 @@ BROKER_EXECUTABLE = "vadgr-cua-browser-broker.exe"
 PROXY_EXECUTABLE = "vadgr-cua-host.exe"
 
 
+class WindowsBrokerStateError(OSError):
+    """A verified Windows broker lifecycle failure with a public diagnosis."""
+
+    def __init__(self, code: str, message: str, remediation: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.remediation = remediation
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as file:
@@ -101,11 +110,30 @@ def validate_endpoint(endpoint: dict[str, object]) -> str:
     if (
         endpoint.get("platform") != "win32"
         or endpoint.get("host") != "127.0.0.1"
-        or endpoint.get("bundle_hash") != expected
         or not isinstance(endpoint.get("pid"), int)
+        or endpoint["pid"] < 1
         or not isinstance(endpoint.get("process_started_ns"), str)
+        or not endpoint["process_started_ns"]
+        or not isinstance(endpoint.get("epoch"), str)
+        or not endpoint["epoch"]
+        or not isinstance(endpoint.get("token"), str)
+        or not endpoint["token"]
+        or not isinstance(endpoint.get("port"), int)
+        or not 1 <= endpoint["port"] <= 65535
+        or not isinstance(endpoint.get("bundle_hash"), str)
+        or not endpoint["bundle_hash"]
     ):
-        raise OSError("the Windows browser broker endpoint failed identity verification")
+        raise WindowsBrokerStateError(
+            "browser_broker_discovery_invalid",
+            "the Windows browser broker discovery record failed identity verification",
+            "run vadgr-cua doctor and repair the owner-local CUA install if instructed",
+        )
+    if endpoint["bundle_hash"] != expected:
+        raise WindowsBrokerStateError(
+            "browser_broker_bundle_mismatch",
+            "the Windows browser broker does not match the installed CUA payload",
+            "complete the CUA update and retry",
+        )
     return expected
 
 
