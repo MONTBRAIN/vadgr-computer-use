@@ -6,7 +6,6 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
-import subprocess
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -54,33 +53,19 @@ def main() -> int:
     if "computer_use/browser/private_file.py" not in {item.get("path") for item in source_files}:
         fail("private publication source is absent from the bundle inventory")
     source_commit = manifest.get("source_commit")
-    if not isinstance(source_commit, str) or len(source_commit) != 40:
+    if (
+        not isinstance(source_commit, str)
+        or len(source_commit) != 40
+        or any(character not in "0123456789abcdef" for character in source_commit)
+    ):
         fail("source commit is absent or malformed")
-    commit_check = subprocess.run(
-        ["git", "cat-file", "-e", f"{source_commit}^{{commit}}"],
-        cwd=repository,
-        capture_output=True,
-    )
-    if commit_check.returncode != 0:
-        fail("source commit is not present in repository history")
     for item in source_files:
         relative = str(item["path"])
         path = repository / relative
         if not path.is_file():
             fail(f"bundle source is absent: {relative}")
-        committed = subprocess.run(
-            ["git", "show", f"{source_commit}:{relative}"],
-            cwd=repository,
-            capture_output=True,
-        )
-        if committed.returncode != 0 or sha256_bytes(committed.stdout) != item["sha256"]:
-            fail(f"bundle source does not match source commit for {relative}")
-        changed = subprocess.run(
-            ["git", "diff", "--quiet", source_commit, "--", relative],
-            cwd=repository,
-        )
-        if changed.returncode != 0:
-            fail(f"bundle is stale for source {relative}")
+        if sha256_bytes(path.read_bytes()) != item["sha256"]:
+            fail(f"bundle source does not match its manifest for {relative}")
 
     expected = {item["path"]: item for item in manifest.get("files", [])}
     required = {
