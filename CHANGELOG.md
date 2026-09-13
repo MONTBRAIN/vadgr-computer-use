@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.8] - 2026-09-12
+
+### Added
+
+- Add an authenticated broker drain operation for later Windows broker updates.
+- Record the Windows process creation identity in private broker discovery and
+  authenticated client status.
+
+### Fixed
+
+- Replace a live released 0.7.6 or 0.7.7 Windows browser broker automatically
+  when it retains the shared startup lock during an update.
+- Require the current owner, one stable process handle, the Windows creation
+  identity, the exact content-addressed path, a frozen release manifest and
+  every installed payload hash before stopping a predecessor.
+- Preserve unknown processes and state with an exact safe-upgrade error. Broker
+  recovery does not toggle the extension, restart Chrome, change the network or
+  replay an uncertain browser operation.
+
 ## [0.7.7] - 2026-09-12
 
 ### Fixed

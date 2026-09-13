@@ -175,6 +175,8 @@ class BrokerClient:
                         and reply.get("epoch") == endpoint.get("epoch")
                         and reply.get("pid") == endpoint.get("pid")
                         and reply.get("process_started_ns") == endpoint.get("process_started_ns")
+                        and reply.get("process_created_filetime")
+                        == endpoint.get("process_created_filetime")
                         and reply.get("bundle_hash") == expected_bundle
                     ):
                         if isinstance(transport, socket.socket):
@@ -185,6 +187,9 @@ class BrokerClient:
                         self._broker_identity = {
                             "broker_pid": reply.get("pid"),
                             "broker_process_started_ns": reply.get("process_started_ns"),
+                            "broker_process_created_filetime": reply.get(
+                                "process_created_filetime"
+                            ),
                             "broker_bundle_hash": reply.get("bundle_hash"),
                             "broker_epoch": reply.get("epoch"),
                         }
@@ -215,7 +220,18 @@ class BrokerClient:
                     except OSError:
                         pass
             if not started:
-                self._start_broker()
+                try:
+                    self._start_broker()
+                except OSError as error:
+                    from computer_use.browser.windows_broker import WindowsBrokerStateError
+
+                    if isinstance(error, WindowsBrokerStateError):
+                        raise BrowserError(
+                            BrowserErrorCode(error.code),
+                            str(error),
+                            remediation=error.remediation,
+                        ) from error
+                    raise
                 started = True
             time.sleep(0.05)
         if last_error is not None:
@@ -240,6 +256,16 @@ class BrokerClient:
                 "the Windows browser broker cannot start because Windows interop is unavailable",
                 remediation=("enable Windows interop and retry; cua never changes WSL networking"),
             ) from error
+        except OSError as error:
+            from computer_use.browser.windows_broker import WindowsBrokerStateError
+
+            if isinstance(error, WindowsBrokerStateError):
+                raise BrowserError(
+                    BrowserErrorCode(error.code),
+                    str(error),
+                    remediation=error.remediation,
+                ) from error
+            raise
         while time.monotonic() < deadline:
             transport = None
             file = None
@@ -271,6 +297,7 @@ class BrokerClient:
                     and reply.get("bundle_hash") == expected_bundle
                     and isinstance(reply.get("pid"), int)
                     and isinstance(reply.get("process_started_ns"), str)
+                    and isinstance(reply.get("process_created_filetime"), str)
                     and isinstance(reply.get("epoch"), str)
                 ):
                     self._transport, self._file = transport, file
@@ -279,6 +306,7 @@ class BrokerClient:
                     self._broker_identity = {
                         "broker_pid": reply.get("pid"),
                         "broker_process_started_ns": reply.get("process_started_ns"),
+                        "broker_process_created_filetime": reply.get("process_created_filetime"),
                         "broker_bundle_hash": reply.get("bundle_hash"),
                         "broker_epoch": reply.get("epoch"),
                     }
@@ -358,6 +386,9 @@ class BrokerClient:
         expected = {
             "pid": expected_pid,
             "process_started_ns": self._broker_identity.get("broker_process_started_ns"),
+            "process_created_filetime": self._broker_identity.get(
+                "broker_process_created_filetime"
+            ),
             "bundle_hash": self._broker_identity.get("broker_bundle_hash"),
             "epoch": self._broker_identity.get("broker_epoch"),
         }
@@ -466,5 +497,8 @@ class BrokerClient:
             client_id=result.get("client_id"),
             broker_pid=self._broker_identity.get("broker_pid"),
             broker_process_started_ns=self._broker_identity.get("broker_process_started_ns"),
+            broker_process_created_filetime=self._broker_identity.get(
+                "broker_process_created_filetime"
+            ),
             broker_bundle_hash=self._broker_identity.get("broker_bundle_hash"),
         )

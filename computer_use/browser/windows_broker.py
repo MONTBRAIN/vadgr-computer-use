@@ -114,6 +114,8 @@ def validate_endpoint(endpoint: dict[str, object]) -> str:
         or endpoint["pid"] < 1
         or not isinstance(endpoint.get("process_started_ns"), str)
         or not endpoint["process_started_ns"]
+        or not isinstance(endpoint.get("process_created_filetime"), str)
+        or not endpoint["process_created_filetime"].isdecimal()
         or not isinstance(endpoint.get("epoch"), str)
         or not endpoint["epoch"]
         or not isinstance(endpoint.get("token"), str)
@@ -142,9 +144,63 @@ def expected_bundle_hash() -> str:
     return str(manifest["archive_sha256"])
 
 
+def _run_upgrade_handoff(bundle: str) -> dict[str, object]:
+    executable = f"{bundle}\\{BROKER_EXECUTABLE}"
+    command = (
+        "$env:PSModulePath = $PSHOME + '\\Modules'; "
+        "$Spec = [Console]::In.ReadToEnd() | ConvertFrom-Json; "
+        "& $Spec.executable upgrade-handoff"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        input=json.dumps({"executable": executable}),
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    try:
+        reply = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError) as error:
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the running browser broker could not be proved as an allowed released Vadgr broker",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        ) from error
+    if result.returncode != 0 or not isinstance(reply, dict):
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the running browser broker could not be proved as an allowed released Vadgr broker",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        )
+    if reply.get("state") == "refused":
+        code = str(reply.get("code"))
+        if code not in {"browser_broker_upgrade_unsafe", "browser_broker_upgrade_timeout"}:
+            code = "browser_broker_upgrade_unsafe"
+        raise WindowsBrokerStateError(
+            code,
+            str(reply.get("message") or "the Windows browser broker upgrade was refused"),
+            str(reply.get("remediation") or "run vadgr-cua doctor"),
+        )
+    if reply.get("state") not in {
+        "no_predecessor",
+        "already_exited",
+        "replaced",
+        "candidate_ready",
+    }:
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the Windows browser broker returned an invalid upgrade result",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        )
+    return reply
+
+
 def launch_windows_broker() -> None:
     """Start the Windows broker detached; its held lock elects one winner."""
     bundle, _manifest = deployed_bundle()
+    handoff = _run_upgrade_handoff(bundle)
+    if handoff.get("state") == "candidate_ready":
+        return
     executable = f"{bundle}\\{BROKER_EXECUTABLE}"
     # Windows PowerShell reparses trailing -Command arguments as source. Send
     # paths as ASCII JSON on stdin so spaces, quotes and Unicode stay data on

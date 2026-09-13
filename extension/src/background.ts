@@ -31,7 +31,7 @@ import { okResult } from "./protocol";
 import { cancelTyping } from "./typing-cancellation";
 
 const HOST_NAME = "com.vadgr.cua";
-const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.7";
+const EXT_VERSION = chrome.runtime.getManifest?.().version ?? "0.7.8";
 
 let port: chrome.runtime.Port | null = null;
 let helloPort: chrome.runtime.Port | null = null;

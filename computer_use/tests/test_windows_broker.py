@@ -45,6 +45,7 @@ def test_endpoint_identity_requires_the_exact_packaged_bundle(tmp_path, monkeypa
         "bundle_hash": manifest["archive_sha256"],
         "pid": 123,
         "process_started_ns": "456",
+        "process_created_filetime": "789",
     }
     assert windows_broker.validate_endpoint(endpoint) == manifest["archive_sha256"]
 
@@ -94,6 +95,9 @@ def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
 def test_launch_paths_travel_as_data_not_powershell_source(monkeypatch):
     bundle = "C:\\test spaces\\O'Brien $([int]7) `literal` é\\bundle"
     monkeypatch.setattr(windows_broker, "deployed_bundle", lambda: (bundle, {}))
+    monkeypatch.setattr(
+        windows_broker, "_run_upgrade_handoff", lambda _bundle: {"state": "no_predecessor"}
+    )
     captured = {}
 
     def capture(command, **kwargs):
@@ -120,11 +124,70 @@ def test_launch_paths_travel_as_data_not_powershell_source(monkeypatch):
     assert "stdin" not in captured["options"]
 
 
+def test_upgrade_handoff_paths_travel_as_data_not_powershell_source(monkeypatch):
+    bundle = "C:\\test spaces\\O'Brien $([int]7) `literal` é\\bundle"
+    captured = {}
+
+    def capture(command, **kwargs):
+        captured.update(command=command, options=kwargs)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"state":"replaced","version":"0.7.7"}\n',
+        )
+
+    monkeypatch.setattr(windows_broker.subprocess, "run", capture)
+    assert windows_broker._run_upgrade_handoff(bundle) == {
+        "state": "replaced",
+        "version": "0.7.7",
+    }
+    assert bundle not in captured["command"][-1]
+    assert json.loads(captured["options"]["input"]) == {
+        "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE
+    }
+
+
+def test_upgrade_handoff_preserves_exact_safe_failure(monkeypatch):
+    reply = {
+        "state": "refused",
+        "code": "browser_broker_upgrade_unsafe",
+        "message": "specific proof failure",
+        "remediation": "specific safe remedy",
+    }
+    monkeypatch.setattr(
+        windows_broker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=json.dumps(reply) + "\n"),
+    )
+
+    with pytest.raises(windows_broker.WindowsBrokerStateError) as caught:
+        windows_broker._run_upgrade_handoff("C:\\bundle")
+
+    assert caught.value.code == "browser_broker_upgrade_unsafe"
+    assert caught.value.remediation == "specific safe remedy"
+
+
+def test_running_candidate_is_not_started_again(monkeypatch):
+    monkeypatch.setattr(windows_broker, "deployed_bundle", lambda: ("C:\\bundle", {}))
+    monkeypatch.setattr(
+        windows_broker, "_run_upgrade_handoff", lambda _bundle: {"state": "candidate_ready"}
+    )
+    monkeypatch.setattr(
+        windows_broker.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("candidate must not be launched again"),
+    )
+
+    windows_broker.launch_windows_broker()
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="real native PowerShell parsing")
 @pytest.mark.parametrize("start_fails", [False, True])
 def test_native_launch_path_roundtrip_without_launching_a_process(monkeypatch, start_fails):
     bundle = "C:\\test spaces\\O'Brien $([int]7) `literal` é\\bundle"
     monkeypatch.setattr(windows_broker, "deployed_bundle", lambda: (bundle, {}))
+    monkeypatch.setattr(
+        windows_broker, "_run_upgrade_handoff", lambda _bundle: {"state": "no_predecessor"}
+    )
     real_run = subprocess.run
     observed = {}
     # These in-process functions replace both filesystem probing and launch.

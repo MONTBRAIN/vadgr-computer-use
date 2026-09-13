@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "releases": [
+    {
+      "archive_sha256": "fd2c57b76f57d06d3df3d7c964fa544b798e8f32ec460470bf326a46140696df",
+      "broker_relative_path": "vadgr-cua-browser-broker.exe",
+      "broker_sha256": "76d3c8bfa2305ad99ac58ae01113be8f2ba2959ded54d6bca437d2d0380d7d2f",
+      "manifest_sha256": "d5f21b45509d8dfb2734ffa607a8f67622ac95344d184da8939251211bd4f018",
+      "protocol_max": 1,
+      "protocol_min": 1,
+      "version": "0.7.6"
+    },
+    {
+      "archive_sha256": "1745cc86a52413d4802ffda0db07266aa8890e7be447e7b475bbbd4e60ee260c",
+      "broker_relative_path": "vadgr-cua-browser-broker.exe",
+      "broker_sha256": "b1f951ed0e0e7c59adf4ba86adecb563098ceee5488061b98443d40882020cd7",
+      "manifest_sha256": "9db409337e77c016d092c7bf17919853e7da6fa9bec987948136d0b1398517b2",
+      "protocol_max": 1,
+      "protocol_min": 1,
+      "version": "0.7.7"
+    }
+  ]
+}

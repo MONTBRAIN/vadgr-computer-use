@@ -22,20 +22,51 @@ def _security():
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel.LocalFree.argtypes = [pointer]
     kernel.LocalFree.restype = pointer
-    api.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
-    api.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, pointer, wintypes.DWORD,
-                                       ctypes.POINTER(wintypes.DWORD)]
+    api.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    api.GetTokenInformation.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        pointer,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
     api.ConvertSidToStringSidW.argtypes = [pointer, ctypes.POINTER(pointer)]
     api.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
-        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(pointer), pointer,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(pointer),
+        pointer,
     ]
-    api.GetSecurityDescriptorDacl.argtypes = [pointer, ctypes.POINTER(wintypes.BOOL),
-                                             ctypes.POINTER(pointer), ctypes.POINTER(wintypes.BOOL)]
-    api.SetNamedSecurityInfoW.argtypes = [wintypes.LPWSTR, ctypes.c_int, wintypes.DWORD,
-                                        pointer, pointer, pointer, pointer]
+    api.GetSecurityDescriptorDacl.argtypes = [
+        pointer,
+        ctypes.POINTER(wintypes.BOOL),
+        ctypes.POINTER(pointer),
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    api.SetNamedSecurityInfoW.argtypes = [
+        wintypes.LPWSTR,
+        ctypes.c_int,
+        wintypes.DWORD,
+        pointer,
+        pointer,
+        pointer,
+        pointer,
+    ]
     api.SetNamedSecurityInfoW.restype = wintypes.DWORD
-    api.GetNamedSecurityInfoW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD,
-                                        pointer, pointer, pointer, pointer, ctypes.POINTER(pointer)]
+    api.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        wintypes.DWORD,
+        pointer,
+        pointer,
+        pointer,
+        pointer,
+        ctypes.POINTER(pointer),
+    ]
     api.GetNamedSecurityInfoW.restype = wintypes.DWORD
     token = wintypes.HANDLE()
     sid_text, descriptor = pointer(), pointer()
@@ -54,7 +85,10 @@ def _security():
         # The current process token, not caller environment text, identifies the owner.
         sddl = f"O:{owner}D:P(A;OICI;FA;;;{owner})(A;OICI;FA;;;SY)"
         if not api.ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            sddl, 1, ctypes.byref(descriptor), None,
+            sddl,
+            1,
+            ctypes.byref(descriptor),
+            None,
         ):
             raise ctypes.WinError(ctypes.get_last_error())
         yield kernel, api, descriptor, owner
@@ -69,29 +103,47 @@ def _security():
 def _verify(api, kernel, descriptor, owner: str) -> None:
     _verify_owner(api, kernel, descriptor, owner)
     pointer = ctypes.c_void_p
-    api.GetSecurityDescriptorControl.argtypes = [pointer, ctypes.POINTER(wintypes.WORD),
-                                                ctypes.POINTER(wintypes.DWORD)]
+    api.GetSecurityDescriptorControl.argtypes = [
+        pointer,
+        ctypes.POINTER(wintypes.WORD),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
     api.GetAclInformation.argtypes = [pointer, pointer, wintypes.DWORD, ctypes.c_int]
     api.GetAce.argtypes = [pointer, wintypes.DWORD, ctypes.POINTER(pointer)]
     control, revision = wintypes.WORD(), wintypes.DWORD()
     present, defaulted, dacl = wintypes.BOOL(), wintypes.BOOL(), pointer()
-    if not api.GetSecurityDescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)):
+    if not api.GetSecurityDescriptorControl(
+        descriptor, ctypes.byref(control), ctypes.byref(revision)
+    ):
         raise OSError("cannot verify broker ACL protection")
     if not control.value & 0x1000:
         raise OSError("broker ACL inheritance is not protected")
-    if not api.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl),
-                                          ctypes.byref(defaulted)) or not present.value or not dacl:
+    if (
+        not api.GetSecurityDescriptorDacl(
+            descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted)
+        )
+        or not present.value
+        or not dacl
+    ):
         raise OSError("broker ACL is missing")
 
     class AclSize(ctypes.Structure):
         _fields_ = [("count", wintypes.DWORD), ("used", wintypes.DWORD), ("free", wintypes.DWORD)]
 
     class Ace(ctypes.Structure):
-        _fields_ = [("kind", wintypes.BYTE), ("flags", wintypes.BYTE), ("size", wintypes.WORD),
-                    ("mask", wintypes.DWORD), ("sid", wintypes.DWORD)]
+        _fields_ = [
+            ("kind", wintypes.BYTE),
+            ("flags", wintypes.BYTE),
+            ("size", wintypes.WORD),
+            ("mask", wintypes.DWORD),
+            ("sid", wintypes.DWORD),
+        ]
 
     info = AclSize()
-    if not api.GetAclInformation(dacl, ctypes.byref(info), ctypes.sizeof(info), 2) or info.count != 2:
+    if (
+        not api.GetAclInformation(dacl, ctypes.byref(info), ctypes.sizeof(info), 2)
+        or info.count != 2
+    ):
         raise OSError("broker ACL has unexpected entries")
     trustees = set()
     for index in range(info.count):
@@ -113,8 +165,11 @@ def _verify(api, kernel, descriptor, owner: str) -> None:
 
 def _verify_owner(api, kernel, descriptor, owner: str) -> None:
     pointer = ctypes.c_void_p
-    api.GetSecurityDescriptorOwner.argtypes = [pointer, ctypes.POINTER(pointer),
-                                              ctypes.POINTER(wintypes.BOOL)]
+    api.GetSecurityDescriptorOwner.argtypes = [
+        pointer,
+        ctypes.POINTER(pointer),
+        ctypes.POINTER(wintypes.BOOL),
+    ]
     sid, text, defaulted = pointer(), pointer(), wintypes.BOOL()
     if not api.GetSecurityDescriptorOwner(descriptor, ctypes.byref(sid), ctypes.byref(defaulted)):
         raise OSError("cannot verify broker storage owner")
@@ -131,8 +186,9 @@ def verify_owner(path: Path) -> None:
     with _security() as (kernel, api, _descriptor, owner):
         observed = ctypes.c_void_p()
         try:
-            result = api.GetNamedSecurityInfoW(str(path), 1, 1, None, None, None, None,
-                                               ctypes.byref(observed))
+            result = api.GetNamedSecurityInfoW(
+                str(path), 1, 1, None, None, None, None, ctypes.byref(observed)
+            )
             if result:
                 raise ctypes.WinError(result)
             _verify_owner(api, kernel, observed, owner)
@@ -141,12 +197,37 @@ def verify_owner(path: Path) -> None:
                 kernel.LocalFree(observed)
 
 
+def verify_owner_and_system(path: Path) -> None:
+    """Verify the exact protected owner-and-SYSTEM descriptor."""
+    with _security() as (kernel, api, _descriptor, owner):
+        observed = ctypes.c_void_p()
+        try:
+            result = api.GetNamedSecurityInfoW(
+                str(path), 1, 5, None, None, None, None, ctypes.byref(observed)
+            )
+            if result:
+                raise ctypes.WinError(result)
+            _verify(api, kernel, observed, owner)
+        finally:
+            if observed:
+                kernel.LocalFree(observed)
+
+
+def current_user_sid() -> str:
+    """Return the current process token's user SID."""
+    with _security() as (_kernel, _api, _descriptor, owner):
+        return owner
+
+
 def current_user_home() -> Path:
     """Resolve the real user profile without trusting USERPROFILE."""
     with _security() as (kernel, api, _descriptor, _owner):
         userenv = ctypes.WinDLL("userenv", use_last_error=True)
-        userenv.GetUserProfileDirectoryW.argtypes = [wintypes.HANDLE, wintypes.LPWSTR,
-                                                     ctypes.POINTER(wintypes.DWORD)]
+        userenv.GetUserProfileDirectoryW.argtypes = [
+            wintypes.HANDLE,
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
         token = wintypes.HANDLE()
         try:
             if not api.OpenProcessToken(kernel.GetCurrentProcess(), 8, ctypes.byref(token)):
@@ -169,15 +250,17 @@ def protect_owner_and_system(path: Path) -> None:
     with _security() as (kernel, api, descriptor, owner):
         present, defaulted = wintypes.BOOL(), wintypes.BOOL()
         dacl, observed = ctypes.c_void_p(), ctypes.c_void_p()
-        if not api.GetSecurityDescriptorDacl(descriptor, ctypes.byref(present), ctypes.byref(dacl),
-                                              ctypes.byref(defaulted)):
+        if not api.GetSecurityDescriptorDacl(
+            descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted)
+        ):
             raise OSError("cannot prepare broker ACL")
         result = api.SetNamedSecurityInfoW(str(path), 1, 4 | 0x80000000, None, None, dacl, None)
         if result:
             raise ctypes.WinError(result)
         try:
-            result = api.GetNamedSecurityInfoW(str(path), 1, 5, None, None, None, None,
-                                               ctypes.byref(observed))
+            result = api.GetNamedSecurityInfoW(
+                str(path), 1, 5, None, None, None, None, ctypes.byref(observed)
+            )
             if result:
                 raise ctypes.WinError(result)
             _verify(api, kernel, observed, owner)
@@ -188,9 +271,13 @@ def protect_owner_and_system(path: Path) -> None:
 
 def create_private_directory(path: Path) -> None:
     with _security() as (kernel, _api, descriptor, _owner):
+
         class Attributes(ctypes.Structure):
-            _fields_ = [("length", wintypes.DWORD), ("descriptor", ctypes.c_void_p),
-                        ("inherit", wintypes.BOOL)]
+            _fields_ = [
+                ("length", wintypes.DWORD),
+                ("descriptor", ctypes.c_void_p),
+                ("inherit", wintypes.BOOL),
+            ]
 
         kernel.CreateDirectoryW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(Attributes)]
         attributes = Attributes(ctypes.sizeof(Attributes), descriptor, False)
@@ -205,19 +292,31 @@ def create_private_file(path: Path, *, read_write: bool = False) -> int:
     import msvcrt
 
     with _security() as (kernel, _api, descriptor, _owner):
-        class Attributes(ctypes.Structure):
-            _fields_ = [("length", wintypes.DWORD), ("descriptor", ctypes.c_void_p),
-                        ("inherit", wintypes.BOOL)]
 
-        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
-                                      ctypes.POINTER(Attributes), wintypes.DWORD,
-                                      wintypes.DWORD, wintypes.HANDLE]
+        class Attributes(ctypes.Structure):
+            _fields_ = [
+                ("length", wintypes.DWORD),
+                ("descriptor", ctypes.c_void_p),
+                ("inherit", wintypes.BOOL),
+            ]
+
+        kernel.CreateFileW.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.POINTER(Attributes),
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        ]
         kernel.CreateFileW.restype = wintypes.HANDLE
         attributes = Attributes(ctypes.sizeof(Attributes), descriptor, False)
         access = 0x40000000 | (0x80000000 if read_write else 0)
         # A held lock must not become delete-pending when a contender exits.
         share = 3 if read_write else 7
-        handle = kernel.CreateFileW(str(path), access, share, ctypes.byref(attributes), 1, 0x80, None)
+        handle = kernel.CreateFileW(
+            str(path), access, share, ctypes.byref(attributes), 1, 0x80, None
+        )
         if handle == wintypes.HANDLE(-1).value:
             error = ctypes.get_last_error()
             if error in (80, 183):

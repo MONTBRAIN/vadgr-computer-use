@@ -75,6 +75,7 @@ class BridgeStatus:
     client_id: str | None = None
     broker_pid: int | None = None
     broker_process_started_ns: str | None = None
+    broker_process_created_filetime: str | None = None
     broker_bundle_hash: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -93,6 +94,8 @@ class BridgeStatus:
             result["broker_pid"] = self.broker_pid
         if self.broker_process_started_ns is not None:
             result["broker_process_started_ns"] = self.broker_process_started_ns
+        if self.broker_process_created_filetime is not None:
+            result["broker_process_created_filetime"] = self.broker_process_created_filetime
         if self.broker_bundle_hash is not None:
             result["broker_bundle_hash"] = self.broker_bundle_hash
         return result

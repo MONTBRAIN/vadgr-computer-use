@@ -57,6 +57,11 @@ without changing its epoch or disconnecting existing clients. New clients
 report ready only after an authenticated endpoint handshake. Broker discovery,
 bundle, endpoint and Windows interop failures keep separate error codes and
 matching remedies.
+An update from the released 0.7.6 or 0.7.7 Windows broker now hands ownership
+to the new verified broker automatically. The handoff verifies the process,
+owner, creation identity, installed path and complete frozen payload before it
+stops anything. An unknown process remains untouched and returns a specific
+safe-upgrade error. The update does not reload the extension or restart Chrome.
 The native host closes both relay directions together and joins its input
 reader before exit, including when the browser broker disconnects first.
 
