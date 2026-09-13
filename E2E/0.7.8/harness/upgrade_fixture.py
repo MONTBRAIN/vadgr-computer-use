@@ -14,6 +14,10 @@ import time
 import zipfile
 from pathlib import Path
 
+REPOSITORY = Path(__file__).resolve().parents[3]
+if str(REPOSITORY) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY))
+
 EXPECTED = {
     "0.7.6": {
         "wheel": "3b1d431ce2d287ab5c5c5c0cf2b0975e72d4072665b97e85a36cd88586d525b5",
