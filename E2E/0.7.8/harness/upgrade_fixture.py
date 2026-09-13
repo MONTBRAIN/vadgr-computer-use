@@ -30,12 +30,8 @@ EXPECTED = {
         "archive": "1745cc86a52413d4802ffda0db07266aa8890e7be447e7b475bbbd4e60ee260c",
     },
 }
-ARCHIVE_MEMBER = (
-    "computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.zip"
-)
-MANIFEST_MEMBER = (
-    "computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.manifest.json"
-)
+ARCHIVE_MEMBER = "computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.zip"
+MANIFEST_MEMBER = "computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.manifest.json"
 MARKER = ".vadgr-cua-078-fixture.json"
 PROCESS_RECORD = ".fixture-process.json"
 EXTENSION_RECORD = ".fixture-extension.json"
@@ -100,39 +96,47 @@ def extension_serve(root: Path) -> int:
     port = value.get("port")
     if not isinstance(token, str) or not isinstance(port, int):
         raise ValueError("browser discovery is incomplete")
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
-        connection.settimeout(None)
-        with connection.makefile("rwb") as file:
-            _write_frame(file, {"type": "auth", "token": token})
-            hello = _read_frame(file)
-            if hello is None or hello.get("type") != "hello":
-                raise ValueError("CUA hello is unavailable")
-            _write_frame(
-                file,
-                {
-                    "type": "hello",
-                    "proto": 1,
-                    "ext_version": "0.7.8-fixture",
-                    "browser": "chrome",
-                    "supported_ops": ["profiles"],
-                    "profile_id": "e2e-fixture",
-                    "profile": {"window_count": 1, "tab_count": 1},
-                },
-            )
-            write_extension_state(root, dispatch_count=0, operation=None, exited=False)
-            request = _read_frame(file)
-            operation = None if request is None else str(request.get("op"))
-            write_extension_state(
-                root,
-                dispatch_count=0 if request is None else 1,
-                operation=operation,
-                exited=False,
-            )
-            while file.read(1):
-                pass
-    write_extension_state(
-        root, dispatch_count=1, operation=operation, exited=True
-    )
+    operation = None
+    dispatch_count = 0
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+            connection.settimeout(None)
+            with connection.makefile("rwb") as file:
+                _write_frame(file, {"type": "auth", "token": token})
+                hello = _read_frame(file)
+                if hello is None or hello.get("type") != "hello":
+                    raise ValueError("CUA hello is unavailable")
+                _write_frame(
+                    file,
+                    {
+                        "type": "hello",
+                        "proto": 1,
+                        "ext_version": "0.7.8-fixture",
+                        "browser": "chrome",
+                        "supported_ops": ["profiles"],
+                        "profile_id": "e2e-fixture",
+                        "profile": {"window_count": 1, "tab_count": 1},
+                    },
+                )
+                write_extension_state(root, dispatch_count=0, operation=None, exited=False)
+                request = _read_frame(file)
+                operation = None if request is None else str(request.get("op"))
+                dispatch_count = 0 if request is None else 1
+                write_extension_state(
+                    root,
+                    dispatch_count=dispatch_count,
+                    operation=operation,
+                    exited=False,
+                )
+                while file.read(1):
+                    pass
+    finally:
+        write_extension_state(
+            root,
+            dispatch_count=dispatch_count,
+            operation=operation,
+            exited=True,
+        )
     return 0
 
 
@@ -207,14 +211,7 @@ def prepare(root: Path, release: str, wheel_value: str) -> int:
     wheel = Path(wheel_value).resolve(strict=True)
     if not wheel.is_file() or sha256(wheel) != expected["wheel"]:
         raise ValueError("released wheel hash does not match the frozen catalog")
-    bundle = (
-        root
-        / "appdata"
-        / "vadgr-cua"
-        / "browser-broker"
-        / release
-        / str(expected["archive"])
-    )
+    bundle = root / "appdata" / "vadgr-cua" / "browser-broker" / release / str(expected["archive"])
     bundle.mkdir(parents=True)
     archive_path = root / f"broker-{release}.zip"
     with zipfile.ZipFile(wheel) as package:
@@ -279,8 +276,7 @@ def safe_identity(endpoint: Path) -> dict[str, object]:
         "endpoint": "valid",
         "platform": value.get("platform"),
         "host": value.get("host"),
-        "port_valid": isinstance(value.get("port"), int)
-        and 1 <= int(value["port"]) <= 65535,
+        "port_valid": isinstance(value.get("port"), int) and 1 <= int(value["port"]) <= 65535,
         "token_present": isinstance(value.get("token"), str) and bool(value["token"]),
         "pid": value.get("pid"),
         "process_started_ns": value.get("process_started_ns"),
@@ -329,9 +325,7 @@ def start(root: Path, release: str, *, synthetic: bool) -> int:
                     {
                         "executable_hash": sha256(executable),
                         "pid": process.pid,
-                        "process_created_filetime": identity.get(
-                            "process_created_filetime"
-                        ),
+                        "process_created_filetime": identity.get("process_created_filetime"),
                     },
                     sort_keys=True,
                 )

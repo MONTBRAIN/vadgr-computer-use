@@ -5,13 +5,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (
-    Path(__file__).resolve().parents[2]
-    / "E2E"
-    / "0.7.8"
-    / "harness"
-    / "upgrade_fixture.py"
-)
+SCRIPT = Path(__file__).resolve().parents[2] / "E2E" / "0.7.8" / "harness" / "upgrade_fixture.py"
 
 
 def load_fixture():
@@ -99,9 +93,7 @@ def test_extension_state_contains_only_safe_dispatch_metadata(tmp_path):
     fixture = load_fixture()
     root = marked_root(tmp_path)
 
-    fixture.write_extension_state(
-        root, dispatch_count=1, operation="profiles", exited=False
-    )
+    fixture.write_extension_state(root, dispatch_count=1, operation="profiles", exited=False)
 
     value = json.loads((root / fixture.EXTENSION_RECORD).read_text())
     assert value == {
@@ -111,18 +103,69 @@ def test_extension_state_contains_only_safe_dispatch_metadata(tmp_path):
     }
 
 
+def test_extension_records_exit_after_connection_reset(tmp_path, monkeypatch):
+    fixture = load_fixture()
+    root = marked_root(tmp_path)
+    discovery = root / "appdata" / "vadgr-cua" / "browser.port"
+    discovery.parent.mkdir(parents=True)
+    discovery.write_text(json.dumps({"port": 1, "token": "fixture"}))
+
+    class FakeFile:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def write(self, value):
+            return len(value)
+
+        def flush(self):
+            return None
+
+        def read(self, _size):
+            raise ConnectionResetError
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def settimeout(self, _value):
+            return None
+
+        def makefile(self, _mode):
+            return FakeFile()
+
+    replies = iter(
+        [
+            {"type": "hello"},
+            {"op": "profiles"},
+        ]
+    )
+    monkeypatch.setattr(
+        fixture.socket, "create_connection", lambda *_args, **_kwargs: FakeConnection()
+    )
+    monkeypatch.setattr(fixture, "_read_frame", lambda _file: next(replies))
+
+    with pytest.raises(ConnectionResetError):
+        fixture.extension_serve(root)
+
+    value = json.loads((root / fixture.EXTENSION_RECORD).read_text())
+    assert value == {
+        "dispatch_count": 1,
+        "exited": True,
+        "operation": "profiles",
+    }
+
+
 def test_fixture_paths_use_released_content_addressed_layout(tmp_path):
     fixture = load_fixture()
     root = marked_root(tmp_path)
     archive_hash = fixture.EXPECTED["0.7.6"]["archive"]
-    bundle = (
-        root
-        / "appdata"
-        / "vadgr-cua"
-        / "browser-broker"
-        / "0.7.6"
-        / archive_hash
-    )
+    bundle = root / "appdata" / "vadgr-cua" / "browser-broker" / "0.7.6" / archive_hash
     bundle.mkdir(parents=True)
     executable = bundle / fixture.EXECUTABLE
     executable.write_bytes(b"fixture")
