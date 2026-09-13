@@ -117,7 +117,7 @@ def write_discovery(
     On WSL, ``windows_copy`` also writes a Windows-readable copy under
     ``/mnt/c`` so the Windows-side relay shim can find the listener.
     """
-    dest = Path(path) if path is not None else discovery_path()
+    dest = Path(path) if path is not None else resolve_discovery_path()
     payload = {"port": port, "token": token}
     _write_one(dest, payload)
     if windows_copy is not None:
