@@ -68,6 +68,27 @@ def test_windows_mount_path_is_converted_without_a_shell():
     )
 
 
+def test_wsl_windows_children_receive_windows_isolation_paths(monkeypatch):
+    monkeypatch.setattr(windows_broker.sys, "platform", "linux")
+    monkeypatch.setenv("LOCALAPPDATA", "/mnt/c/test/local")
+    monkeypatch.setenv(
+        "VADGR_CUA_BROKER_ENDPOINT", "/mnt/c/test/state/browser-broker.json"
+    )
+    monkeypatch.setenv(
+        "VADGR_CUA_BROWSER_DISCOVERY", "/mnt/c/test/state/browser.port"
+    )
+
+    environment = windows_broker._windows_child_environment()
+
+    assert environment["LOCALAPPDATA"] == "C:\\test\\local"
+    assert environment["VADGR_CUA_BROKER_ENDPOINT"] == (
+        "C:\\test\\state\\browser-broker.json"
+    )
+    assert environment["VADGR_CUA_BROWSER_DISCOVERY"] == (
+        "C:\\test\\state\\browser.port"
+    )
+
+
 def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
     proxy = tmp_path / "native-host" / windows_broker.PROXY_EXECUTABLE
     sentinel = object()
@@ -84,6 +105,8 @@ def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):
 
     assert windows_broker.open_windows_proxy() is sentinel
     assert captured["command"] == [str(proxy), "broker-proxy"]
+    environment = captured["kwargs"].pop("env")
+    assert environment == windows_broker._windows_child_environment()
     assert captured["kwargs"] == {
         "stdin": windows_broker.subprocess.PIPE,
         "stdout": windows_broker.subprocess.PIPE,

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -70,6 +71,23 @@ def _windows_path(path: Path) -> str:
     return result.stdout.strip()
 
 
+def _windows_child_environment() -> dict[str, str]:
+    """Translate explicit WSL isolation paths for native Windows children."""
+    environment = dict(os.environ)
+    if sys.platform == "win32":
+        return environment
+    for name in (
+        "LOCALAPPDATA",
+        "VADGR_CUA_BROKER_ENDPOINT",
+        "VADGR_CUA_BROWSER_DISCOVERY",
+        "VADGR_CUA_BROWSER_DISCOVERY_WINDOWS",
+    ):
+        value = environment.get(name)
+        if value:
+            environment[name] = _windows_path(Path(value))
+    return environment
+
+
 def deployed_bundle() -> tuple[str, dict[str, object]]:
     """Install or reverify one immutable bundle entirely on Windows."""
     archive, manifest_path, manifest = _bundle_inputs()
@@ -92,6 +110,7 @@ def deployed_bundle() -> tuple[str, dict[str, object]]:
         ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
+        env=_windows_child_environment(),
         text=True,
         timeout=60,
     )
@@ -155,6 +174,7 @@ def _run_upgrade_handoff(bundle: str) -> dict[str, object]:
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
         input=json.dumps({"executable": executable}),
         capture_output=True,
+        env=_windows_child_environment(),
         text=True,
         timeout=20,
     )
@@ -223,6 +243,7 @@ def launch_windows_broker() -> None:
             command,
         ],
         input=json.dumps({"executable": executable, "directory": bundle}),
+        env=_windows_child_environment(),
         text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -243,4 +264,5 @@ def open_windows_proxy() -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         close_fds=True,
+        env=_windows_child_environment(),
     )
