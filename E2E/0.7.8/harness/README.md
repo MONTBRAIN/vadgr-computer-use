@@ -10,8 +10,9 @@ this committed directory. Do not replace a helper with a temporary host script.
 
 `upgrade_fixture.py` runs under native Windows Python. It creates only an
 absolute root whose final name starts with `vadgr-cua-078-`, records a marker,
-verifies an immutable `0.7.6` or `0.7.7` wheel, extracts its exact broker, and
-starts it with isolated application-data and endpoint paths. Its `observe`
+verifies an immutable `0.7.6` or `0.7.7` wheel, extracts its exact broker into
+the released content-addressed layout, and starts it with isolated
+application-data and endpoint paths. Its `observe`
 output reports whether a token exists but never prints the token.
 
 Use the lifecycle in this order for each fresh case:

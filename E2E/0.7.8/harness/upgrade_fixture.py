@@ -94,7 +94,14 @@ def prepare(root: Path, release: str, wheel_value: str) -> int:
     wheel = Path(wheel_value).resolve(strict=True)
     if not wheel.is_file() or sha256(wheel) != expected["wheel"]:
         raise ValueError("released wheel hash does not match the frozen catalog")
-    bundle = root / "released" / release
+    bundle = (
+        root
+        / "appdata"
+        / "vadgr-cua"
+        / "browser-broker"
+        / release
+        / str(expected["archive"])
+    )
     bundle.mkdir(parents=True)
     archive_path = root / f"broker-{release}.zip"
     with zipfile.ZipFile(wheel) as package:
@@ -123,7 +130,14 @@ def prepare(root: Path, release: str, wheel_value: str) -> int:
 
 
 def fixture_paths(root: Path, release: str) -> tuple[Path, Path, Path]:
-    bundle = (root / "released" / release).resolve(strict=True)
+    bundle = (
+        root
+        / "appdata"
+        / "vadgr-cua"
+        / "browser-broker"
+        / release
+        / str(EXPECTED[release]["archive"])
+    ).resolve(strict=True)
     if root not in bundle.parents:
         raise ValueError("released bundle escaped the fixture root")
     executable = (bundle / EXECUTABLE).resolve(strict=True)

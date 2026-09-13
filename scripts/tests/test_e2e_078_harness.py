@@ -93,3 +93,26 @@ def test_fault_changes_only_validated_endpoint(tmp_path):
     assert endpoint.read_text() == "{invalid\n"
     assert fixture.fault(root, "remove") == 0
     assert not endpoint.exists()
+
+
+def test_fixture_paths_use_released_content_addressed_layout(tmp_path):
+    fixture = load_fixture()
+    root = marked_root(tmp_path)
+    archive_hash = fixture.EXPECTED["0.7.6"]["archive"]
+    bundle = (
+        root
+        / "appdata"
+        / "vadgr-cua"
+        / "browser-broker"
+        / "0.7.6"
+        / archive_hash
+    )
+    bundle.mkdir(parents=True)
+    executable = bundle / fixture.EXECUTABLE
+    executable.write_bytes(b"fixture")
+
+    actual_bundle, actual_executable, endpoint = fixture.fixture_paths(root, "0.7.6")
+
+    assert actual_bundle == bundle
+    assert actual_executable == executable
+    assert endpoint == root / "state" / "browser-broker.json"
