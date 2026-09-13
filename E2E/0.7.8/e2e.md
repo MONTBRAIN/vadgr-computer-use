@@ -10,8 +10,9 @@ cell. Build the exact branch-head wheel and install it without editable mode in
 a fresh environment outside the checkout. The MCP configuration must call that
 environment's `vadgr-cua` entry point.
 
-> **Status: not run.** Native Windows must run W1-W9 and R1. WSL must run
-> S1-S3 and R1. Linux and macOS are Not-Needed for live cells because the new
+> **Status: WSL pass.** Native Windows must rerun W1-W9 against the corrected
+> candidate; the joint native Windows and WSL R1 passes. Linux and macOS are
+> Not-Needed for live cells because the new
 > process handoff exists only in the packaged Windows broker. Their complete
 > automated suites remain required.
 
@@ -141,15 +142,15 @@ read their contents. Stop if an isolated child changes them.
 
 | # | Precondition and setup | Goal or action | Expected observable and machine oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| S1 | Exact released `0.7.6` Windows broker owns isolated state; discovery is removed; Windows interop control succeeds | From WSL, run the installed candidate and request readiness | The candidate Windows helper proves and replaces the predecessor; WSL authenticates to the new identity; no WSL endpoint copy appears | Interop control, hashes, proof flags, old and new identities, public result and absence scan | Stop only recorded processes; remove isolated roots | not run: WSL live execution required |
-| S2 | Exact released `0.7.7` Windows broker owns isolated state; discovery is corrupt; interop control succeeds | From WSL, run the installed candidate and request readiness | Automatic Windows handoff completes and WSL authenticates without an interop or network remedy | Interop control, corrupt hash, proof flags, identities and result | Stop only recorded processes; remove isolated roots | not run: WSL live execution required |
-| S3 | Synthetic unknown Windows lock owner exists only in the isolated root; interop control succeeds | From WSL, request candidate readiness | `browser_broker_upgrade_unsafe`; process and state remain unchanged; no interop, DNS, firewall or network remedy appears | Public code and remedy, before and after state, process identity and dispatch count | Stop the synthetic process through its harness owner | not run: WSL live execution required |
+| S1 | Exact released `0.7.6` Windows broker owns isolated state; discovery is removed; Windows interop control succeeds | From WSL, run the installed candidate and request readiness | The candidate Windows helper proves and replaces the predecessor; WSL authenticates to the new identity; no WSL endpoint copy appears | Interop control, hashes, proof flags, old and new identities, public result and absence scan | Stop only recorded processes; remove isolated roots | pass: the missing record recovered to the exact corrected candidate identity; the isolated WSL home stayed empty |
+| S2 | Exact released `0.7.7` Windows broker owns isolated state; discovery is corrupt; interop control succeeds | From WSL, run the installed candidate and request readiness | Automatic Windows handoff completes and WSL authenticates without an interop or network remedy | Interop control, corrupt hash, proof flags, identities and result | Stop only recorded processes; remove isolated roots | pass: the corrupt record recovered to the exact corrected candidate identity without any interop or network remedy |
+| S3 | Synthetic unknown Windows lock owner exists only in the isolated root; interop control succeeds | From WSL, request candidate readiness | `browser_broker_upgrade_unsafe`; process and state remain unchanged; no interop, DNS, firewall or network remedy appears | Public code and remedy, before and after state, process identity and dispatch count | Stop the synthetic process through its harness owner | pass: the unknown payload returned `browser_broker_upgrade_unsafe`; its identity and state remained unchanged |
 
 ## Part R: post-handoff browser isolation
 
 | # | Precondition and setup | Goal or action | Expected observable and machine oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| R1 | Candidate is ready after a released handoff; isolated Chrome for Testing has two agent-owned inactive fixture tabs | Run one native Windows client and one WSL client in parallel; each mutates and reads only its owned target without activation | Both structured streams name the expected target and candidate identity; DOM reads show one exact mutation per target; focus and decoys do not change | Driver selection, streams, leases, broker identity, DOM and focus read-backs | Release leases; stop only test broker and Chrome for Testing | not run: native Windows and WSL live execution required |
+| R1 | Candidate is ready after a released handoff; isolated Chrome for Testing has two agent-owned inactive fixture tabs | Run one native Windows client and one WSL client in parallel; each mutates and reads only its owned target without activation | Both structured streams name the expected target and candidate identity; DOM reads show one exact mutation per target; focus and decoys do not change | Driver selection, streams, leases, broker identity, DOM and focus read-backs | Release leases; stop only test broker and Chrome for Testing | pass: both parallel clients changed and read only their assigned hidden target; focus and both decoys remained unchanged |
 
 ## Remote-host handoff
 
@@ -191,9 +192,9 @@ counts and target read-backs. Do not compare agent prose.
 | Part | WSL | Linux | Windows native | macOS |
 |---|---|---|---|---|
 | W: native Windows released upgrades | Not-Needed: native Windows owns these process states | Not-Needed: no Windows broker | not run: W1-W9 require native Windows | Not-Needed: no Windows broker |
-| S: WSL released upgrades | not run: S1-S3 require WSL live execution | Not-Needed: no WSL-to-Windows path | Not-Needed: WSL origin is required | Not-Needed: no WSL-to-Windows path |
-| R: candidate browser operation | not run: WSL half of R1 requires live execution | Not-Needed: no POSIX broker lifecycle change | not run: native Windows half of R1 requires live execution | Not-Needed: no POSIX broker lifecycle change |
-| **overall** | **not run: S1-S3 and R1 are open** | **Not-Needed: Windows packaged-broker patch** | **not run: W1-W9 and R1 are open** | **Not-Needed: Windows packaged-broker patch** |
+| S: WSL released upgrades | pass: S1-S3 observed against the corrected candidate | Not-Needed: no WSL-to-Windows path | Not-Needed: WSL origin is required | Not-Needed: no WSL-to-Windows path |
+| R: candidate browser operation | pass: WSL client changed only its assigned hidden target | Not-Needed: no POSIX broker lifecycle change | pass: native Windows client changed only its assigned hidden target | Not-Needed: no POSIX broker lifecycle change |
+| **overall** | **pass: S1-S3 and R1 observed against the corrected candidate** | **Not-Needed: Windows packaged-broker patch** | **not run: W1-W9 require corrected-candidate reruns; R1 passes** | **Not-Needed: Windows packaged-broker patch** |
 
 If implementation changes the POSIX broker lifecycle, Linux and macOS lose
 their Not-Needed verdicts. Add and run equivalent released-transition cells
