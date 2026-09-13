@@ -56,7 +56,7 @@ from computer_use.browser.protocol import (
 # Keep in lockstep with the pyproject version - test_release_consistency.py
 # enforces it (a stale value here misleads handshake debugging; the negotiation
 # itself compares only the integer `proto`).
-CUA_VERSION = "0.7.7"
+CUA_VERSION = "0.7.8"
 
 
 def discovery_path() -> Path:
@@ -117,7 +117,7 @@ def write_discovery(
     On WSL, ``windows_copy`` also writes a Windows-readable copy under
     ``/mnt/c`` so the Windows-side relay shim can find the listener.
     """
-    dest = Path(path) if path is not None else discovery_path()
+    dest = Path(path) if path is not None else resolve_discovery_path()
     payload = {"port": port, "token": token}
     _write_one(dest, payload)
     if windows_copy is not None:

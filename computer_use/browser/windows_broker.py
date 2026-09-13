@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -70,6 +71,34 @@ def _windows_path(path: Path) -> str:
     return result.stdout.strip()
 
 
+def _windows_child_environment() -> dict[str, str]:
+    """Translate explicit WSL isolation paths for native Windows children."""
+    environment = dict(os.environ)
+    if sys.platform == "win32":
+        return environment
+    local_app_data = environment.pop("LOCALAPPDATA", None)
+    if local_app_data:
+        environment["VADGR_CUA_WINDOWS_LOCAL_APP_DATA"] = _windows_path(
+            Path(local_app_data)
+        )
+    forwarded = [entry for entry in environment.get("WSLENV", "").split(":") if entry]
+    forwarded_names = {entry.split("/", 1)[0] for entry in forwarded}
+    for name in (
+        "VADGR_CUA_WINDOWS_LOCAL_APP_DATA",
+        "VADGR_CUA_BROKER_ENDPOINT",
+        "VADGR_CUA_BROWSER_DISCOVERY",
+        "VADGR_CUA_BROWSER_DISCOVERY_WINDOWS",
+    ):
+        value = environment.get(name)
+        if value:
+            if name != "VADGR_CUA_WINDOWS_LOCAL_APP_DATA":
+                environment[name] = _windows_path(Path(value))
+            if name not in forwarded_names:
+                forwarded.append(name)
+    environment["WSLENV"] = ":".join(forwarded)
+    return environment
+
+
 def deployed_bundle() -> tuple[str, dict[str, object]]:
     """Install or reverify one immutable bundle entirely on Windows."""
     archive, manifest_path, manifest = _bundle_inputs()
@@ -92,6 +121,7 @@ def deployed_bundle() -> tuple[str, dict[str, object]]:
         ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
+        env=_windows_child_environment(),
         text=True,
         timeout=60,
     )
@@ -114,6 +144,8 @@ def validate_endpoint(endpoint: dict[str, object]) -> str:
         or endpoint["pid"] < 1
         or not isinstance(endpoint.get("process_started_ns"), str)
         or not endpoint["process_started_ns"]
+        or not isinstance(endpoint.get("process_created_filetime"), str)
+        or not endpoint["process_created_filetime"].isdecimal()
         or not isinstance(endpoint.get("epoch"), str)
         or not endpoint["epoch"]
         or not isinstance(endpoint.get("token"), str)
@@ -142,9 +174,64 @@ def expected_bundle_hash() -> str:
     return str(manifest["archive_sha256"])
 
 
+def _run_upgrade_handoff(bundle: str) -> dict[str, object]:
+    executable = f"{bundle}\\{BROKER_EXECUTABLE}"
+    command = (
+        "$env:PSModulePath = $PSHOME + '\\Modules'; "
+        "$Spec = [Console]::In.ReadToEnd() | ConvertFrom-Json; "
+        "& $Spec.executable upgrade-handoff"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        input=json.dumps({"executable": executable}),
+        capture_output=True,
+        env=_windows_child_environment(),
+        text=True,
+        timeout=20,
+    )
+    try:
+        reply = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError) as error:
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the running browser broker could not be proved as an allowed released Vadgr broker",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        ) from error
+    if result.returncode != 0 or not isinstance(reply, dict):
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the running browser broker could not be proved as an allowed released Vadgr broker",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        )
+    if reply.get("state") == "refused":
+        code = str(reply.get("code"))
+        if code not in {"browser_broker_upgrade_unsafe", "browser_broker_upgrade_timeout"}:
+            code = "browser_broker_upgrade_unsafe"
+        raise WindowsBrokerStateError(
+            code,
+            str(reply.get("message") or "the Windows browser broker upgrade was refused"),
+            str(reply.get("remediation") or "run vadgr-cua doctor"),
+        )
+    if reply.get("state") not in {
+        "no_predecessor",
+        "already_exited",
+        "replaced",
+        "candidate_ready",
+    }:
+        raise WindowsBrokerStateError(
+            "browser_broker_upgrade_unsafe",
+            "the Windows browser broker returned an invalid upgrade result",
+            "run vadgr-cua doctor; close only the broker it identifies, then retry",
+        )
+    return reply
+
+
 def launch_windows_broker() -> None:
     """Start the Windows broker detached; its held lock elects one winner."""
     bundle, _manifest = deployed_bundle()
+    handoff = _run_upgrade_handoff(bundle)
+    if handoff.get("state") == "candidate_ready":
+        return
     executable = f"{bundle}\\{BROKER_EXECUTABLE}"
     # Windows PowerShell reparses trailing -Command arguments as source. Send
     # paths as ASCII JSON on stdin so spaces, quotes and Unicode stay data on
@@ -167,6 +254,7 @@ def launch_windows_broker() -> None:
             command,
         ],
         input=json.dumps({"executable": executable, "directory": bundle}),
+        env=_windows_child_environment(),
         text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -187,4 +275,5 @@ def open_windows_proxy() -> subprocess.Popen:
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         close_fds=True,
+        env=_windows_child_environment(),
     )

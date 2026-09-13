@@ -17,7 +17,7 @@ from pathlib import Path
 
 EXPECTED_PYTHON = "3.12.14"
 EXPECTED_PYINSTALLER = "6.22.2"
-VERSION = "0.7.7"
+VERSION = "0.7.8"
 ARCHIVE_NAME = "vadgr-cua-browser-broker-win-x64.zip"
 MANIFEST_NAME = "vadgr-cua-browser-broker-win-x64.manifest.json"
 SBOM_NAME = "vadgr-cua-browser-broker-win-x64.spdx.json"
@@ -122,9 +122,11 @@ def build(source_commit: str, output: Path) -> None:
                 "server.py",
                 "windows_acl.py",
                 "windows_broker_entry.py",
+                "windows_process.py",
             )
         ),
         repository / "computer_use" / "setup" / "extension_setup.py",
+        repository / "computer_use" / "browser" / "winbroker" / "predecessor-catalog.json",
     ]
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="vadgr-cua-winbroker-") as temporary:
@@ -148,7 +150,6 @@ def build(source_commit: str, output: Path) -> None:
                 "--noconfirm",
                 "--clean",
                 "--onedir",
-                "--noconsole",
                 "--name",
                 "vadgr-cua-browser-broker",
                 "--distpath",
@@ -161,6 +162,16 @@ def build(source_commit: str, output: Path) -> None:
                 str(repository),
                 "--hidden-import",
                 "computer_use.setup.extension_setup",
+                "--add-data",
+                str(
+                    repository
+                    / "computer_use"
+                    / "browser"
+                    / "winbroker"
+                    / "predecessor-catalog.json"
+                )
+                + os.pathsep
+                + ".",
                 str(entry),
             ],
             cwd=repository,

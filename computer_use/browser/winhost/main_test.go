@@ -87,3 +87,21 @@ func TestBrokerProxyReportsMissingDiscovery(t *testing.T) {
 		t.Fatal("broker discovery failure was reported as interop")
 	}
 }
+
+func TestBrokerEndpointPathHonorsExplicitIsolatedPath(t *testing.T) {
+	isolated := filepath.Join(t.TempDir(), "isolated-broker.json")
+	t.Setenv("VADGR_CUA_BROKER_ENDPOINT", isolated)
+	t.Setenv("LOCALAPPDATA", filepath.Join(t.TempDir(), "owner-local"))
+	if actual := brokerEndpointPath(); actual != isolated {
+		t.Fatalf("broker endpoint = %q, want %q", actual, isolated)
+	}
+}
+
+func TestDiscoveryPathHonorsExplicitIsolatedPath(t *testing.T) {
+	isolated := filepath.Join(t.TempDir(), "isolated-browser.port")
+	t.Setenv("VADGR_CUA_BROWSER_DISCOVERY", isolated)
+	t.Setenv("LOCALAPPDATA", filepath.Join(t.TempDir(), "owner-local"))
+	if actual := discoveryPath(); actual != isolated {
+		t.Fatalf("browser discovery = %q, want %q", actual, isolated)
+	}
+}

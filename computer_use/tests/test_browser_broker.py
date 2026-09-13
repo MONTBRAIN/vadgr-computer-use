@@ -323,6 +323,44 @@ def test_broker_client_disconnect_aborts_a_stream_between_requests():
     assert calls[2] == ("disconnect", {})
 
 
+def test_authenticated_upgrade_drain_stops_an_idle_broker():
+    server = object.__new__(BrokerServer)
+    server.auth_token = "token"
+    server._stop = threading.Event()
+    server._draining = threading.Event()
+    server._requests = {}
+    server._requests_lock = threading.Lock()
+    local, peer = socket.socketpair()
+    worker = threading.Thread(target=server._serve_client, args=(local,))
+    worker.start()
+    with peer, peer.makefile("rwb") as file:
+        BrokerServer._write_line(file, {"token": "token", "prepare_upgrade": True})
+        assert BrokerServer._read_line(file) == {"ok": True, "drained": True}
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert server._stop.is_set()
+
+
+def test_upgrade_drain_timeout_restores_request_acceptance(monkeypatch):
+    monkeypatch.setattr(broker_module, "UPGRADE_DRAIN_SECONDS", 0.01)
+    server = object.__new__(BrokerServer)
+    server.auth_token = "token"
+    server._stop = threading.Event()
+    server._draining = threading.Event()
+    server._requests = {("client", 1): threading.Event()}
+    server._requests_lock = threading.Lock()
+    local, peer = socket.socketpair()
+    worker = threading.Thread(target=server._serve_client, args=(local,))
+    worker.start()
+    with peer, peer.makefile("rwb") as file:
+        BrokerServer._write_line(file, {"token": "token", "prepare_upgrade": True})
+        assert BrokerServer._read_line(file) == {"ok": False, "drained": False}
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert not server._stop.is_set()
+    assert not server._draining.is_set()
+
+
 class ExtensionBridge:
     def __init__(self):
         self.calls = []
@@ -1015,6 +1053,32 @@ def test_wsl_missing_interop_returns_the_named_remedy(monkeypatch):
     assert captured.value.remediation == (
         "enable Windows interop and retry; cua never changes WSL networking"
     )
+
+
+@pytest.mark.parametrize("under_wsl", [False, True])
+def test_upgrade_refusal_keeps_its_exact_public_diagnosis(monkeypatch, under_wsl):
+    from computer_use.browser.windows_broker import WindowsBrokerStateError
+
+    client = broker_client.BrokerClient(connect_timeout=0.01)
+    monkeypatch.setattr(broker_client, "_running_under_wsl", lambda: under_wsl)
+    monkeypatch.setattr(broker_client, "read_endpoint", lambda: None)
+    monkeypatch.setattr(
+        client,
+        "_start_broker",
+        lambda: (_ for _ in ()).throw(
+            WindowsBrokerStateError(
+                "browser_broker_upgrade_unsafe",
+                "specific upgrade failure",
+                "specific safe remedy",
+            )
+        ),
+    )
+
+    with pytest.raises(BrowserError) as captured:
+        client._connect()
+
+    assert captured.value.code.value == "browser_broker_upgrade_unsafe"
+    assert captured.value.remediation == "specific safe remedy"
 
 
 @pytest.mark.parametrize(

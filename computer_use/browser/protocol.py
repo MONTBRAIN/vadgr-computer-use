@@ -106,6 +106,8 @@ class BrowserErrorCode(str, Enum):
     BROKER_DISCOVERY_INVALID = "browser_broker_discovery_invalid"
     BROKER_BUNDLE_MISMATCH = "browser_broker_bundle_mismatch"
     BROKER_UNREACHABLE = "browser_broker_unreachable"
+    BROKER_UPGRADE_UNSAFE = "browser_broker_upgrade_unsafe"
+    BROKER_UPGRADE_TIMEOUT = "browser_broker_upgrade_timeout"
     WINDOWS_INTEROP_UNAVAILABLE = "windows_interop_unavailable"
 
 

@@ -178,6 +178,39 @@ class TestDiscoveryFile:
         S.ensure_server()
         assert captured["discovery_path"] == custom
 
+    def test_default_server_start_writes_to_env_path(self, monkeypatch, tmp_path):
+        custom = tmp_path / "broker" / "browser.port"
+        default = tmp_path / "default" / "browser.port"
+        monkeypatch.setattr(S, "discovery_path", lambda: default)
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+        server = S.BrowserServer()
+        server.start()
+        try:
+            assert S.read_discovery(path=custom) == (server.port, server.token)
+            assert not default.exists()
+        finally:
+            server.stop()
+
+    def test_explicit_path_precedes_env_path(self, monkeypatch, tmp_path):
+        custom = tmp_path / "env" / "browser.port"
+        explicit = tmp_path / "explicit" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+
+        assert S.write_discovery(7001, "explicit-token", path=explicit) == explicit
+        assert S.read_discovery(path=explicit) == (7001, "explicit-token")
+        assert not custom.exists()
+
+    def test_env_path_and_windows_copy_receive_same_discovery(
+        self, monkeypatch, tmp_path
+    ):
+        custom = tmp_path / "env" / "browser.port"
+        windows_copy = tmp_path / "windows" / "browser.port"
+        monkeypatch.setenv("VADGR_CUA_BROWSER_DISCOVERY", str(custom))
+
+        assert S.write_discovery(7002, "shared-token", windows_copy=windows_copy) == custom
+        assert S.read_discovery(path=custom) == (7002, "shared-token")
+        assert S.read_discovery(path=windows_copy) == (7002, "shared-token")
+
 
 class TestListener:
     def test_full_hello_plus_navigate_roundtrip(self, tmp_path):

@@ -29,7 +29,9 @@ HEARTBEAT_SECONDS = 5.0
 MISSED_HEARTBEATS = 3
 LEASE_GRACE_SECONDS = 30.0
 IDLE_EXIT_SECONDS = 300.0
+UPGRADE_DRAIN_SECONDS = 10.0
 PROCESS_STARTED_NS = os.environ.get("VADGR_CUA_BROKER_STARTED_NS")
+PROCESS_CREATED_FILETIME = os.environ.get("VADGR_CUA_BROKER_CREATED_FILETIME")
 BUNDLE_HASH = os.environ.get("VADGR_CUA_BROKER_BUNDLE_HASH")
 
 
@@ -641,6 +643,7 @@ class BrokerServer:
         self._sock.settimeout(0.5)
         self.port = int(self._sock.getsockname()[1])
         self._stop = threading.Event()
+        self._draining = threading.Event()
         self._requests: dict[tuple[str, int], threading.Event] = {}
         self._requests_lock = threading.Lock()
         self._last_activity = time.monotonic()
@@ -715,12 +718,39 @@ class BrokerServer:
         return outcome.get("result")
 
     def _serve_client(self, conn: socket.socket) -> None:
+        if not hasattr(self, "_draining"):
+            self._draining = threading.Event()
         state: ClientState | None = None
         active_streams: dict[str, dict[str, Any]] = {}
         try:
             with conn, conn.makefile("rwb") as file:
                 hello = self._read_line(file)
                 if not hello or hello.get("token") != self.auth_token:
+                    return
+                if hello.get("prepare_upgrade"):
+                    self._draining.set()
+                    deadline = time.monotonic() + UPGRADE_DRAIN_SECONDS
+                    while time.monotonic() < deadline:
+                        with self._requests_lock:
+                            if not self._requests:
+                                self._write_line(file, {"ok": True, "drained": True})
+                                self._stop.set()
+                                return
+                        time.sleep(0.02)
+                    self._draining.clear()
+                    self._write_line(file, {"ok": False, "drained": False})
+                    return
+                if self._draining.is_set():
+                    self._write_line(
+                        file,
+                        {
+                            "ok": False,
+                            "error": {
+                                "code": "browser_broker_upgrade_in_progress",
+                                "message": "the browser broker is draining for an upgrade",
+                            },
+                        },
+                    )
                     return
                 if hello.get("cancel_only"):
                     client_id = str(hello.get("client_id", ""))
@@ -748,6 +778,7 @@ class BrokerServer:
                         "epoch": self.broker.epoch,
                         "pid": os.getpid(),
                         "process_started_ns": PROCESS_STARTED_NS,
+                        "process_created_filetime": PROCESS_CREATED_FILETIME,
                         "bundle_hash": BUNDLE_HASH,
                     },
                 )
@@ -755,6 +786,19 @@ class BrokerServer:
                     message = self._read_line(file)
                     if message is None:
                         break
+                    if self._draining.is_set() and message.get("type") != "heartbeat":
+                        self._write_line(
+                            file,
+                            {
+                                "ok": False,
+                                "id": message.get("id"),
+                                "error": {
+                                    "code": "browser_broker_upgrade_in_progress",
+                                    "message": "the browser broker is draining for an upgrade",
+                                },
+                            },
+                        )
+                        continue
                     self._last_activity = time.monotonic()
                     if message.get("type") == "heartbeat":
                         self.broker.touch(state)
@@ -849,6 +893,7 @@ class BrokerServer:
             "platform": sys.platform,
             "epoch": self.broker.epoch,
             "process_started_ns": PROCESS_STARTED_NS,
+            "process_created_filetime": PROCESS_CREATED_FILETIME,
             "bundle_hash": BUNDLE_HASH,
         }
         windows_path = windows_broker_endpoint_path()
