@@ -1,9 +1,8 @@
 # 0.7.8 - released browser broker upgrade handoff: e2e runbook
 
-> **vadgr-computer-use 0.7.8 implementation:** branch
-> `feature/0.7.8-broker-upgrade-handoff`; tested product source head
-> `0f82ebdfc9ead9637a4b99042f8a2de2ebc3c963`. **vadgr-computer-use 0.7.8
-> evidence:** `https://github.com/MONTBRAIN/vadgr-docs/pull/164`.
+> **vadgr-computer-use 0.7.8 implementation:**
+> `https://github.com/MONTBRAIN/vadgr-computer-use/pull/105`; tested product
+> source head `0f82ebdfc9ead9637a4b99042f8a2de2ebc3c963`; released as `v0.7.8`.
 
 Read this file and [`../README.md`](../README.md) completely before any live
 cell. Build the exact branch-head wheel and install it without editable mode in
