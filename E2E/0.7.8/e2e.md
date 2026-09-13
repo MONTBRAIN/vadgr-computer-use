@@ -10,8 +10,8 @@ cell. Build the exact branch-head wheel and install it without editable mode in
 a fresh environment outside the checkout. The MCP configuration must call that
 environment's `vadgr-cua` entry point.
 
-> **Status: WSL pass.** Native Windows must rerun W1-W9 against the corrected
-> candidate; the joint native Windows and WSL R1 passes. Linux and macOS are
+> **Status: WSL and native Windows pass.** Native Windows W1-W9 and the joint
+> native Windows and WSL R1 pass. Linux and macOS are
 > Not-Needed for live cells because the new
 > process handoff exists only in the packaged Windows broker. Their complete
 > automated suites remain required.
@@ -119,24 +119,24 @@ read their contents. Stop if an isolated child changes them.
 
 | Part | Axes | Cells | Run | Open |
 |---|---|---:|---:|---:|
-| W: native Windows released upgrades | two releases, three discovery states, race, unknown owner, active request | 9 | 0 | 9 |
-| S: WSL released upgrades | two releases, missing or corrupt discovery, unknown owner | 3 | 0 | 3 |
-| R: candidate browser operation | native Windows and WSL, two inactive owned targets | 1 | 0 | 1 |
-| | | **13** | **0** | **13** |
+| W: native Windows released upgrades | two releases, three discovery states, race, unknown owner, active request | 9 | 9 | 0 |
+| S: WSL released upgrades | two releases, missing or corrupt discovery, unknown owner | 3 | 3 | 0 |
+| R: candidate browser operation | native Windows and WSL, two inactive owned targets | 1 | 1 | 0 |
+| | | **13** | **13** | **0** |
 
 ## Part W: native Windows released broker upgrades
 
 | # | Precondition and setup | Goal or action | Expected observable and machine oracle | Evidence boundary | Cleanup | Status |
 |---|---|---|---|---|---|---|
-| W1 | Exact released `0.7.6` broker is healthy in an isolated root with valid discovery | Start one installed candidate client and request readiness | Candidate proves and replaces that process, publishes one candidate epoch, and authenticates with no manual browser action | Both artifact hashes, proof flags, old and new identities, public result and exit codes | Keep candidate for post-check, then stop only recorded processes | not run: native Windows execution required |
-| W2 | Exact released `0.7.6` broker owns the isolated lock; remove only its validated discovery | Request candidate readiness | Candidate proves the predecessor from protected lock and process identity, replaces it, and authenticates | Mutation record, proof flags, process delta, candidate identity and result | Stop only recorded processes; restore through a clean setup | not run: native Windows execution required |
-| W3 | Exact released `0.7.6` broker owns the isolated lock; replace only its discovery with invalid JSON under safe permissions | Request candidate readiness | Candidate does not trust corrupt discovery, proves the predecessor independently, replaces it, and authenticates | Corrupt hash, proof flags, process delta and public result | Stop only recorded processes; remove the isolated corrupt record | not run: native Windows execution required |
-| W4 | Exact released `0.7.7` broker is healthy in a fresh isolated root | Start one installed candidate client and request readiness | The same automatic handoff path replaces it and authenticates one candidate | Both artifact hashes, proof flags, identities and exit codes | Stop only recorded processes | not run: native Windows execution required |
-| W5 | Exact released `0.7.7` broker owns the isolated lock; remove only its validated discovery | Request candidate readiness | Candidate proves the predecessor from the lock and Windows process handle, then authenticates | Mutation record, proof flags, process delta and result | Stop only recorded processes | not run: native Windows execution required |
-| W6 | Exact released `0.7.7` broker owns the isolated lock; corrupt only its validated discovery | Request candidate readiness | Candidate rejects the record, proves the exact predecessor by other facts, replaces it, and authenticates | Corrupt hash, proof flags, identities and public result | Stop only recorded processes; remove isolated state | not run: native Windows execution required |
-| W7 | Exact released predecessor is live; two installed candidate clients wait behind one isolated candidate guard | Start both candidate readiness requests together | One verified replacement and one candidate broker occur; both clients authenticate to one PID, creation identity and epoch | Both streams, guard timing, process count and exact shared identity | Close clients; stop only their broker | not run: native Windows execution required |
-| W8 | A synthetic isolated process has the broker filename and path shape but an unknown payload hash | Request candidate readiness | `browser_broker_upgrade_unsafe`; the exact synthetic process, lock and files remain unchanged; no candidate action dispatches | Before and after handles, hashes, process state, public code and dispatch count | Stop the synthetic process through its harness owner | not run: native Windows execution required |
-| W9 | Exact released predecessor runs one instrumented active operation; a candidate request waits | Start candidate handoff while the old operation is active | Old client gets the existing uncertain-result failure without replay; candidate dispatch count remains zero until replacement authenticates | Old and new streams, operation count, timing, identities and final read-back | Stop only recorded processes and fixture | not run: native Windows execution required |
+| W1 | Exact released `0.7.6` broker is healthy in an isolated root with valid discovery | Start one installed candidate client and request readiness | Candidate proves and replaces that process, publishes one candidate epoch, and authenticates with no manual browser action | Both artifact hashes, proof flags, old and new identities, public result and exit codes | Keep candidate for post-check, then stop only recorded processes | pass: one candidate authenticated and the predecessor exited |
+| W2 | Exact released `0.7.6` broker owns the isolated lock; remove only its validated discovery | Request candidate readiness | Candidate proves the predecessor from protected lock and process identity, replaces it, and authenticates | Mutation record, proof flags, process delta, candidate identity and result | Stop only recorded processes; restore through a clean setup | pass: missing discovery recovered through the protected lock and process identity |
+| W3 | Exact released `0.7.6` broker owns the isolated lock; replace only its discovery with invalid JSON under safe permissions | Request candidate readiness | Candidate does not trust corrupt discovery, proves the predecessor independently, replaces it, and authenticates | Corrupt hash, proof flags, process delta and public result | Stop only recorded processes; remove the isolated corrupt record | pass: corrupt discovery was rejected and the exact predecessor was replaced |
+| W4 | Exact released `0.7.7` broker is healthy in a fresh isolated root | Start one installed candidate client and request readiness | The same automatic handoff path replaces it and authenticates one candidate | Both artifact hashes, proof flags, identities and exit codes | Stop only recorded processes | pass: one candidate authenticated and the predecessor exited |
+| W5 | Exact released `0.7.7` broker owns the isolated lock; remove only its validated discovery | Request candidate readiness | Candidate proves the predecessor from the lock and Windows process handle, then authenticates | Mutation record, proof flags, process delta and result | Stop only recorded processes | pass: missing discovery recovered through the lock and process identity |
+| W6 | Exact released `0.7.7` broker owns the isolated lock; corrupt only its validated discovery | Request candidate readiness | Candidate rejects the record, proves the exact predecessor by other facts, replaces it, and authenticates | Corrupt hash, proof flags, identities and public result | Stop only recorded processes; remove isolated state | pass: corrupt discovery was rejected and the exact predecessor was replaced |
+| W7 | Exact released predecessor is live; two installed candidate clients wait behind one isolated candidate guard | Start both candidate readiness requests together | One verified replacement and one candidate broker occur; both clients authenticate to one PID, creation identity and epoch | Both streams, guard timing, process count and exact shared identity | Close clients; stop only their broker | pass: both clients authenticated to one candidate identity |
+| W8 | A synthetic isolated process has the broker filename and path shape but an unknown payload hash | Request candidate readiness | `browser_broker_upgrade_unsafe`; the exact synthetic process, lock and files remain unchanged; no candidate action dispatches | Before and after handles, hashes, process state, public code and dispatch count | Stop the synthetic process through its harness owner | pass: the unknown owner was preserved and no action dispatched |
+| W9 | Exact released predecessor runs one instrumented active operation; a candidate request waits | Start candidate handoff while the old operation is active | Old client gets the existing uncertain-result failure without replay; candidate dispatch count remains zero until replacement authenticates | Old and new streams, operation count, timing, identities and final read-back | Stop only recorded processes and fixture | pass: the old client received no-replay failure and one candidate authenticated |
 
 ## Part S: WSL to Windows released broker upgrades
 
@@ -191,10 +191,10 @@ counts and target read-backs. Do not compare agent prose.
 
 | Part | WSL | Linux | Windows native | macOS |
 |---|---|---|---|---|
-| W: native Windows released upgrades | Not-Needed: native Windows owns these process states | Not-Needed: no Windows broker | not run: W1-W9 require native Windows | Not-Needed: no Windows broker |
+| W: native Windows released upgrades | Not-Needed: native Windows owns these process states | Not-Needed: no Windows broker | pass: W1-W9 observed against the corrected candidate | Not-Needed: no Windows broker |
 | S: WSL released upgrades | pass: S1-S3 observed against the corrected candidate | Not-Needed: no WSL-to-Windows path | Not-Needed: WSL origin is required | Not-Needed: no WSL-to-Windows path |
 | R: candidate browser operation | pass: WSL client changed only its assigned hidden target | Not-Needed: no POSIX broker lifecycle change | pass: native Windows client changed only its assigned hidden target | Not-Needed: no POSIX broker lifecycle change |
-| **overall** | **pass: S1-S3 and R1 observed against the corrected candidate** | **Not-Needed: Windows packaged-broker patch** | **not run: W1-W9 require corrected-candidate reruns; R1 passes** | **Not-Needed: Windows packaged-broker patch** |
+| **overall** | **pass: S1-S3 and R1 observed against the corrected candidate** | **Not-Needed: Windows packaged-broker patch** | **pass: W1-W9 and the existing R1 pass** | **Not-Needed: Windows packaged-broker patch** |
 
 If implementation changes the POSIX broker lifecycle, Linux and macOS lose
 their Not-Needed verdicts. Add and run equivalent released-transition cells
@@ -225,7 +225,11 @@ reclaimed space. Never change or compact a mounted WSL virtual disk.
 
 ## Findings
 
-No implementation finding is recorded yet.
+W9 exposed a test-helper gap. The active-operation fixture did not record its
+exit after the expected connection reset. Test-only commits `70cdccd` and
+`558c046` added the fixture and made its final receipt unconditional. The
+sealed product source and broker payload did not change. W9 passed after the
+helper fix.
 
 ## What this runbook cannot prove
 
