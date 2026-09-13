@@ -17,6 +17,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Require the current owner, one stable process handle, the Windows creation
   identity, the exact content-addressed path, a frozen release manifest and
   every installed payload hash before stopping a predecessor.
+- Resolve the single process holding an unreadable released broker lock through
+  Windows Restart Manager and recheck that lock ownership before termination.
 - Preserve unknown processes and state with an exact safe-upgrade error. Broker
   recovery does not toggle the extension, restart Chrome, change the network or
   replay an uncertain browser operation.

@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -84,7 +86,15 @@ def _cataloged_bundle(root: Path) -> tuple[Path, dict[str, object]]:
     return bundle, catalog
 
 
-def _run(tmp_path, monkeypatch, process, bundle, catalog, endpoint=None):
+def _run(
+    tmp_path,
+    monkeypatch,
+    process,
+    bundle,
+    catalog,
+    endpoint=None,
+    owner_sequence=None,
+):
     lock = tmp_path / "state" / "browser-broker.lock"
     lock.parent.mkdir()
     lock.write_text(str(process.pid))
@@ -99,6 +109,12 @@ def _run(tmp_path, monkeypatch, process, bundle, catalog, endpoint=None):
     monkeypatch.setattr(windows_process, "_verify_owner_and_system", lambda _path: None)
     monkeypatch.setattr(windows_process, "_current_user_sid", lambda: "owner")
     monkeypatch.setattr(windows_process, "_open_process", lambda pid: process)
+    owners = iter(owner_sequence) if owner_sequence is not None else None
+    monkeypatch.setattr(
+        windows_process,
+        "_restart_manager_lock_owners",
+        lambda _path: next(owners) if owners is not None else ((process.pid, 42),),
+    )
     return windows_process.perform_upgrade_handoff(
         lock_path=lock,
         candidate_bundle=candidate,
@@ -151,6 +167,55 @@ def test_ambiguous_predecessor_fails_closed(tmp_path, monkeypatch, change):
     assert process.closed is True
 
 
+def test_lock_owner_change_during_proof_fails_closed(tmp_path, monkeypatch):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+
+    with pytest.raises(windows_process.UpgradeHandoffError):
+        _run(
+            tmp_path,
+            monkeypatch,
+            process,
+            bundle,
+            catalog,
+            owner_sequence=(((123, 42),), ((456, 84),)),
+        )
+
+    assert process.terminated is False
+
+
+def test_unowned_stale_lock_continues_fresh_election(tmp_path, monkeypatch):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+
+    result = _run(
+        tmp_path,
+        monkeypatch,
+        process,
+        bundle,
+        catalog,
+        owner_sequence=((),),
+    )
+
+    assert result == {"state": "already_exited"}
+    assert process.terminated is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows Restart Manager")
+def test_restart_manager_reports_the_exact_held_lock_owner(tmp_path):
+    lock = tmp_path / "browser-broker.lock"
+    descriptor = os.open(lock, os.O_CREAT | os.O_RDWR)
+    try:
+        owners = windows_process._restart_manager_lock_owners(lock)
+        process = windows_process._WindowsProcess(os.getpid())
+        try:
+            assert owners == ((os.getpid(), process.creation_filetime()),)
+        finally:
+            process.close()
+    finally:
+        os.close(descriptor)
+
+
 def test_unknown_catalog_entry_fails_closed(tmp_path, monkeypatch):
     bundle, catalog = _cataloged_bundle(tmp_path)
     catalog["releases"] = []
@@ -201,6 +266,11 @@ def test_predecessor_exit_before_handle_open_restarts_election(tmp_path, monkeyp
     catalog_path = candidate / "predecessor-catalog.json"
     catalog_path.write_text(json.dumps(catalog))
     monkeypatch.setattr(windows_process, "_verify_owner_and_system", lambda _path: None)
+    monkeypatch.setattr(
+        windows_process,
+        "_restart_manager_lock_owners",
+        lambda _path: ((123, 42),),
+    )
     monkeypatch.setattr(
         windows_process,
         "_open_process",

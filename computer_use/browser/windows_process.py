@@ -22,6 +22,28 @@ UPGRADE_UNSAFE = "browser_broker_upgrade_unsafe"
 UPGRADE_TIMEOUT = "browser_broker_upgrade_timeout"
 _WAIT_MS = 10_000
 _REPARSE_POINT = 0x400
+_ERROR_MORE_DATA = 234
+_RM_SESSION_KEY_LENGTH = 32
+
+
+class _FileTime(ctypes.Structure):
+    _fields_ = [("low", wintypes.DWORD), ("high", wintypes.DWORD)]
+
+
+class _RmUniqueProcess(ctypes.Structure):
+    _fields_ = [("pid", wintypes.DWORD), ("started", _FileTime)]
+
+
+class _RmProcessInfo(ctypes.Structure):
+    _fields_ = [
+        ("process", _RmUniqueProcess),
+        ("app_name", wintypes.WCHAR * 256),
+        ("service_name", wintypes.WCHAR * 64),
+        ("application_type", ctypes.c_int),
+        ("status", wintypes.ULONG),
+        ("terminal_session_id", wintypes.DWORD),
+        ("restartable", wintypes.BOOL),
+    ]
 
 
 class UpgradeHandoffError(OSError):
@@ -204,6 +226,85 @@ def _current_user_sid() -> str:
     return current_user_sid()
 
 
+def _restart_manager_lock_owners(path: Path) -> tuple[tuple[int, int], ...]:
+    """Return the processes that Windows reports as using one exact lock file."""
+    if sys.platform != "win32":
+        raise OSError("Windows Restart Manager is unavailable")
+    manager = ctypes.WinDLL("Rstrtmgr", use_last_error=True)
+    manager.RmStartSession.argtypes = [
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+    ]
+    manager.RmRegisterResources.argtypes = [
+        wintypes.DWORD,
+        wintypes.UINT,
+        ctypes.POINTER(wintypes.LPCWSTR),
+        wintypes.UINT,
+        ctypes.c_void_p,
+        wintypes.UINT,
+        ctypes.c_void_p,
+    ]
+    manager.RmGetList.argtypes = [
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.UINT),
+        ctypes.POINTER(wintypes.UINT),
+        ctypes.POINTER(_RmProcessInfo),
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    manager.RmEndSession.argtypes = [wintypes.DWORD]
+    session = wintypes.DWORD()
+    key = ctypes.create_unicode_buffer(_RM_SESSION_KEY_LENGTH + 1)
+    result = manager.RmStartSession(ctypes.byref(session), 0, key)
+    if result:
+        raise OSError(result, "failed to start Windows lock-owner query")
+    try:
+        absolute = os.path.abspath(path)
+        resources = (wintypes.LPCWSTR * 1)(absolute)
+        result = manager.RmRegisterResources(session, 1, resources, 0, None, 0, None)
+        if result:
+            raise OSError(result, "failed to register the broker lock")
+        for _attempt in range(4):
+            needed = wintypes.UINT()
+            count = wintypes.UINT()
+            reasons = wintypes.DWORD()
+            result = manager.RmGetList(
+                session,
+                ctypes.byref(needed),
+                ctypes.byref(count),
+                None,
+                ctypes.byref(reasons),
+            )
+            if result == 0 and needed.value == 0:
+                return ()
+            if result != _ERROR_MORE_DATA or needed.value == 0:
+                raise OSError(result, "failed to size the broker lock-owner query")
+            values = (_RmProcessInfo * needed.value)()
+            count.value = needed.value
+            result = manager.RmGetList(
+                session,
+                ctypes.byref(needed),
+                ctypes.byref(count),
+                values,
+                ctypes.byref(reasons),
+            )
+            if result == _ERROR_MORE_DATA:
+                continue
+            if result:
+                raise OSError(result, "failed to read the broker lock owners")
+            return tuple(
+                (
+                    int(item.process.pid),
+                    (int(item.process.started.high) << 32)
+                    | int(item.process.started.low),
+                )
+                for item in values[: count.value]
+            )
+        raise OSError(_ERROR_MORE_DATA, "broker lock owners changed during query")
+    finally:
+        manager.RmEndSession(session)
+
+
 class _WindowsProcess:
     def __init__(self, pid: int) -> None:
         if sys.platform != "win32":
@@ -378,17 +479,22 @@ def perform_upgrade_handoff(
         try:
             _verify_owner_and_system(lock_path.parent)
             _verify_owner_and_system(lock_path)
-            raw_pid = lock_path.read_text(encoding="utf-8").strip()
-            if not raw_pid.isdecimal() or int(raw_pid) < 1:
+            owners = _restart_manager_lock_owners(lock_path)
+            if not owners:
+                return {"state": "already_exited"}
+            if len(owners) != 1:
                 raise _unsafe()
+            owner_pid, owner_created = owners[0]
             try:
-                process = _open_process(int(raw_pid))
+                process = _open_process(owner_pid)
             except _ProcessExited:
                 return {"state": "already_exited"}
             if process.user_sid() != _current_user_sid():
                 raise _unsafe()
             image = process.image_path()
             created = process.creation_filetime()
+            if created != owner_created:
+                raise _unsafe()
             if not process.is_running():
                 return {"state": "already_exited"}
 
@@ -421,6 +527,8 @@ def perform_upgrade_handoff(
             ):
                 raise _unsafe()
             if (
+                _restart_manager_lock_owners(lock_path) != ((process.pid, created),)
+                or
                 process.creation_filetime() != created
                 or not _same_path(process.image_path(), image)
                 or not process.is_running()

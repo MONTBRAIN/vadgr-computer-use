@@ -106,14 +106,13 @@ def prepare(root: Path, release: str, wheel_value: str) -> int:
     archive_path = root / f"broker-{release}.zip"
     with zipfile.ZipFile(wheel) as package:
         archive_path.write_bytes(package.read(ARCHIVE_MEMBER))
-        manifest = json.loads(package.read(MANIFEST_MEMBER))
+        raw_manifest = package.read(MANIFEST_MEMBER)
+        json.loads(raw_manifest)
     if sha256(archive_path) != expected["archive"]:
         raise ValueError("embedded broker archive hash does not match the frozen catalog")
     with zipfile.ZipFile(archive_path) as archive:
         safe_extract(archive, bundle)
-    (bundle / "bundle-manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    (bundle / "bundle-manifest.json").write_bytes(raw_manifest)
     executable = bundle / EXECUTABLE
     if not executable.is_file():
         raise ValueError("released broker executable is missing")
