@@ -30,3 +30,9 @@ Use `--synthetic` only with `start` for the unknown-payload refusal cell. The
 helper changes that isolated copy, not the published wheel or candidate. `stop`
 opens the recorded PID, verifies its live executable is below the marked root,
 and terminates that same process handle. It refuses any uncertain target.
+
+For W9, run `extension-start` after the predecessor starts. It connects one
+instrumented extension to that broker and holds its first dispatched operation.
+Use `extension-observe` before and after the handoff. It reports only the
+operation name, dispatch count and exit state. It never records the endpoint
+token. The helper exits when the predecessor connection closes.

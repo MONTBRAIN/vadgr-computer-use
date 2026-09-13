@@ -95,6 +95,22 @@ def test_fault_changes_only_validated_endpoint(tmp_path):
     assert not endpoint.exists()
 
 
+def test_extension_state_contains_only_safe_dispatch_metadata(tmp_path):
+    fixture = load_fixture()
+    root = marked_root(tmp_path)
+
+    fixture.write_extension_state(
+        root, dispatch_count=1, operation="profiles", exited=False
+    )
+
+    value = json.loads((root / fixture.EXTENSION_RECORD).read_text())
+    assert value == {
+        "dispatch_count": 1,
+        "exited": False,
+        "operation": "profiles",
+    }
+
+
 def test_fixture_paths_use_released_content_addressed_layout(tmp_path):
     fixture = load_fixture()
     root = marked_root(tmp_path)

@@ -8,6 +8,8 @@ import hashlib
 import json
 import os
 import shutil
+import socket
+import struct
 import subprocess
 import sys
 import time
@@ -36,6 +38,7 @@ MANIFEST_MEMBER = (
 )
 MARKER = ".vadgr-cua-078-fixture.json"
 PROCESS_RECORD = ".fixture-process.json"
+EXTENSION_RECORD = ".fixture-extension.json"
 EXECUTABLE = "vadgr-cua-browser-broker.exe"
 
 
@@ -49,6 +52,116 @@ def sha256(path: Path) -> str:
 
 def emit(value: dict[str, object]) -> None:
     print(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def write_extension_state(
+    root: Path, *, dispatch_count: int, operation: str | None, exited: bool
+) -> None:
+    (root / EXTENSION_RECORD).write_text(
+        json.dumps(
+            {
+                "dispatch_count": dispatch_count,
+                "exited": exited,
+                "operation": operation,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_frame(file, value: dict[str, object]) -> None:
+    payload = json.dumps(value, separators=(",", ":")).encode("utf-8")
+    file.write(struct.pack("<I", len(payload)) + payload)
+    file.flush()
+
+
+def _read_frame(file) -> dict[str, object] | None:
+    header = file.read(4)
+    if not header:
+        return None
+    if len(header) != 4:
+        raise EOFError("incomplete native message header")
+    size = struct.unpack("<I", header)[0]
+    payload = file.read(size)
+    if len(payload) != size:
+        raise EOFError("incomplete native message payload")
+    value = json.loads(payload)
+    if not isinstance(value, dict):
+        raise ValueError("native message is not an object")
+    return value
+
+
+def extension_serve(root: Path) -> int:
+    discovery = root / "appdata" / "vadgr-cua" / "browser.port"
+    value = json.loads(discovery.read_text(encoding="utf-8"))
+    token = value.get("token")
+    port = value.get("port")
+    if not isinstance(token, str) or not isinstance(port, int):
+        raise ValueError("browser discovery is incomplete")
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+        connection.settimeout(None)
+        with connection.makefile("rwb") as file:
+            _write_frame(file, {"type": "auth", "token": token})
+            hello = _read_frame(file)
+            if hello is None or hello.get("type") != "hello":
+                raise ValueError("CUA hello is unavailable")
+            _write_frame(
+                file,
+                {
+                    "type": "hello",
+                    "proto": 1,
+                    "ext_version": "0.7.8-fixture",
+                    "browser": "chrome",
+                    "supported_ops": ["profiles"],
+                    "profile_id": "e2e-fixture",
+                    "profile": {"window_count": 1, "tab_count": 1},
+                },
+            )
+            write_extension_state(root, dispatch_count=0, operation=None, exited=False)
+            request = _read_frame(file)
+            operation = None if request is None else str(request.get("op"))
+            write_extension_state(
+                root,
+                dispatch_count=0 if request is None else 1,
+                operation=operation,
+                exited=False,
+            )
+            while file.read(1):
+                pass
+    write_extension_state(
+        root, dispatch_count=1, operation=operation, exited=True
+    )
+    return 0
+
+
+def extension_start(root: Path) -> int:
+    if sys.platform != "win32":
+        raise ValueError("extension-start must run under native Windows Python")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "extension-serve", "--root", str(root)],
+        cwd=root,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=flags,
+    )
+    deadline = time.monotonic() + 10
+    record = root / EXTENSION_RECORD
+    while time.monotonic() < deadline:
+        if record.is_file():
+            emit({"event": "extension_ready"})
+            return 0
+        time.sleep(0.05)
+    raise TimeoutError("instrumented extension did not become ready")
+
+
+def extension_observe(root: Path) -> int:
+    value = json.loads((root / EXTENSION_RECORD).read_text(encoding="utf-8"))
+    emit({"event": "extension_observed", **value})
+    return 0
 
 
 def checked_root(value: str, *, create: bool = False) -> Path:
@@ -286,7 +399,18 @@ def stop(root: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command", choices=("init", "prepare", "start", "observe", "fault", "stop")
+        "command",
+        choices=(
+            "init",
+            "prepare",
+            "start",
+            "observe",
+            "fault",
+            "stop",
+            "extension-start",
+            "extension-serve",
+            "extension-observe",
+        ),
     )
     parser.add_argument("--root", required=True)
     parser.add_argument("--release", choices=tuple(EXPECTED))
@@ -309,6 +433,12 @@ def main() -> int:
     if args.command == "observe":
         emit(safe_identity(root / "state" / "browser-broker.json"))
         return 0
+    if args.command == "extension-start":
+        return extension_start(root)
+    if args.command == "extension-serve":
+        return extension_serve(root)
+    if args.command == "extension-observe":
+        return extension_observe(root)
     if args.command == "fault":
         if args.action is None:
             parser.error("fault requires --action")
