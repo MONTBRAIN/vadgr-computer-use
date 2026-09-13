@@ -20,6 +20,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Preserve unknown processes and state with an exact safe-upgrade error. Broker
   recovery does not toggle the extension, restart Chrome, change the network or
   replay an uncertain browser operation.
+- Carry explicit broker, browser discovery and application-data paths across
+  WSL executable interop so isolated clients reach the intended Windows broker.
 
 ## [0.7.7] - 2026-09-12
 

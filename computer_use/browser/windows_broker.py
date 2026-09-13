@@ -76,15 +76,26 @@ def _windows_child_environment() -> dict[str, str]:
     environment = dict(os.environ)
     if sys.platform == "win32":
         return environment
+    local_app_data = environment.pop("LOCALAPPDATA", None)
+    if local_app_data:
+        environment["VADGR_CUA_WINDOWS_LOCAL_APP_DATA"] = _windows_path(
+            Path(local_app_data)
+        )
+    forwarded = [entry for entry in environment.get("WSLENV", "").split(":") if entry]
+    forwarded_names = {entry.split("/", 1)[0] for entry in forwarded}
     for name in (
-        "LOCALAPPDATA",
+        "VADGR_CUA_WINDOWS_LOCAL_APP_DATA",
         "VADGR_CUA_BROKER_ENDPOINT",
         "VADGR_CUA_BROWSER_DISCOVERY",
         "VADGR_CUA_BROWSER_DISCOVERY_WINDOWS",
     ):
         value = environment.get(name)
         if value:
-            environment[name] = _windows_path(Path(value))
+            if name != "VADGR_CUA_WINDOWS_LOCAL_APP_DATA":
+                environment[name] = _windows_path(Path(value))
+            if name not in forwarded_names:
+                forwarded.append(name)
+    environment["WSLENV"] = ":".join(forwarded)
     return environment
 
 

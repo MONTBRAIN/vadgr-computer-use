@@ -80,13 +80,17 @@ def test_wsl_windows_children_receive_windows_isolation_paths(monkeypatch):
 
     environment = windows_broker._windows_child_environment()
 
-    assert environment["LOCALAPPDATA"] == "C:\\test\\local"
+    assert environment["VADGR_CUA_WINDOWS_LOCAL_APP_DATA"] == "C:\\test\\local"
     assert environment["VADGR_CUA_BROKER_ENDPOINT"] == (
         "C:\\test\\state\\browser-broker.json"
     )
     assert environment["VADGR_CUA_BROWSER_DISCOVERY"] == (
         "C:\\test\\state\\browser.port"
     )
+    forwarded = environment["WSLENV"].split(":")
+    assert "VADGR_CUA_WINDOWS_LOCAL_APP_DATA" in forwarded
+    assert "VADGR_CUA_BROKER_ENDPOINT" in forwarded
+    assert "VADGR_CUA_BROWSER_DISCOVERY" in forwarded
 
 
 def test_wsl_proxy_uses_a_windows_accessible_path(tmp_path, monkeypatch):

@@ -13,7 +13,9 @@ if ($archiveHash -ne [string]$metadata.archive_sha256) {
     throw "Windows browser broker archive failed integrity verification"
 }
 
-$parent = Join-Path $env:LOCALAPPDATA "vadgr-cua\browser-broker\$($metadata.version)"
+$localAppData = $env:VADGR_CUA_WINDOWS_LOCAL_APP_DATA
+if ([string]::IsNullOrWhiteSpace($localAppData)) { $localAppData = $env:LOCALAPPDATA }
+$parent = Join-Path $localAppData "vadgr-cua\browser-broker\$($metadata.version)"
 $destination = Join-Path $parent $archiveHash
 
 function Test-Bundle([string]$Root) {

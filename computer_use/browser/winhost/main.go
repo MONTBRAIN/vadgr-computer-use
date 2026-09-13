@@ -78,8 +78,11 @@ func writeFrame(w io.Writer, body []byte) error {
 	return err
 }
 
-// discoveryPath returns %LOCALAPPDATA%\vadgr-cua\browser.port.
+// discoveryPath returns an explicit isolated record or the per-user default.
 func discoveryPath() string {
+	if isolated := os.Getenv("VADGR_CUA_BROWSER_DISCOVERY"); isolated != "" {
+		return isolated
+	}
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
 		base = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
@@ -88,6 +91,9 @@ func discoveryPath() string {
 }
 
 func brokerEndpointPath() string {
+	if isolated := os.Getenv("VADGR_CUA_BROKER_ENDPOINT"); isolated != "" {
+		return isolated
+	}
 	base := os.Getenv("LOCALAPPDATA")
 	if base == "" {
 		base = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
