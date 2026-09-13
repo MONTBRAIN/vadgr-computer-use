@@ -2,7 +2,7 @@
 
 > **vadgr-computer-use 0.7.8 implementation:** branch
 > `feature/0.7.8-broker-upgrade-handoff`; tested product source head
-> `20549f5ee03a02e9650e3f06e68d9d4904ed5694`. **vadgr-computer-use 0.7.8
+> `99b1feeb71599bcc40ab0d91d91c456e34fec85a`. **vadgr-computer-use 0.7.8
 > evidence:** `https://github.com/MONTBRAIN/vadgr-docs/pull/164`.
 
 Read this file and [`../README.md`](../README.md) completely before any live
