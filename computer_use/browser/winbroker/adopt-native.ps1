@@ -53,15 +53,20 @@ function Assert-Private([string]$Path, [bool]$Protected = $false) {
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value -or
         ($Protected -and -not $acl.AreAccessRulesProtected)) { throw 'Adoption owner or inheritance is invalid' }
     $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
-    if ($rules.Count -ne 2) { throw 'Adoption ACL must contain exactly owner and SYSTEM' }
+    $rights = @{}
     foreach ($rule in $rules) {
         if ($rule.IdentityReference.Value -notin @($owner.Value, $system.Value) -or
-            $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
-            $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) {
+            $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) {
             throw 'Adoption ACL permits an unexpected principal'
         }
+        $sid = $rule.IdentityReference.Value
+        $rights[$sid] = [int]$rights[$sid] -bor [int]$rule.FileSystemRights
     }
-    if (@($rules.IdentityReference.Value | Sort-Object -Unique).Count -ne 2) { throw 'Duplicate adoption ACL principal' }
+    if ($rights.Count -ne 2 -or
+        $rights[$owner.Value] -ne [int][Security.AccessControl.FileSystemRights]::FullControl -or
+        $rights[$system.Value] -ne [int][Security.AccessControl.FileSystemRights]::FullControl) {
+        throw 'Adoption ACL must grant full control only to owner and SYSTEM'
+    }
 }
 function Protect-Directory([string]$Path) {
     Assert-Path $Path

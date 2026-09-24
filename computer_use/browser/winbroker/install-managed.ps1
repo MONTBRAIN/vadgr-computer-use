@@ -57,15 +57,20 @@ function Assert-Private([string]$Path, [bool]$Protected = $false) {
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $ownerSid.Value -or
         ($Protected -and -not $acl.AreAccessRulesProtected)) { throw 'Invalid managed broker owner or inheritance' }
     $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
-    if ($rules.Count -ne 2) { throw 'Managed broker ACL must contain exactly owner and SYSTEM' }
+    $rights = @{}
     foreach ($rule in $rules) {
         if ($rule.IdentityReference.Value -notin @($ownerSid.Value, $systemSid.Value) -or
-            $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
-            $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) {
+            $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow) {
             throw 'Managed broker ACL permits an unexpected principal'
         }
+        $sid = $rule.IdentityReference.Value
+        $rights[$sid] = [int]$rights[$sid] -bor [int]$rule.FileSystemRights
     }
-    if (@($rules.IdentityReference.Value | Sort-Object -Unique).Count -ne 2) { throw 'Duplicate managed broker ACL principal' }
+    if ($rights.Count -ne 2 -or
+        $rights[$ownerSid.Value] -ne [int][Security.AccessControl.FileSystemRights]::FullControl -or
+        $rights[$systemSid.Value] -ne [int][Security.AccessControl.FileSystemRights]::FullControl) {
+        throw 'Managed broker ACL must grant full control only to owner and SYSTEM'
+    }
 }
 
 function Get-VerifiedFiles([string]$Root) {

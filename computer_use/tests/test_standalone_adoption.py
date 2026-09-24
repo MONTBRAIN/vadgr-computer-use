@@ -494,6 +494,7 @@ def installed_case(monkeypatch, tmp_path, admission, synthetic_chain):
         return {"state_sha256": sha256(request["state"].encode())}
 
     monkeypatch.setattr(runtime.offline, "native_call", native)
+    monkeypatch.setattr(runtime.offline, "local_path", lambda value: Path(value))
     attestations = []
 
     def attest(subject, bundle, *args, **kwargs):
