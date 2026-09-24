@@ -18,3 +18,8 @@ wheel as a predecessor. Its child roots still use the `vadgr-cua-078-` prefix
 inside the enclosing marked 0.7.9 root. It prepares and observes fixtures;
 it does not drive a product operation. `process_fixture.html` exposes an input
 counter for an independent no-replay DOM observation.
+
+`windows_boundary.py` records retained artifact hashes, native-host registration
+hashes and read-only process/port cleanup observations for explicitly supplied
+test PIDs and port. It never stops a process, modifies registration or assigns
+a live-cell verdict.
