@@ -2869,9 +2869,9 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P05 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not run: no native session | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P07 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not run: no native session | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P09 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P10 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P11 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |

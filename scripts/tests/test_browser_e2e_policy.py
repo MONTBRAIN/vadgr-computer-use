@@ -28,3 +28,13 @@ def test_browser_e2e_policy_keeps_dom_and_native_accessibility_separate():
         assert "DOM" in text
         assert "UIA" in text
         assert "replace Chrome for Testing" in text
+
+
+def test_current_runbook_attributes_windows_launch_blocker_to_windows():
+    runbook = _text("E2E/0.7.9/e2e.md")
+    expected = (
+        "| Part P06 | not run: no native session | blocked: isolated browser "
+        "launch denied; signed assertions also owed | not run: no native session |"
+    )
+    assert expected in runbook
+    assert expected.replace("P06", "P08") in runbook
