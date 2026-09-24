@@ -67,6 +67,31 @@ def test_driver_environment_keeps_login_paths_but_excludes_provider_keys():
     assert "OPENAI_API_KEY" not in value
 
 
+def test_browser_driver_command_exposes_only_dom_cua_tools(tmp_path):
+    helper = load_helper()
+
+    command = helper.agent_command(tmp_path / "mcp.json")
+    allowed = command[command.index("--allowedTools") + 1].split(",")
+    denied = command[command.index("--disallowedTools") + 1].split(",")
+
+    assert command[command.index("--tools") + 1] == ""
+    assert allowed == [
+        "mcp__cua__browser",
+        "mcp__cua__browser_eval",
+        "mcp__cua__tabs",
+    ]
+    assert not set(allowed) & set(denied)
+    for name in (
+        "mcp__cua__type_text",
+        "mcp__cua__screenshot",
+        "mcp__cua__click",
+        "mcp__cua__shell",
+        "mcp__cua__ui_act",
+        "mcp__cua__windows",
+    ):
+        assert name in denied
+
+
 def test_released_fixture_environment_excludes_ambient_credentials(tmp_path):
     fixture = load_fixture()
     source = {

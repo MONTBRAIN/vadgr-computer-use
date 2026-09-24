@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 REDACTOR_SOURCE = Path(__file__).resolve().parents[2] / "0.7.6/harness/redact_stream.py"
+PRIVATE_ARTIFACT_NAMES = {"registry-backup.json"}
 spec = importlib.util.spec_from_file_location("cua_e2e_redact_stream", REDACTOR_SOURCE)
 redactor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(redactor)
@@ -85,7 +86,7 @@ def main():
                             + "\n"
                         )
     for path in args.source.glob("*.json"):
-        if path.name.endswith(".private.json"):
+        if path.name.endswith(".private.json") or path.name in PRIVATE_ARTIFACT_NAMES:
             continue
         raw = path.read_bytes()
         encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"

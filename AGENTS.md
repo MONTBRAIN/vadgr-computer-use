@@ -178,6 +178,13 @@ qualified model. Permission bypass avoids unattended approval stalls. It does
 not authorize unrelated changes, destructive work, host network changes or
 protected owner actions, and it does not replace evidence or cleanup.
 
+For a browser-tier cell, enforce the tier in the driver configuration as well
+as the goal: expose only the CUA DOM browser tools the cell needs and explicitly
+deny desktop/pixel input, native accessibility, shell, filesystem, HTTP and
+application-launch tools. Disable unrelated built-in driver tools. A browser
+cell that selects or can select a desktop tool is setup-ineligible even when
+the observed page result happens to match.
+
 **Do not turn subscription usage into an invented API bill.** Do not impose
 API-list-price-equivalent dollar or token ceilings on these CLI runs, stop at
 such a ceiling, or ask the owner to approve raising it. Continue the requested

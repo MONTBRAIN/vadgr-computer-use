@@ -39,6 +39,48 @@ DRIVER_LOGIN_ENVIRONMENT = (
     "USERNAME",
 )
 
+# Browser-tier cells are DOM-extension tests.  Prompt instructions are not a
+# security boundary: make every native desktop, pixel, host and structured-UI
+# CUA tool unavailable to the subscription driver.
+BROWSER_ALLOWED_CUA_TOOLS = (
+    "mcp__cua__browser",
+    "mcp__cua__browser_eval",
+    "mcp__cua__tabs",
+)
+
+BROWSER_DISALLOWED_CUA_TOOLS = (
+    "mcp__cua__screenshot",
+    "mcp__cua__screenshot_region",
+    "mcp__cua__click",
+    "mcp__cua__double_click",
+    "mcp__cua__right_click",
+    "mcp__cua__move_mouse",
+    "mcp__cua__scroll",
+    "mcp__cua__drag",
+    "mcp__cua__type_text",
+    "mcp__cua__key_press",
+    "mcp__cua__get_screen_size",
+    "mcp__cua__get_platform",
+    "mcp__cua__get_platform_info",
+    "mcp__cua__fs",
+    "mcp__cua__shell",
+    "mcp__cua__http",
+    "mcp__cua__env",
+    "mcp__cua__time",
+    "mcp__cua__tempfile",
+    "mcp__cua__data",
+    "mcp__cua__clipboard",
+    "mcp__cua__windows",
+    "mcp__cua__profiles",
+    "mcp__cua__ui_tree",
+    "mcp__cua__ui_find",
+    "mcp__cua__ui_windows",
+    "mcp__cua__ui_act",
+    "mcp__cua__ui_wait",
+    "mcp__cua__apps",
+    "mcp__cua__app_open",
+)
+
 
 def save(path, value):
     with path.open("x", encoding="utf-8") as output:
@@ -126,6 +168,12 @@ def agent_command(config: Path) -> list[str]:
     return [
         "claude",
         "--dangerously-skip-permissions",
+        "--tools",
+        "",
+        "--allowedTools",
+        ",".join(BROWSER_ALLOWED_CUA_TOOLS),
+        "--disallowedTools",
+        ",".join(BROWSER_DISALLOWED_CUA_TOOLS),
         "--print",
         "--verbose",
         "--output-format",

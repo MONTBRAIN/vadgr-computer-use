@@ -27,8 +27,11 @@ a live-cell verdict.
 `windows_session.py` captures native Windows sessions through the installed
 public entry point. It prepares isolated configuration, launches only the
 reviewed official Chrome-for-Testing executable with a fresh profile, and gives
-a goal to the selected live subscription driver. It never chooses CUA tool
-calls. Child environment allowlists keep ambient provider credentials out of
+a goal to the selected live subscription driver. Its Claude browser driver
+disables built-in tools and exposes only `browser`, `browser_eval`, and `tabs`
+from the isolated CUA MCP; every desktop, pixel, native-accessibility, shell and
+filesystem CUA tool is explicitly denied. Prompt text alone is not a tier
+boundary. Child environment allowlists keep ambient provider credentials out of
 the product and browser; the driver's login paths remain separate. Its
 read-only observer records process identities and the isolated fixture's DOM
 counter. Cleanup checks PID plus exact process start identity. Registration

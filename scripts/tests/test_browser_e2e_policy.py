@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -30,11 +29,14 @@ def test_browser_e2e_policy_keeps_dom_and_native_accessibility_separate():
         assert "replace Chrome for Testing" in text
 
 
-def test_current_runbook_attributes_windows_launch_blocker_to_windows():
+def test_current_runbook_attributes_superseded_windows_observations_to_windows():
     runbook = _text("E2E/0.7.9/e2e.md")
     expected = (
-        "| Part P06 | not run: no native session | blocked: isolated browser "
-        "launch denied; signed assertions also owed | not run: no native session |"
+        "| Part P06 | not run: no native session | owed: superseded development "
+        "observations; replacement candidate and three passes required | not run: no native session |"
     )
     assert expected in runbook
-    assert expected.replace("P06", "P08") in runbook
+    assert (
+        "| Part P08 | not run: no native session | owed: live human-stream defect "
+        "found; replacement candidate and three passes required | not run: no native session |"
+    ) in runbook

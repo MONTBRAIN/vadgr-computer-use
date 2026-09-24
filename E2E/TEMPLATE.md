@@ -172,14 +172,21 @@ present in a given runbook, the entry is all there is.
     task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
-24. **The driver is the CLI whose session is driving the pass.** A pass running
+24. **Browser-tier driver tools are mechanically restricted, not merely
+    described in a prompt.** Expose only the isolated CUA DOM browser tools the
+    cell requires; explicitly deny desktop/pixel input, native accessibility,
+    shell, filesystem, HTTP and application-launch tools, and disable unrelated
+    built-in driver tools. Any browser observation made while a desktop tool was
+    selectable is setup-ineligible. [Browser isolation]
+
+25. **The driver is the CLI whose session is driving the pass.** A pass running
    under Claude Code launches its drivers with `claude`, under Codex with
    `codex`, each with the login and bypass rule 23 describes. Not the other
    one: a driver on an account this session cannot see is one it cannot check,
    top up, or read the state of when it stops.
    [The approach: a headless agent CLI session]
 
-25. **A long-lived helper is tested as a state machine, not only from a clean
+26. **A long-lived helper is tested as a state machine, not only from a clean
    start.** Cross its process, lock, discovery endpoint, registration and
    version states in isolated storage. Prove missing and stale state recovers,
    or returns the exact designed error and matching remedy. [Persistent helper

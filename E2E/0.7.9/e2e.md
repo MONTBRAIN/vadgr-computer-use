@@ -136,6 +136,13 @@ codex --yolo exec --json --model gpt-6-luna -c 'model_reasoning_effort="medium"'
 claude --dangerously-skip-permissions --print --verbose --output-format stream-json --model claude-sonnet-5 --mcp-config "$CUA_TEST_ROOT/work/.mcp.json" "$CUA_CELL_GOAL"
 ```
 
+For browser-tier cells, the driver command must also disable unrelated built-in
+tools, allow only `mcp__cua__browser`, `mcp__cua__browser_eval`, and
+`mcp__cua__tabs`, and explicitly deny every other CUA MCP tool. The committed
+Windows session helper applies that boundary. Prompt-only tier instructions are
+insufficient: an attempt in which desktop/pixel or native-accessibility tools
+were selectable is setup-ineligible and must be retained as such.
+
 The selected CLI's MCP entry invokes the absolute installed `vadgr-cua` with
 `--transport stdio`. Keep the driver login environment separate from the product
 child's isolated home/state. Capture the actual JSON stream and exit code into
@@ -1531,7 +1538,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-missing: released upgrade on windows-x86_64-from-076-missing
 
@@ -1549,7 +1556,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-corrupt: released upgrade on windows-x86_64-from-076-corrupt
 
@@ -1567,7 +1574,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-healthy: released upgrade on windows-x86_64-from-077-healthy
 
@@ -1585,7 +1592,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-missing: released upgrade on windows-x86_64-from-077-missing
 
@@ -1603,7 +1610,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-corrupt: released upgrade on windows-x86_64-from-077-corrupt
 
@@ -1621,7 +1628,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-healthy: released upgrade on windows-x86_64-from-078-healthy
 
@@ -1639,7 +1646,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-missing: released upgrade on windows-x86_64-from-078-missing
 
@@ -1657,7 +1664,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-corrupt: released upgrade on windows-x86_64-from-078-corrupt
 
@@ -1675,7 +1682,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-wsl-x86_64-from-076-healthy: released upgrade on wsl-x86_64-from-076-healthy
 
@@ -1931,7 +1938,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: the permitted isolated-browser drain attempt did not establish an active long request before its bounded setup ended; it is not a drain pass. Preserve the `20260924-windows-resumed` attempt. Run the active-request drain oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed because the permitted isolated-browser drain attempt did not establish an active long request before its bounded setup ended; it is not a drain pass. Preserve the `20260924-windows-resumed` attempt. Run the active-request drain oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-unknown-owner: active work and unknown owner on windows-x86_64-unknown-owner
 
@@ -1949,7 +1956,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: the permitted isolated-browser unknown-owner attempt refused unsafe handoff with zero DOM mutation, but its complete before/after hash oracle was not captured and the candidate is superseded. Preserve the `20260924-windows-resumed` attempt; rerun the complete oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed because the permitted isolated-browser unknown-owner attempt refused unsafe handoff with zero DOM mutation, but its complete before/after hash oracle was not captured and the candidate is superseded. Preserve the `20260924-windows-resumed` attempt; rerun the complete oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-pid-reuse: active work and unknown owner on windows-x86_64-pid-reuse
 
@@ -1967,7 +1974,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** owed: the first attempt did not retain the stale-identity precondition; after the endpoint-identity fix, the isolated suspended-fixture attempt refused unsafe handoff without changing the recorded process, endpoint, registration, or DOM state. That fixed candidate is now superseded by the human-stream fix. Preserve both evidence boundaries and rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** not run: owed because the first attempt did not retain the stale-identity precondition; after the endpoint-identity fix, the isolated suspended-fixture attempt refused unsafe handoff without changing the recorded process, endpoint, registration, or DOM state. That fixed candidate is now superseded by the human-stream fix. Preserve both evidence boundaries and rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-cancel: active work and unknown owner on windows-x86_64-cancel
 

@@ -60,6 +60,7 @@ def test_private_config_files_are_explicitly_excluded_from_sealing():
     source = HELPER.read_text(encoding="utf-8")
 
     assert 'path.name.endswith(".private.json")' in source
+    assert '"registry-backup.json"' in source
 
 
 def test_artifacts_only_seals_receipts_without_fabricating_agent_stream(tmp_path):
@@ -68,6 +69,10 @@ def test_artifacts_only_seals_receipts_without_fabricating_agent_stream(tmp_path
     source.mkdir()
     (source / "before.json").write_text(
         json.dumps({"connected": True, "token": "private"}), encoding="utf-8"
+    )
+    (source / "registry-backup.json").write_text(
+        json.dumps({"default_value": r"C:\Users\owner\private-manifest.json"}),
+        encoding="utf-8",
     )
 
     result = subprocess.run(
@@ -87,6 +92,7 @@ def test_artifacts_only_seals_receipts_without_fabricating_agent_stream(tmp_path
 
     assert json.loads(result.stdout)["mode"] == "artifacts-only"
     assert not (destination / "agent.jsonl").exists()
+    assert not (destination / "registry-backup.json").exists()
     assert json.loads((destination / "before.json").read_text(encoding="utf-8")) == {
         "connected": True,
         "token": {"redacted": True, "length": 7},
