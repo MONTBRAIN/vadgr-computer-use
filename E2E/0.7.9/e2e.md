@@ -3,8 +3,8 @@
 > Status: not run: written before the first live cell.
 > Implementation branch: `feature/0.7.9-profile-packaging`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
-> Tested head and common evidence PR: unresolved until implementation is committed.
-> Preflight refuses live execution until the exact head and evidence URL exist.
+> Tested head: `8bc81e68cdbdb69524bb5d1738b2b764f6baf3dd`.
+> Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No release, protected signing result or native pass is claimed.
 
 Read this file, [E2E rules](../README.md), [template](../TEMPLATE.md), `AGENTS.md`,
