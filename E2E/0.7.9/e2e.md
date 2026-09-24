@@ -1,6 +1,6 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: partial: only P01-windows-x86_64 has a recorded live pass.
+> Status: partial: final native Windows process qualification remains owed.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
 > Tested unsigned development product: `b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`.
@@ -8,17 +8,25 @@
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
 
-Native Windows retry, 2026-09-24: a fresh isolated setup prepared the exact
-retained unsigned wheel, released 0.7.6 predecessor and HTTP fixture. After
-explicit owner authorization, the headed Chrome-for-Testing launch was again
-rejected by the execution tool before execution. No P06/P08 product goal ran;
-all thirteen unsigned process slices below remain blocked, not passed.
-Both browser registrations were restored. At 16:19:50 UTC the three prepared
-process IDs were absent, no marked-root process remained and fixture port 18769
-was free. The second setup and denial are retained in the existing
-`20260924-windows-unsigned-process` evidence boundary. No disk reclamation is
-claimed; prepared files remain retained. Resume only in an explicitly permitted
-isolated-browser launch environment. Signing/adoption obligations are unchanged.
+Native Windows continuation, 2026-09-24: permitted ordinary launches of official
+Chrome for Testing with fresh isolated profiles executed the P06/P08 goals.
+Earlier launch denials remain history, not the current blocker. The nine P06
+pre-fix observations showed replacement without browser restart and one DOM
+mutation, but a process-creation-identity repair superseded that candidate.
+The next candidate, `31517f5405a4d1f7fee0d61bf541b0d2097b6b61`, correctly refused
+the stale-identity fixture. Its live P08 human-typing request then failed with
+`op_failed: human typing stream is not active`, 937 ms after dispatch. No
+cancellation had been applied and no DOM mutation occurred.
+
+A subsequent authenticated-transport/extension-lifecycle repair changes the
+candidate again. Its workflow-produced artifact is pending. All final P06/P08
+unsigned oracles and three independent repeatability passes remain owed; no
+superseded observation counts as final acceptance. Both owner registrations
+were restored, all test-owned processes stopped, and the fixture listener was
+removed after each stopped boundary. Exact observations, failed/ineligible
+attempts and cleanup are retained in `20260924-windows-resumed` and
+`20260924-windows-fixed-31517f5`. No disk reclamation, aggregate Windows pass,
+signed candidate or signing/adoption qualification is claimed.
 
 Read this file, [E2E rules](../README.md), [template](../TEMPLATE.md), `AGENTS.md`,
 `CLAUDE.md`, and the public README installation/platform instructions completely.
@@ -1523,7 +1531,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-missing: released upgrade on windows-x86_64-from-076-missing
 
@@ -1541,7 +1549,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-corrupt: released upgrade on windows-x86_64-from-076-corrupt
 
@@ -1559,7 +1567,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-healthy: released upgrade on windows-x86_64-from-077-healthy
 
@@ -1577,7 +1585,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-missing: released upgrade on windows-x86_64-from-077-missing
 
@@ -1595,7 +1603,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-corrupt: released upgrade on windows-x86_64-from-077-corrupt
 
@@ -1613,7 +1621,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-healthy: released upgrade on windows-x86_64-from-078-healthy
 
@@ -1631,7 +1639,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-missing: released upgrade on windows-x86_64-from-078-missing
 
@@ -1649,7 +1657,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-corrupt: released upgrade on windows-x86_64-from-078-corrupt
 
@@ -1667,7 +1675,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P06-wsl-x86_64-from-076-healthy: released upgrade on wsl-x86_64-from-076-healthy
 
@@ -1923,7 +1931,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: the permitted isolated-browser drain attempt did not establish an active long request before its bounded setup ended; it is not a drain pass. Preserve the `20260924-windows-resumed` attempt. Run the active-request drain oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-unknown-owner: active work and unknown owner on windows-x86_64-unknown-owner
 
@@ -1941,7 +1949,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: the permitted isolated-browser unknown-owner attempt refused unsafe handoff with zero DOM mutation, but its complete before/after hash oracle was not captured and the candidate is superseded. Preserve the `20260924-windows-resumed` attempt; rerun the complete oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-pid-reuse: active work and unknown owner on windows-x86_64-pid-reuse
 
@@ -1959,7 +1967,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** owed: the first attempt did not retain the stale-identity precondition; after the endpoint-identity fix, the isolated suspended-fixture attempt refused unsafe handoff without changing the recorded process, endpoint, registration, or DOM state. That fixed candidate is now superseded by the human-stream fix. Preserve both evidence boundaries and rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-cancel: active work and unknown owner on windows-x86_64-cancel
 
@@ -1977,7 +1985,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
+**Result:** failed: on the permitted isolated browser, the live human-type request returned `human typing stream is not active` after 937 ms, before any DOM mutation; no cancellation pass is claimed. Preserve the `20260924-windows-fixed-31517f5` failure and setup-only prior attempt. A source fix is pending its replacement workflow artifact; first prove a short live human stream, then rerun active-request cancellation and the ten-second exit oracle in all three independent passes. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-aarch64-drain: active work and unknown owner on windows-aarch64-drain
 
@@ -2869,9 +2877,9 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P05 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not run: no native session | owed: superseded development observations; replacement candidate and three passes required | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P07 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not run: no native session | owed: live human-stream defect found; replacement candidate and three passes required | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P09 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P10 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P11 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |

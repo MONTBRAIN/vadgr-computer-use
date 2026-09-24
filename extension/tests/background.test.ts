@@ -156,6 +156,58 @@ describe("connect() idempotency", () => {
       expect.objectContaining({ type: "result", id: 7 }),
     );
   });
+
+  it("does not abort replacement work when an older port repeats disconnect", async () => {
+    const { ports, mod } = await importBackground();
+    const original = ports[0];
+    original.fireDisconnect();
+    mod.connect();
+    const ops = await import("../src/ops");
+    let value = "";
+    const executor = {
+      name: "replacement-stream",
+      async execute(op: string, params: Record<string, any>) {
+        if (op === "assert_actionable") return { actionable: true };
+        if (op === "get_value") return { value, ok: true };
+        if (op === "human_type_unit") {
+          value = params.replace === true ? String(params.text) : value + String(params.text);
+          return { inserted: true, value, ok: true };
+        }
+        throw new Error(`unexpected ${op}`);
+      },
+    };
+    const base = {
+      selector: "#arena",
+      clear: true,
+      human: true,
+      _target: { window_id: 1, tab_id: 2 },
+      _ownership_revision: 3,
+    };
+
+    await ops.humanTypeViaExactContentTarget({
+      ...base,
+      _request_id: 1,
+      typing_stream: {
+        action: "begin",
+        stream_id: "replacement-owned-stream",
+        total_units: 1,
+        predicted_ms: 1,
+      },
+    }, executor);
+    original.fireDisconnect();
+
+    await expect(ops.humanTypeViaExactContentTarget({
+      ...base,
+      _request_id: 2,
+      typing_stream: {
+        action: "chunk",
+        stream_id: "replacement-owned-stream",
+        confirmed_units: 0,
+        units: [{ text: "a", delay_before_ms: 0 }],
+      },
+    }, executor)).resolves.toMatchObject({ completed_units: 1 });
+    ops.abortAllHumanTypingStreams();
+  });
 });
 
 describe("keep-alive alarm", () => {

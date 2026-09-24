@@ -72,11 +72,16 @@ export function connect(): void {
     void onMessage(p, msg);
   });
   p.onDisconnect.addListener(() => {
+    const wasActive = port === p || helloPort === p;
     if (port === p) port = null;
     if (helloPort === p) helloPort = null;
-    abortAllHumanTypingStreams();
-    // Schedule a backed-off reconnect so the session self-heals.
-    reconnect.onDisconnect();
+    if (wasActive) {
+      abortAllHumanTypingStreams();
+      // Schedule a backed-off reconnect so the session self-heals. A delayed,
+      // duplicate callback from an older port must not abort work owned by its
+      // healthy replacement.
+      reconnect.onDisconnect();
+    }
   });
   // A returned Port is only a candidate. The native host can fail before it
   // reaches the broker, so the broker hello below is what confirms success.
