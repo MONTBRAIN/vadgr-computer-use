@@ -30,6 +30,12 @@ Cancellation tree-exit observations were 757, 795 and 713 ms.
 
 Both owner registrations were restored, test-owned native and fixture processes
 were stopped, and each pass's loopback listeners were absent afterward.
+Final artifact cleanup validated six marked test roots containing 232 generated
+copy/cache targets (60,587 files; 5,122,535,670 logical bytes). Host tool policy
+denied removal before execution: zero deletions and zero reclaimed bytes.
+Raw evidence, state/configuration, immutable inputs and all generated copies
+remain preserved; no alternate deletion route was attempted. The private final
+cleanup receipt records this outstanding artifact-reclamation obligation.
 Earlier failures remain in `20260924-windows-resumed`,
 `20260924-windows-fixed-31517f5` and `20260924-windows-stream-fixed`.
 No aggregate Windows pass, held signed candidate, signing/adoption qualification,
