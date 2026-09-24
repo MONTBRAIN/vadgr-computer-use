@@ -67,13 +67,25 @@ Dispatch `profile-wheels.yml` on master once, record both exact commits, and ret
 the validated nine-wheel catalog, attestation, artifact IDs, sizes and hashes.
 No successful trusted candidate run is recorded yet.
 
-Review-data prerequisite PR #111 adds `profile-review-inputs.yml`. Once landed,
-dispatch it on master to build the exact pinned source on native x64 and ARM64.
-It retains only unapproved member inventories, SPDX, notices/source receipts and
+Review-data prerequisite PR #111 landed as
+`3ad419a654e4317ecefdf8019c91d8d5e0e40abf`. Its `profile-review-inputs.yml`
+run `36011211883`, attempt 1, succeeded on native x64 and ARM64 against the source
+pin above. It retained only unapproved member inventories, SPDX, notices/source receipts and
 build pins. Its receipt is non-publishable and grants no legal, signing or adoption
 approval. It uploads no executable, wheel, final catalog or attestation. Use this
 data to complete exact target review before creating `adoption-rules.json`.
 The final producer preflight remains unchanged and still requires actual approval.
+
+| Review artifact | Artifact ID | Archive bytes | GitHub archive SHA-256 | Receipt SHA-256 |
+|---|---|---|---|---|
+| `review-inputs-x86_64` | `10812288732` | 97462 | `1516abcbbef57368b65b5dc16d4d9f688a997b4a66faf8dac10228a53828943a` | `1e65f603536264632fd0c70df2addf4fe66908f3a97f92d7e8ac2d38f4639a89` |
+| `review-inputs-aarch64` | `10812747136` | 97150 | `aa1a599b086a46e23357ec111aa3f6268e0e50392bd0ae390b1de352792f47ab` | `b22b888a2cb93b3cf37c75a7acb3f343969d035363d431dc72043def68f1bcd6` |
+
+Both extracted packets have 26 text files. Independent local file-hash, size,
+inventory-count and forbidden-payload checks passed. x64 lists 43 members,
+24 native; ARM64 lists 42 members, 23 native. Every trust classification is null.
+These are review observations, not P01 or signing qualification. A later rebuild
+does not inherit exact-byte legal approval if its reviewed inventory changes.
 
 Qualify unsigned profile behavior only where the cell permits it. Protected
 signing transforms each approved Windows helper closure once for native Windows
@@ -2902,8 +2914,9 @@ records the exact tested subject and accepted observations.
 
 The trusted-producer/final-merge circular prerequisite is repaired by separate
 tooling PR #110, landed as `5c9a438`, and the exact source/tooling identity split.
-PR #111 supplies a separate unapproved review-data lane because legal member
-review must precede final wheel construction. Reviewed adoption rules and held
+PR #111 landed as `3ad419a`; its data-only run `36011211883` succeeded for both
+native architectures. This separate lane exists because legal member review must
+precede final wheel construction. Reviewed adoption rules and held
 signed fixtures are still absent. Native hosts, protected
 authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
