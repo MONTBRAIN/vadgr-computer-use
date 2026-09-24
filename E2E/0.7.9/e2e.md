@@ -48,9 +48,9 @@ cell; replace the branch reference with the implementation PR URL before handoff
 
 The prerequisite trusted-tooling PR is
 `https://github.com/MONTBRAIN/vadgr-computer-use/pull/110`.
-It starts from current master and does not change shipped runtime code or version.
-It must land before the protected producer can run. This does not waive any final
-merge gate for implementation PR #109.
+It landed on master as `5c9a43816f2dd371f903bda290e21aa5c194cc29` and does not
+change shipped runtime code or version. This does not waive any final merge gate
+for implementation PR #109.
 
 The landed producer reads `packaging/profiles/source-input.json`, which pins the
 exact reviewed source commit separately from its own default-branch tooling commit.
@@ -66,6 +66,14 @@ identities. Its absence currently blocks the trusted producer; do not fabricate 
 Dispatch `profile-wheels.yml` on master once, record both exact commits, and retain
 the validated nine-wheel catalog, attestation, artifact IDs, sizes and hashes.
 No successful trusted candidate run is recorded yet.
+
+Review-data prerequisite PR #111 adds `profile-review-inputs.yml`. Once landed,
+dispatch it on master to build the exact pinned source on native x64 and ARM64.
+It retains only unapproved member inventories, SPDX, notices/source receipts and
+build pins. Its receipt is non-publishable and grants no legal, signing or adoption
+approval. It uploads no executable, wheel, final catalog or attestation. Use this
+data to complete exact target review before creating `adoption-rules.json`.
+The final producer preflight remains unchanged and still requires actual approval.
 
 Qualify unsigned profile behavior only where the cell permits it. Protected
 signing transforms each approved Windows helper closure once for native Windows
@@ -2893,8 +2901,10 @@ failed attempts or treat their noise as passing results. The public cell above
 records the exact tested subject and accepted observations.
 
 The trusted-producer/final-merge circular prerequisite is repaired by separate
-tooling PR #110 and the exact source/tooling identity split. Reviewed adoption
-rules and held signed fixtures are still absent. Native hosts, protected
+tooling PR #110, landed as `5c9a438`, and the exact source/tooling identity split.
+PR #111 supplies a separate unapproved review-data lane because legal member
+review must precede final wheel construction. Reviewed adoption rules and held
+signed fixtures are still absent. Native hosts, protected
 authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
 
