@@ -73,6 +73,19 @@ function Assert-Private([string]$Path, [bool]$Protected = $false) {
     }
 }
 
+function Set-PrivateDirectory([string]$Path) {
+    $acl = [Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetOwner($ownerSid)
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($sid in @($ownerSid, $systemSid)) {
+        $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+            $sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
+    Assert-Private $Path $true
+}
+
 function Get-VerifiedFiles([string]$Root) {
     Assert-Private $Root $true
     if (-not (Get-Item -LiteralPath $Root -Force).PSIsContainer) { throw 'Managed broker root is not a directory' }
@@ -214,13 +227,7 @@ if (Test-Path -LiteralPath $destination) {
     $staging = Join-Path $parent ('.' + ([string]$metadata.archive.sha256).Substring(0, 12) + '-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $staging | Out-Null
     try {
-        $owner = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        & icacls.exe $staging /inheritance:r | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Failed to protect managed broker staging root" }
-        & icacls.exe $staging /grant:r "${owner}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" /T /C | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Failed to protect managed broker staging payload" }
-        & icacls.exe $staging /setowner $owner /T /C | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Failed to set managed broker staging ownership" }
+        Set-PrivateDirectory $staging
 
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $root = [IO.Path]::GetFullPath($staging) + [IO.Path]::DirectorySeparatorChar

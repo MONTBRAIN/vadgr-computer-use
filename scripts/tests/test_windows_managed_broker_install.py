@@ -186,6 +186,12 @@ Protect-Directory $v.root
 $child=Join-Path $v.root 'existing'
 if($v.damage -eq 'file') {[IO.File]::WriteAllText($child,'ordinary file')}
 else {[IO.Directory]::CreateDirectory($child) | Out-Null}
+if($v.damage -ne 'file') {
+ $a=[Security.AccessControl.DirectorySecurity]::new()
+ $a.SetOwner($owner)
+ $a.SetAccessRuleProtection($false,$false)
+ Set-Acl -LiteralPath $child -AclObject $a
+}
 if($v.damage -eq 'extra-principal') {
  $a=Get-Acl -LiteralPath $child
  $a.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(

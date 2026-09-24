@@ -179,7 +179,7 @@ def remove_system_api_set_forwarders(bundle: Path) -> tuple[str, ...]:
     """Remove Windows 10+ system UCRT and virtual API-set contracts."""
     pattern = re.compile(r"(?i)(?:api|ext)-ms-win-[a-z0-9-]+\.dll")
     removed = []
-    for path in sorted(bundle.rglob("*.dll")):
+    for path in sorted(bundle.rglob("*")):
         if path.name.lower() != "ucrtbase.dll" and not pattern.fullmatch(path.name):
             continue
         if path.is_symlink() or not path.is_file():

@@ -481,7 +481,7 @@ def installed_case(monkeypatch, tmp_path, admission, synthetic_chain):
     def native(request):
         calls.append(request)
         if request["operation"] == "probe":
-            return {"installed_root": str(installed), "state": state[0]}
+            return {"installed_root": "C:\\synthetic", "state": state[0]}
         if request["operation"] == "deploy":
             return {
                 "destination": str(tmp_path / "native-cache"),
@@ -494,7 +494,7 @@ def installed_case(monkeypatch, tmp_path, admission, synthetic_chain):
         return {"state_sha256": sha256(request["state"].encode())}
 
     monkeypatch.setattr(runtime.offline, "native_call", native)
-    monkeypatch.setattr(runtime.offline, "local_path", lambda value: Path(value))
+    monkeypatch.setattr(runtime.offline, "local_path", lambda _value: installed)
     attestations = []
 
     def attest(subject, bundle, *args, **kwargs):
