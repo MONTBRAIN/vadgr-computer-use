@@ -386,13 +386,20 @@ P02 is an external combined-install handoff, excluded from CUA source acceptance
 
 ## Part P01: standalone selection
 
+For every P01 browser read-back, the agent creates the fixture through Tier 0
+and the harness exposes that exact test-owned directory through a loopback-only
+HTTP server. The agent opens the resulting `http://127.0.0.1:<port>/...` view.
+Do not use `file://`: browser targets on the file scheme remain intentionally
+restricted by the product, and browser file-access flags or permissions must
+not weaken that security boundary for this cell.
+
 ### P01-windows-x86_64: standalone selection on windows-x86_64
 
 **Precondition:** Native host, exact installed standalone wheel, isolated Chrome for Testing and extension.
 
 **Setup:** Prepare a fresh marked root, install the exact catalog-selected wheel and native prerequisites, record head and wheel/manifest hashes, create this cell's evidence directory, and record driver selection plus installed doctor output. Begin with no state inherited from another cell.
 
-**Task given to the agent:** "Identify the selected native profile. Create a text file using Tier 0; open it in a browser file view, read its content, create another tab, edit its field and return to verify the first tab. "
+**Task given to the agent:** "Identify the selected native profile. Create a text file using Tier 0; open the harness-provided loopback browser view of that exact file, read its content, create another tab, edit its field and return to verify the first tab."
 
 **Expected result:** Actual native OS/architecture selects the profile; independent file and DOM read-backs agree. Registration and process architecture match; Linux/macOS deploy no Windows helpers.
 
@@ -402,7 +409,7 @@ P02 is an external combined-install handoff, excluded from CUA source acceptance
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** pass on native Windows x86_64 at `b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`. The exact unsigned development profile artifact from workflow run `35979374403` selected the Windows profile; Tier-0 file bytes and DOM read-backs agreed; the second-tab edit remained isolated; the first tab retained its original heading and value; and the installed entry point, Chrome for Testing, native host and browser broker were independently verified as AMD64. Attempts 1-10 and their failures/noise are retained; attempt 11 is the accepted zero-tool-error pass. Private evidence: vadgr-docs PR #182.
 
 ### P01-windows-aarch64: standalone selection on windows-aarch64
 
@@ -2761,7 +2768,7 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 
 | part | Linux | Windows | macOS | WSL | notes |
 |---|---|---|---|---|---|
-| Part P01 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P01 | not run: no native session | pass: P01-windows-x86_64 at b6a72a1; Windows ARM64 remains owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P02 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
