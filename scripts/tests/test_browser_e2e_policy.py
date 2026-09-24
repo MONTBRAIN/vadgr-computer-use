@@ -29,14 +29,20 @@ def test_browser_e2e_policy_keeps_dom_and_native_accessibility_separate():
         assert "replace Chrome for Testing" in text
 
 
-def test_current_runbook_attributes_superseded_windows_observations_to_windows():
+def test_current_runbook_attributes_only_unsigned_windows_results_to_windows():
     runbook = _text("E2E/0.7.9/e2e.md")
     expected = (
-        "| Part P06 | not run: no native session | owed: superseded development "
-        "observations; replacement candidate and three passes required | not run: no native session |"
+        "| Part P06 | not run: no native session | pass: nine unsigned x86_64 cases "
+        "in each of three passes at 14cb515; signed/adoption and ARM64 remain owed "
+        "| not run: no native session |"
     )
     assert expected in runbook
     assert (
-        "| Part P08 | not run: no native session | owed: live human-stream defect "
-        "found; replacement candidate and three passes required | not run: no native session |"
+        "| Part P08 | not run: no native session | pass: four unsigned x86_64 cases "
+        "in each of three passes at 14cb515; signed/adoption and ARM64 remain owed "
+        "| not run: no native session |"
     ) in runbook
+    assert "42 accepted observations" in runbook
+    assert "14cb515ba54ca9346ea931ba46d4c3253164c8b4" in runbook
+    assert "937-ms human-stream failure" in runbook
+    assert "No complete Windows, Linux, macOS or WSL pass exists" in runbook

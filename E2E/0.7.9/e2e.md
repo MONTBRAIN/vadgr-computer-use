@@ -1,10 +1,10 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: partial: final native Windows process qualification remains owed.
+> Status: partial: three native Windows x86_64 unsigned passes complete; signed/adoption qualification remains owed.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
-> Tested unsigned development product: `b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`.
-> Reviewed producer source pin: `bcc0969e9edbc1030cb96491f80abdc8ed013cad`.
+> Tested unsigned development product: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
+> Frozen feature-branch producer source: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
 
@@ -18,15 +18,22 @@ the stale-identity fixture. Its live P08 human-typing request then failed with
 `op_failed: human typing stream is not active`, 937 ms after dispatch. No
 cancellation had been applied and no DOM mutation occurred.
 
-A subsequent authenticated-transport/extension-lifecycle repair changes the
-candidate again. Its workflow-produced artifact is pending. All final P06/P08
-unsigned oracles and three independent repeatability passes remain owed; no
-superseded observation counts as final acceptance. Both owner registrations
-were restored, all test-owned processes stopped, and the fixture listener was
-removed after each stopped boundary. Exact observations, failed/ineligible
-attempts and cleanup are retained in `20260924-windows-resumed` and
-`20260924-windows-fixed-31517f5`. No disk reclamation, aggregate Windows pass,
-signed candidate or signing/adoption qualification is claimed.
+The authenticated-transport/extension-lifecycle repair and mechanical
+browser-only driver boundary are included in frozen source `14cb515`.
+Its workflow-produced artifact completed three independent native Windows
+x86_64 passes: one P01, nine P06 and four P08 unsigned slices per pass, 42
+accepted observations. No superseded, diagnostic or setup-only attempt counts.
+The private `20260924-windows-browser-only` boundary retains per-pass streams,
+process identities, DOM and hash oracles, numeric usage, structural comparison
+and cleanup. All 66 retained drivers obeyed their mechanical tool scopes.
+Cancellation tree-exit observations were 757, 795 and 713 ms.
+
+Both owner registrations were restored, test-owned native and fixture processes
+were stopped, and each pass's loopback listeners were absent afterward.
+Earlier failures remain in `20260924-windows-resumed`,
+`20260924-windows-fixed-31517f5` and `20260924-windows-stream-fixed`.
+No aggregate Windows pass, held signed candidate, signing/adoption qualification,
+ARM64 or other-OS pass is claimed. The remaining cells retain their prerequisites.
 
 Read this file, [E2E rules](../README.md), [template](../TEMPLATE.md), `AGENTS.md`,
 `CLAUDE.md`, and the public README installation/platform instructions completely.
@@ -116,7 +123,7 @@ Only the complete required native matrix and green checks make #109 eligible
 for owner-approved merge. Publication is separate and uses the retained qualified
 artifacts without a rebuild. Never merge #109 to manufacture its test candidate.
 
-## The approach: a headless agent CLI session
+## Execution approach: a headless agent CLI session
 
 Use the CLI's existing subscription login. No provider API key is needed.
 Before each live group run `python scripts/select_cua_e2e_driver.py`.
@@ -299,11 +306,18 @@ py -m venv "$env:CUA_TEST_ROOT/venv"
 Get-FileHash -Algorithm SHA256 -LiteralPath "$env:CUA_WHEEL"
 ```
 
-The retained Windows development candidate above is product commit
-`b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`, workflow run `35979374403`.
-Resolve and verify its exact retained receipt and artifact hashes from the common
-evidence boundary before reuse. A later runbook head is not a new product identity.
-The newer reviewed producer source pin does not retroactively qualify that source.
+The retained Windows development candidate is product commit
+`14cb515ba54ca9346ea931ba46d4c3253164c8b4`, workflow run `36038771979`,
+artifact `10826385373` with artifact digest
+`15f86687c1e95a67eae100cee1f6b478bb64480c924edaf40dd1540e720603fc`.
+Its wheel is 27,506,054 bytes, SHA-256
+`57c8ccb4e4355bb3ace88c56bdef4e67a45a7a077656e468525e055fa51af02e`;
+receipt SHA-256 is
+`ba5e9b38b233b5931b3704c40de08e0c1903573cdd094def516c049116236116`.
+The installed Windows profile manifest is SHA-256
+`331a43cd1f72519140d42b3f0015eb684cff9120f8c815bbe53a3e05af3ce321`.
+Resolve and verify these retained bytes from the common evidence boundary before
+reuse. Later result-only runbook commits are not a new product identity.
 
 P06's released-predecessor process transition and P08's drain, unknown-owner,
 PID-reuse and cancellation behavior can run against that retained development
@@ -520,7 +534,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** pass on native Windows x86_64 at `b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`. The exact unsigned development profile artifact from workflow run `35979374403` selected the Windows profile; Tier-0 file bytes and DOM read-backs agreed; the second-tab edit remained isolated; the first tab retained its original heading and value; and the installed entry point, Chrome for Testing, native host and browser broker were independently verified as AMD64. Attempts 1-10 and their failures/noise are retained; attempt 11 is the accepted zero-tool-error pass. Private evidence: vadgr-docs PR #182.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. Each pass used a separately scoped fs-only write/read driver and browser-only two-tab driver; file hashes and DOM values/counters agreed, the first tab stayed unchanged, and installed entry, CFT, host and broker were independently AMD64. Public browser-setup and the pinned installed Windows profile manifest proved selection. Earlier b6a72a1 attempts are retained but do not count toward these three passes. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signed/adoption and Windows ARM64 obligations remain owed.
 
 ### P01-windows-aarch64: standalone selection on windows-aarch64
 
@@ -1538,7 +1552,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The legacy endpoint lacked process-creation identity, so unsafe handoff was refused with exact process, endpoint, registration and DOM state unchanged. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-missing: released upgrade on windows-x86_64-from-076-missing
 
@@ -1556,7 +1570,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The exact released predecessor exited, one candidate broker remained, the browser PID/start identity and registration were preserved, and one owned DOM mutation persisted. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-corrupt: released upgrade on windows-x86_64-from-076-corrupt
 
@@ -1574,7 +1588,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The exact released predecessor exited, one candidate broker remained, the browser PID/start identity and registration were preserved, and one owned DOM mutation persisted. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-healthy: released upgrade on windows-x86_64-from-077-healthy
 
@@ -1592,7 +1606,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The unverifiable released legacy identity was safely refused with exact broker PID/start/hash, endpoint and registration hashes unchanged and zero DOM mutation. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-missing: released upgrade on windows-x86_64-from-077-missing
 
@@ -1610,7 +1624,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The missing endpoint fault was recorded immediately before candidate launch. The predecessor autonomously republished its original unverifiable legacy identity; the candidate safely refused, preserving broker PID/start/hash, original endpoint and registration hashes and zero DOM mutation. No upgrade is claimed. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-corrupt: released upgrade on windows-x86_64-from-077-corrupt
 
@@ -1628,7 +1642,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The corrupt endpoint fault was recorded immediately before candidate launch. The predecessor autonomously republished its original unverifiable legacy identity; the candidate safely refused, preserving broker PID/start/hash, original endpoint and registration hashes and zero DOM mutation. No upgrade is claimed. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-healthy: released upgrade on windows-x86_64-from-078-healthy
 
@@ -1646,7 +1660,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The exact released predecessor exited, one candidate broker remained, the browser PID/start identity and registration were preserved, and one owned DOM mutation persisted. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-missing: released upgrade on windows-x86_64-from-078-missing
 
@@ -1664,7 +1678,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The exact released predecessor exited, one candidate broker remained, the browser PID/start identity and registration were preserved, and one owned DOM mutation persisted. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-corrupt: released upgrade on windows-x86_64-from-078-corrupt
 
@@ -1682,7 +1696,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed after superseded development observations. Permitted isolated Chrome-for-Testing execution observed one replacement broker and one DOM mutation on the pre-fix development candidate, but those observations are superseded by the subsequent endpoint-identity and human-stream fixes. Preserve the `20260924-windows-resumed` receipts; rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The exact released predecessor exited, one candidate broker remained, the browser PID/start identity and registration were preserved, and one owned DOM mutation persisted. Preserved failed/setup-incomplete and superseded attempts do not count. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signature/adoption assertions remain separately owed.
 
 ### P06-wsl-x86_64-from-076-healthy: released upgrade on wsl-x86_64-from-076-healthy
 
@@ -1938,7 +1952,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed because the permitted isolated-browser drain attempt did not establish an active long request before its bounded setup ended; it is not a drain pass. Preserve the `20260924-windows-resumed` attempt. Run the active-request drain oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. A live released-0.7.8 driver held a 120-second wait request before candidate handoff. Each attempt ended through the explicit lost-after-dispatch/no-replay path; the exact old broker exited, one candidate served a fresh control request, browser and registration were preserved, DOM stayed zero and the long driver tree was later absent. The ten-second bound is cancellation-specific, not claimed for drain. Earlier incomplete attempts remain preserved. Private evidence: PR #182, 20260924-windows-browser-only. Signature/adoption assertions remain owed.
 
 ### P08-windows-x86_64-unknown-owner: active work and unknown owner on windows-x86_64-unknown-owner
 
@@ -1956,7 +1970,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed because the permitted isolated-browser unknown-owner attempt refused unsafe handoff with zero DOM mutation, but its complete before/after hash oracle was not captured and the candidate is superseded. Preserve the `20260924-windows-resumed` attempt; rerun the complete oracle against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. Unsafe handoff was refused; exact synthetic process PID/start/executable hash, endpoint and registration hashes remained unchanged with zero DOM mutation. Setup-incomplete empty-page attempts are retained, not counted. Private evidence: PR #182, 20260924-windows-browser-only. Signature/adoption assertions remain owed.
 
 ### P08-windows-x86_64-pid-reuse: active work and unknown owner on windows-x86_64-pid-reuse
 
@@ -1974,7 +1988,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: owed because the first attempt did not retain the stale-identity precondition; after the endpoint-identity fix, the isolated suspended-fixture attempt refused unsafe handoff without changing the recorded process, endpoint, registration, or DOM state. That fixed candidate is now superseded by the human-stream fix. Preserve both evidence boundaries and rerun against the replacement workflow artifact in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. The isolated suspended fixture retained its live PID but the copied endpoint had a different creation identity. Unsafe handoff was refused without changing the exact process, endpoint, registration or DOM state; original endpoint bytes were restored and the fixture resumed before cleanup. Superseded and setup-incomplete attempts remain preserved. Private evidence: PR #182, 20260924-windows-browser-only. Signature/adoption assertions remain owed.
 
 ### P08-windows-x86_64-cancel: active work and unknown owner on windows-x86_64-cancel
 
@@ -1992,7 +2006,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** failed: on the permitted isolated browser, the live human-type request returned `human typing stream is not active` after 937 ms, before any DOM mutation; no cancellation pass is claimed. Preserve the `20260924-windows-fixed-31517f5` failure and setup-only prior attempt. A source fix is pending its replacement workflow artifact; first prove a short live human stream, then rerun active-request cancellation and the ten-second exit oracle in all three independent passes. Signature/adoption assertions remain separately owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. A genuine browser-human typing stream and six-process driver tree were independently active before exact driver termination. Full child-tree exit was observed within 757, 795 and 713 ms; DOM counts stabilized, with no matching type result or later success. The earlier 937-ms human-stream failure at 31517f5 remains preserved as a fixed, superseded failure, not erased or counted as a pass. Readiness failures/setup streams are separately retained. Private evidence: PR #182, 20260924-windows-browser-only. Signature/adoption assertions remain owed.
 
 ### P08-windows-aarch64-drain: active work and unknown owner on windows-aarch64-drain
 
@@ -2879,14 +2893,14 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 
 | part | Linux | Windows | macOS | WSL | notes |
 |---|---|---|---|---|---|
-| Part P01 | not run: no native session | pass: P01-windows-x86_64 at b6a72a1; Windows ARM64 remains owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P01 | not run: no native session | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P02 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P05 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not run: no native session | owed: superseded development observations; replacement candidate and three passes required | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not run: no native session | pass: nine unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P07 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not run: no native session | owed: live human-stream defect found; replacement candidate and three passes required | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not run: no native session | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P09 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P10 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P11 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
@@ -2894,8 +2908,10 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P13 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P14 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 
-Overall: partial. P01-windows-x86_64 passed on the recorded unsigned development
-candidate. Windows ARM64 and every other applicable Windows cell remain owed.
+Overall: partial. P01-windows-x86_64 and all explicitly permitted unsigned
+P06/P08 x86_64 slices passed three independent runs on the frozen development
+candidate. Signature/adoption assertions, Windows ARM64 and all other applicable
+Windows cells remain owed with their written owner/input prerequisites.
 No complete Windows, Linux, macOS or WSL pass exists. No platform inherits CI results.
 
 | Linux desktop | x86_64 | aarch64 |
