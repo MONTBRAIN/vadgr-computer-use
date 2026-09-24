@@ -206,6 +206,20 @@ Build `extension/` with `npm ci` then `npm run build`. Load only matching
 `extension/dist`. WSL uses the Windows checkout extension, never a Linux path.
 Never reuse owner cookies, profiles, settings, sync or extensions.
 
+The agent owns download, hash verification, extension build, installed
+`browser-setup`, Chrome for Testing launch, bridge readiness, browser actions and
+cleanup. Do not ask the owner to launch the browser, paste a launch command or
+perform an ordinary browser control. Ask only for a protected browser or
+operating-system prompt that automation cannot accept. Use this runbook's
+repository harness where supplied, otherwise use the normal native process
+launcher. If the current agent environment forbids browser process launch, move
+the pass to an approved environment that can launch the isolated process. Never
+substitute an owner-installed browser, process, profile or debugging endpoint.
+
+Browser-tier actions use the matching development extension and DOM read-backs.
+Windows UIA, macOS AX and Linux AT-SPI are native-application tiers. They do not
+replace Chrome for Testing or prove a browser-tier cell.
+
 Each independent pass owns its browser PID/start identity, debugging endpoint and
 fresh profile. Linux uses isolated home plus `.config/google-chrome`; macOS uses
 isolated home plus `Library/Application Support/Google/Chrome`; Windows uses

@@ -159,7 +159,12 @@ present in a given runbook, the entry is all there is.
 22. **Every browser-tier cell uses a versioned Chrome for Testing executable
     with a fresh isolated profile and the matching development extension.**
     Never attach to the owner's normal browser process or profile. A normal
-    Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
+    Chrome, Chromium or Edge executable, process, profile or debugging endpoint
+    is not a fallback. The agent performs browser download, hash verification,
+    extension build, `browser-setup`, launch, readiness proof and cleanup. The
+    owner is not asked to launch Chrome for Testing or perform a normal browser
+    control. Native UIA, AX or AT-SPI automation does not replace the DOM
+    extension path. [Browser isolation]
 
 23. **The agent driver uses the CLI's existing interactive login and permission
     bypass.** Do not require, read, export or pass a provider API key solely to
@@ -482,6 +487,24 @@ Every cua browser-tier cell uses Chrome for Testing from the
 browser version, download URL and downloaded archive hash. Do not silently use
 an installed normal Chrome, Chromium or Edge executable when Chrome for Testing
 is unavailable. Mark the affected cells `blocked` instead.
+
+The agent owns the complete isolated-browser lifecycle. It downloads and hashes
+the archive, builds the matching extension, runs the installed
+`vadgr-cua browser-setup`, starts Chrome for Testing, proves the extension bridge
+is connected, drives the goal, records the read-backs, and stops only the owned
+process. Do not ask the owner to launch the browser, paste a launch command or
+perform ordinary browser controls. Ask only for a protected browser or
+operating-system prompt that automation cannot accept. Use the repository
+harness where the runbook supplies one, otherwise use the normal native process
+launcher. If the current agent environment forbids browser process launch, move
+the pass to an approved environment that can launch the isolated process. Never
+fall back to the owner's browser.
+
+Browser-tier cells are driven through the matching development extension and
+verified through DOM read-backs. Native accessibility automation such as UIA,
+AX or AT-SPI is for native application cells. It does not replace Chrome for
+Testing or the DOM extension path, and it is not a browser-tier launcher,
+driver or oracle.
 
 Create a new `--user-data-dir` below the pass's isolated test root. Load only
 the matching built `extension/dist` as an unpacked development extension. Do
