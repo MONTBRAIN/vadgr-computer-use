@@ -23,3 +23,31 @@ counter for an independent no-replay DOM observation.
 hashes and read-only process/port cleanup observations for explicitly supplied
 test PIDs and port. It never stops a process, modifies registration or assigns
 a live-cell verdict.
+
+`windows_session.py` captures native Windows sessions through the installed
+public entry point. It prepares isolated configuration, launches only the
+reviewed official Chrome-for-Testing executable with a fresh profile, and gives
+a goal to the selected live subscription driver. It never chooses CUA tool
+calls. Child environment allowlists keep ambient provider credentials out of
+the product and browser; the driver's login paths remain separate. Its
+read-only observer records process identities and the isolated fixture's DOM
+counter. Cleanup checks PID plus exact process start identity. Registration
+backup contents are private local state and must never be committed.
+
+`agent-start`, `agent-observe`, and `agent-stop` support a real live-driver
+cancellation boundary: record the active driver and descendants, terminate only
+the exact recorded driver, then independently observe child exit. A stop request
+is not an exit verdict. The fixture server is separately owned and must be
+stopped by its recorded PID/start identity during final cleanup.
+
+`seal_session.py` retains only observed CUA tool calls and matching results from
+the subscription stream. It uses the established stream redactor for typed
+values, arbitrary text, secrets, expressions and media, and additionally removes
+private roots and owner identities. Counts do not assign a cell verdict. Review
+the original local observations before sealing, run the required secret scan,
+and preserve every failed or ineligible attempt in a separate boundary.
+
+The Windows fixture's `pid-reuse` fault changes only a copied isolated endpoint's
+creation identity, preserving its exact original bytes in a private local
+backup. `pid-restore` restores those bytes. Neither action touches an owner
+endpoint or terminates a process.

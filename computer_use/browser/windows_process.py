@@ -131,9 +131,7 @@ def _load_catalog(path: Path, *, target: str) -> dict[str, object]:
     return value
 
 
-def _adoption_row(
-    adoption: dict[str, object], bundle: Path, *, target: str
-) -> dict[str, object]:
+def _adoption_row(adoption: dict[str, object], bundle: Path, *, target: str) -> dict[str, object]:
     """Construct one predecessor row from an authenticated exact transition.
 
     The caller must authenticate the authorization record before invoking the
@@ -382,8 +380,7 @@ def _restart_manager_lock_owners(path: Path) -> tuple[tuple[int, int], ...]:
             return tuple(
                 (
                     int(item.process.pid),
-                    (int(item.process.started.high) << 32)
-                    | int(item.process.started.low),
+                    (int(item.process.started.high) << 32) | int(item.process.started.low),
                 )
                 for item in values[: count.value]
             )
@@ -614,12 +611,12 @@ def perform_upgrade_handoff(
             if endpoint is not None and (
                 endpoint.get("pid") != process.pid
                 or endpoint.get("bundle_hash") != row["archive_sha256"]
+                or endpoint.get("process_created_filetime") != str(created)
             ):
                 raise _unsafe()
             if (
                 _restart_manager_lock_owners(lock_path) != ((process.pid, created),)
-                or
-                process.creation_filetime() != created
+                or process.creation_filetime() != created
                 or not _same_path(process.image_path(), image)
                 or not process.is_running()
             ):

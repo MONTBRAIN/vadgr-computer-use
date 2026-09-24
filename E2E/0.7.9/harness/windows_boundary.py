@@ -27,23 +27,58 @@ def main():
     marker = json.loads((root / ".cua-079-root.json").read_text())
     if marker != {"schema": 1, "root": str(root)}:
         raise ValueError("root marker differs")
-    files = [*root.glob("candidate/output/*"), *root.glob("predecessors/*.whl"), root / "chrome.zip"]
-    rows = [{"path": p.relative_to(root).as_posix(), "size": p.stat().st_size, "sha256": digest(p)} for p in files]
+    files = [
+        *root.glob("candidate/output/*"),
+        *root.glob("predecessors/*.whl"),
+        root / "chrome.zip",
+    ]
+    rows = [
+        {"path": p.relative_to(root).as_posix(), "size": p.stat().st_size, "sha256": digest(p)}
+        for p in files
+        if p.is_file()
+    ]
+    absent = [p.relative_to(root).as_posix() for p in files if not p.is_file()]
     registry = []
     for browser, vendor in (("chrome", "Google\\Chrome"), ("edge", "Microsoft\\Edge")):
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\" + vendor + "\\NativeMessagingHosts\\com.vadgr.cua") as key:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            "Software\\" + vendor + "\\NativeMessagingHosts\\com.vadgr.cua",
+        ) as key:
             value = Path(winreg.QueryValueEx(key, "")[0])
-            registry.append({"browser": browser, "manifest_sha256": digest(value), "points_to_test_root": root in value.parents})
+            registry.append(
+                {
+                    "browser": browser,
+                    "manifest_sha256": digest(value),
+                    "points_to_test_root": root in value.parents,
+                }
+            )
     if any(pid <= 0 for pid in args.owned_pid) or not 1 <= args.fixture_port <= 65535:
         raise ValueError("invalid owned identity or port")
     pid_values = ",".join(str(pid) for pid in args.owned_pid)
     command = (
-        "$p = @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in " + pid_values + " }); "
+        "$p = @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in "
+        + pid_values
+        + " }); "
         "[PSCustomObject]@{owned_remaining=$p.Count; fixture_http_listeners=@(Get-NetTCPConnection -LocalPort "
-        + str(args.fixture_port) + " -State Listen -ErrorAction SilentlyContinue).Count} | ConvertTo-Json -Compress"
+        + str(args.fixture_port)
+        + " -State Listen -ErrorAction SilentlyContinue).Count} | ConvertTo-Json -Compress"
     )
-    result = subprocess.run(["powershell.exe", "-NoProfile", "-Command", command], capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-    receipt = {"schema": 1, "kind": "read-only setup and cleanup observation, not live qualification", "captured_utc": datetime.now(timezone.utc).isoformat(), "files": rows, "registry": registry, "cleanup": json.loads(result.stdout)}
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command", command],
+        capture_output=True,
+        text=True,
+        check=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    receipt = {
+        "schema": 1,
+        "kind": "read-only setup and cleanup observation, not live qualification",
+        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "files": rows,
+        "absent_local_artifacts": absent,
+        "registry": registry,
+        "cleanup": json.loads(result.stdout),
+    }
     with args.output.open("x", encoding="utf-8", newline="\n") as stream:
         json.dump(receipt, stream, indent=2, sort_keys=True)
         stream.write("\n")

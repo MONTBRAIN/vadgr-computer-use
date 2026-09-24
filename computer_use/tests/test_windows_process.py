@@ -149,7 +149,12 @@ def _adoption(bundle: Path) -> dict[str, object]:
 def test_exact_cataloged_predecessor_is_replaced(tmp_path, monkeypatch):
     bundle, catalog = _cataloged_bundle(tmp_path)
     process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
-    endpoint = {"pid": 123, "bundle_hash": "a" * 64, "process_started_ns": "legacy"}
+    endpoint = {
+        "pid": 123,
+        "bundle_hash": "a" * 64,
+        "process_started_ns": "legacy",
+        "process_created_filetime": "42",
+    }
 
     result = _run(tmp_path, monkeypatch, process, bundle, catalog, endpoint)
 
@@ -165,7 +170,12 @@ def test_ambiguous_predecessor_fails_closed(tmp_path, monkeypatch, change):
     bundle, catalog = _cataloged_bundle(tmp_path)
     image = bundle / "vadgr-cua-browser-broker.exe"
     process = FakeProcess(123, image)
-    endpoint = {"pid": 123, "bundle_hash": "a" * 64, "process_started_ns": "legacy"}
+    endpoint = {
+        "pid": 123,
+        "bundle_hash": "a" * 64,
+        "process_started_ns": "legacy",
+        "process_created_filetime": "42",
+    }
     if change == "owner":
         process._sid = "other"
     elif change == "hash":
@@ -252,11 +262,34 @@ def test_unknown_catalog_entry_fails_closed(tmp_path, monkeypatch):
     assert process.terminated is False
 
 
+def test_stale_endpoint_creation_identity_fails_closed(tmp_path, monkeypatch):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+    endpoint = {
+        "pid": 123,
+        "bundle_hash": "a" * 64,
+        "process_started_ns": "legacy",
+        "process_created_filetime": "41",
+    }
+
+    with pytest.raises(windows_process.UpgradeHandoffError) as caught:
+        _run(tmp_path, monkeypatch, process, bundle, catalog, endpoint)
+
+    assert caught.value.code == "browser_broker_upgrade_unsafe"
+    assert process.terminated is False
+    assert process.closed is True
+
+
 def test_authenticated_exact_adoption_edge_replaces_same_version_input(tmp_path, monkeypatch):
     bundle, catalog = _cataloged_bundle(tmp_path)
     catalog["releases"] = []
     process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
-    endpoint = {"pid": 123, "bundle_hash": bundle.name, "process_started_ns": "input"}
+    endpoint = {
+        "pid": 123,
+        "bundle_hash": bundle.name,
+        "process_started_ns": "input",
+        "process_created_filetime": "42",
+    }
 
     result = _run(
         tmp_path,
