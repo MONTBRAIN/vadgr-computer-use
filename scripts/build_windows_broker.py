@@ -9,6 +9,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -174,6 +175,20 @@ def write_predecessor_catalog(source: Path, destination: Path, architecture: str
     write_json(destination, output)
 
 
+def remove_system_api_set_forwarders(bundle: Path) -> tuple[str, ...]:
+    """Remove virtual Windows 10+ API-set contracts from app-local output."""
+    pattern = re.compile(r"(?i)(?:api|ext)-ms-win-[a-z0-9-]+\.dll")
+    removed = []
+    for path in sorted(bundle.rglob("*.dll")):
+        if not pattern.fullmatch(path.name):
+            continue
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Windows API-set output is not an ordinary file")
+        removed.append(path.relative_to(bundle).as_posix())
+        path.unlink()
+    return tuple(removed)
+
+
 def require_native_architecture(architecture: str) -> dict[str, object]:
     try:
         configuration = ARCHITECTURES[architecture]
@@ -323,6 +338,7 @@ def build(source_commit: str, output: Path, architecture: str = "x86_64") -> Non
         executable = bundle / "vadgr-cua-browser-broker.exe"
         if not executable.is_file():
             raise SystemExit("PyInstaller did not produce the broker executable")
+        remove_system_api_set_forwarders(bundle)
         normalize_embedded_zip(bundle / "_internal" / "base_library.zip")
 
         python_license = Path(sys.base_prefix) / "LICENSE.txt"

@@ -39,6 +39,26 @@ def _content_hashes(path):
         }
 
 
+def test_system_api_set_contracts_are_not_deployed_as_app_local_dlls(tmp_path, builder):
+    internal = tmp_path / "_internal"
+    internal.mkdir()
+    removable = (
+        "api-ms-win-core-console-l1-1-0.dll",
+        "API-MS-WIN-CRT-RUNTIME-L1-1-0.DLL",
+        "ext-ms-win-shell-shell32-l1-2-0.dll",
+    )
+    for name in removable:
+        (internal / name).write_bytes(b"system contract")
+    retained = internal / "python312.dll"
+    retained.write_bytes(b"pinned runtime")
+
+    removed = builder.remove_system_api_set_forwarders(tmp_path)
+
+    assert set(removed) == {f"_internal/{name}" for name in removable}
+    assert retained.read_bytes() == b"pinned runtime"
+    assert not any((internal / name).exists() for name in removable)
+
+
 def test_embedded_zip_normalization_is_byte_reproducible(tmp_path, builder):
     first = tmp_path / "first.zip"
     second = tmp_path / "second.zip"

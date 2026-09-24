@@ -42,9 +42,9 @@ jobs:
         run: |
           python packaging/profiles/producer.py provision-python --architecture "${{ matrix.architecture }}" --output build/development/python
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & ./build/development/python/python/python.exe -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements/windows-broker-build.txt
+          & ./build/development/python/python/python.exe -I -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements/windows-broker-build.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & ./build/development/python/python/python.exe scripts/build_windows_broker.py --source-commit "$env:SOURCE_COMMIT" --architecture "${{ matrix.architecture }}" --output build/development/native
+          & ./build/development/python/python/python.exe -I scripts/build_windows_broker.py --source-commit "$env:SOURCE_COMMIT" --architecture "${{ matrix.architecture }}" --output build/development/native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python packaging/profiles/producer.py native-smoke --inputs build/development/native --output build/development/smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

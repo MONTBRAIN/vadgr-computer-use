@@ -151,3 +151,11 @@ def test_committed_size_budgets_and_verifier_identity_are_bounded():
         pins["architectures"]["x86_64"]["executable_sha256"]
         != pins["architectures"]["aarch64"]["executable_sha256"]
     )
+
+
+def test_native_workflows_isolate_the_pinned_python_from_owner_packages():
+    root = Path(__file__).resolve().parents[2]
+    for name in ("development-profile.yml", "profile-wheels.yml"):
+        source = (root / ".github/workflows" / name).read_text(encoding="utf-8")
+        assert "python.exe -I -m pip install" in source
+        assert "python.exe -I scripts/build_windows_broker.py" in source

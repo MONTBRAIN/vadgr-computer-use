@@ -61,7 +61,7 @@ jobs:
         run: |
           python packaging/profiles/producer.py provision-python --architecture "${{ matrix.architecture }}" --output build/profile-wheels/python
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & ./build/profile-wheels/python/python/python.exe -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements/windows-broker-build.txt
+          & ./build/profile-wheels/python/python/python.exe -I -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements/windows-broker-build.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build and test on the matching native architecture
         shell: pwsh
@@ -69,7 +69,7 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
           Get-PSDrive -PSProvider FileSystem | Select-Object Name, Free
-          & ./build/profile-wheels/python/python/python.exe scripts/build_windows_broker.py --source-commit "$env:SOURCE_COMMIT" --architecture "${{ matrix.architecture }}" --output build/profile-wheels/native
+          & ./build/profile-wheels/python/python/python.exe -I scripts/build_windows_broker.py --source-commit "$env:SOURCE_COMMIT" --architecture "${{ matrix.architecture }}" --output build/profile-wheels/native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python packaging/profiles/producer.py native-smoke --inputs build/profile-wheels/native --output build/profile-wheels/smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
