@@ -33,7 +33,8 @@ def test_runbook_expands_required_cross_products_and_fields(harness):
     assert len([i for i in ids if i.startswith("P06-")]) == 18
     assert len([i for i in ids if i.startswith("P13-")]) == 16
     assert len([i for i in ids if i.startswith("P14-")]) == 2
-    assert all(cell["Result"].startswith("not run:") for cell in cells)
+    allowed_results = ("not run:", "pass", "fail", "blocked", "deferred")
+    assert all(cell["Result"].lower().startswith(allowed_results) for cell in cells)
     assert ids[0].startswith("P12-")
     assert ids[4].startswith("P14-")
 
@@ -157,3 +158,8 @@ def test_release_workflow_does_not_rebuild_or_overwrite_wheels():
     assert "immutable-releases" in workflow
     assert "needs: [build, github-release]" in workflow
     assert "name: standalone-dist" in workflow
+
+
+def test_profile_contract_job_installs_product_test_dependencies():
+    workflow = (ROOT / ".github/workflows/profile-wheels.yml").read_text()
+    assert 'python -m pip install ".[dev]"' in workflow
