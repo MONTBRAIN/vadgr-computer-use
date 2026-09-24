@@ -1,0 +1,11 @@
+{
+  "linux-aarch64": 8388608,
+  "linux-x86_64": 8388608,
+  "macos-aarch64": 8388608,
+  "macos-x86_64": 8388608,
+  "standalone": 268435456,
+  "windows-aarch64": 83886080,
+  "windows-x86_64": 83886080,
+  "wsl-aarch64": 83886080,
+  "wsl-x86_64": 83886080
+}

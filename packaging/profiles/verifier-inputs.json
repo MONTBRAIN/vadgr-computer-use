@@ -1,0 +1,27 @@
+{
+  "architectures": {
+    "aarch64": {
+      "archive_sha256": "f7df0bf24275196b0fcbe853946e53ae80121c8a4ce4341bc9de1a35e33b4588",
+      "archive_size": 13276462,
+      "executable_sha256": "2995dd1357d11bd82f7e90aa6b8bf5ca0e2f2bfa726184b161e557d7bf962f51",
+      "executable_size": 38109496,
+      "url": "https://github.com/cli/cli/releases/download/v2.95.0/gh_2.95.0_windows_arm64.zip"
+    },
+    "x86_64": {
+      "archive_sha256": "19a7154161ada9cfaa9e57edb752ecc679b75c391a62e4f7b586eea1df30b5bb",
+      "archive_size": 14814893,
+      "executable_sha256": "cfefbc730f2ef7dc0352d6a5435b72fe6afce7fc56d61c90eb7703cd5d97b149",
+      "executable_size": 41483064,
+      "url": "https://github.com/cli/cli/releases/download/v2.95.0/gh_2.95.0_windows_amd64.zip"
+    }
+  },
+  "license_sha256": "8999137010582da29456c10e0a628bf3fa7ead05ab3ae5f424ad25cd0dd94574",
+  "license_size": 1089,
+  "root": {
+    "sha256": "3c2cc7f357dc064ec527fdcd78da6e9245c21a381e1abaa0f2b62b186bcac1a1",
+    "size": 5748,
+    "url": "https://raw.githubusercontent.com/MONTBRAIN/vadgr/2705239e177b8f54dd321933d17da623a7e8b1aa/packaging/release-trusted-root.jsonl"
+  },
+  "schema": 1,
+  "version": "2.95.0"
+}
