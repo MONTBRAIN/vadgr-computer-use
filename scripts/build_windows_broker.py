@@ -99,13 +99,14 @@ def normalize_embedded_zip(path: Path) -> None:
 
 
 def inventory(root: Path) -> list[dict[str, object]]:
+    files = [item for item in root.rglob("*") if item.is_file()]
     return [
         {
             "path": path.relative_to(root).as_posix(),
             "size": path.stat().st_size,
             "sha256": sha256(path),
         }
-        for path in sorted(item for item in root.rglob("*") if item.is_file())
+        for path in sorted(files, key=lambda item: item.relative_to(root).as_posix())
     ]
 
 

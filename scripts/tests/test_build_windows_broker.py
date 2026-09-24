@@ -60,6 +60,16 @@ def test_system_api_set_contracts_are_not_deployed_as_app_local_dlls(tmp_path, b
     assert not any((internal / name).exists() for name in removable)
 
 
+def test_native_inventory_has_platform_independent_member_order(tmp_path, builder):
+    (tmp_path / "A-LICENSE.txt").write_bytes(b"license")
+    (tmp_path / "_internal").mkdir()
+    (tmp_path / "_internal/runtime.dll").write_bytes(b"runtime")
+
+    rows = builder.inventory(tmp_path)
+
+    assert [row["path"] for row in rows] == ["A-LICENSE.txt", "_internal/runtime.dll"]
+
+
 def test_embedded_zip_normalization_is_byte_reproducible(tmp_path, builder):
     first = tmp_path / "first.zip"
     second = tmp_path / "second.zip"
