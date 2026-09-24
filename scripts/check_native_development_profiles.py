@@ -112,9 +112,9 @@ def check_native_development_receipt(path: Path) -> dict:
         forbidden = [
             name
             for name in files
-            if name.startswith((PREFIX + "adoption/", PREFIX + "winhost/"))
+            if name.startswith(PREFIX + "adoption/")
             or name.endswith(".ps1")
-            or name.startswith(PREFIX + "winbroker/")
+            or name.startswith((PREFIX + "winhost/", PREFIX + "winbroker/"))
             and not name.endswith(".py")
         ]
         if forbidden:

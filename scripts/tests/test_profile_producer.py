@@ -177,6 +177,10 @@ def test_native_development_receipt_rejects_platform_or_hash_drift(profile_input
 
 def test_native_development_wheels_exclude_windows_and_adoption_payloads(profile_inputs, tmp_path):
     source, _helpers, _output, descriptor, _adoption = profile_inputs
+    winhost = source / build.PREFIX / "winhost"
+    winhost.mkdir(parents=True, exist_ok=True)
+    (winhost / "__init__.py").write_text("", encoding="utf-8")
+    (source / build.PREFIX / "winbroker" / "__init__.py").write_text("", encoding="utf-8")
     output = tmp_path / "native"
     receipt = build_native_development(
         source, "linux", "x86_64", descriptor["producer"]["source_commit"], output
@@ -185,9 +189,9 @@ def test_native_development_wheels_exclude_windows_and_adoption_payloads(profile
         files = build.zip_members((output / artifact["wheel"]["filename"]).read_bytes())
         assert not any(name.startswith(build.PREFIX + "adoption/") for name in files)
         assert not any(name.endswith(".ps1") for name in files)
-        assert not any(name.startswith(build.PREFIX + "winhost/") for name in files)
         assert not any(
-            name.startswith(build.PREFIX + "winbroker/") and not name.endswith(".py")
+            name.startswith((build.PREFIX + "winhost/", build.PREFIX + "winbroker/"))
+            and not name.endswith(".py")
             for name in files
         )
     standalone = build.zip_members(
