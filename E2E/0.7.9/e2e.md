@@ -8,6 +8,18 @@
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
 
+Native Windows retry, 2026-09-24: a fresh isolated setup prepared the exact
+retained unsigned wheel, released 0.7.6 predecessor and HTTP fixture. After
+explicit owner authorization, the headed Chrome-for-Testing launch was again
+rejected by the execution tool before execution. No P06/P08 product goal ran;
+all thirteen unsigned process slices below remain blocked, not passed.
+Both browser registrations were restored. At 16:19:50 UTC the three prepared
+process IDs were absent, no marked-root process remained and fixture port 18769
+was free. The second setup and denial are retained in the existing
+`20260924-windows-unsigned-process` evidence boundary. No disk reclamation is
+claimed; prepared files remain retained. Resume only in an explicitly permitted
+isolated-browser launch environment. Signing/adoption obligations are unchanged.
+
 Read this file, [E2E rules](../README.md), [template](../TEMPLATE.md), `AGENTS.md`,
 `CLAUDE.md`, and the public README installation/platform instructions completely.
 
