@@ -12,6 +12,9 @@ from pathlib import Path, PurePosixPath
 
 import tomllib
 
+RELEASED_078_ARCHIVE_SHA256 = "cb8d47ede577c76683576a7bb4f8e5251eaa884b66bd50a2a35ad394966ce39d"
+RELEASED_078_SOURCE_COMMIT = "eb8df48e8873e4ac0609c5d20343c9d3e8291dd8"
+
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
@@ -31,13 +34,20 @@ def main() -> int:
     version = tomllib.loads((repository / "pyproject.toml").read_text(encoding="utf-8"))[
         "project"
     ]["version"]
-    if manifest.get("version") != version:
-        fail("manifest version differs from pyproject.toml")
+    historical_fixture = manifest.get("version") == "0.7.8"
+    if manifest.get("version") != version and not historical_fixture:
+        fail("manifest version is neither current nor the exact released predecessor")
     raw_archive = archive.read_bytes()
     if manifest.get("archive_sha256") != sha256_bytes(raw_archive):
         fail("archive SHA-256 differs from its manifest")
     if manifest.get("archive_size") != len(raw_archive):
         fail("archive size differs from its manifest")
+    if historical_fixture and (
+        manifest.get("archive_sha256") != RELEASED_078_ARCHIVE_SHA256
+        or manifest.get("source_commit") != RELEASED_078_SOURCE_COMMIT
+        or manifest.get("target") != "x86_64-pc-windows-msvc"
+    ):
+        fail("the retained 0.7.8 predecessor fixture differs from its released identity")
     if manifest.get("python") != {
         "version": "3.12.14",
         "distribution": "python-build-standalone",
@@ -59,13 +69,14 @@ def main() -> int:
         or any(character not in "0123456789abcdef" for character in source_commit)
     ):
         fail("source commit is absent or malformed")
-    for item in source_files:
-        relative = str(item["path"])
-        path = repository / relative
-        if not path.is_file():
-            fail(f"bundle source is absent: {relative}")
-        if sha256_bytes(path.read_bytes()) != item["sha256"]:
-            fail(f"bundle source does not match its manifest for {relative}")
+    if not historical_fixture:
+        for item in source_files:
+            relative = str(item["path"])
+            path = repository / relative
+            if not path.is_file():
+                fail(f"bundle source is absent: {relative}")
+            if sha256_bytes(path.read_bytes()) != item["sha256"]:
+                fail(f"bundle source does not match its manifest for {relative}")
 
     expected = {item["path"]: item for item in manifest.get("files", [])}
     required = {
@@ -95,7 +106,11 @@ def main() -> int:
         fail("archive omits its executable or required licenses")
 
     sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
-    if sbom.get("spdxVersion") != "SPDX-2.3" or version not in sbom.get("name", ""):
+    expected_sbom_version = str(manifest["version"])
+    if (
+        sbom.get("spdxVersion") != "SPDX-2.3"
+        or expected_sbom_version not in sbom.get("name", "")
+    ):
         fail("SPDX document is absent or stale")
     print(f"windows broker bundle check passed: {manifest['archive_sha256']}")
     return 0

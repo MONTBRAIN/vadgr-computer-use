@@ -144,7 +144,7 @@ def select_driver(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "probe_status": "ok",
         "selected_driver": "codex" if use_codex else "claude",
-        "codex_model": "gpt-5.6-luna" if use_codex else None,
+        "codex_model": "gpt-6-luna" if use_codex else None,
         "claude_model": None if use_codex else "claude-sonnet-5",
         "codex_weekly_remaining_percent": remaining,
         "codex_weekly_reset_at": _reset_time(window.get("resetsAt")),

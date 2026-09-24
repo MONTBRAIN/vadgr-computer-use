@@ -1,0 +1,29 @@
+{
+  "broker_builder": "scripts/build_windows_broker.py",
+  "go": "1.24.0",
+  "native_architectures": [
+    "x86_64",
+    "aarch64"
+  ],
+  "offline_verifier": {
+    "aarch64_archive_sha256": "f7df0bf24275196b0fcbe853946e53ae80121c8a4ce4341bc9de1a35e33b4588",
+    "component": "GitHub CLI",
+    "version": "2.95.0",
+    "x86_64_archive_sha256": "19a7154161ada9cfaa9e57edb752ecc679b75c391a62e4f7b586eea1df30b5bb"
+  },
+  "pyinstaller": "6.22.2",
+  "python": "3.12.14",
+  "python_distribution": "python-build-standalone",
+  "python_distribution_build": "20260825",
+  "python_inputs": {
+    "aarch64": {
+      "sha256": "57dd692b459609127d1b2d448e2033606da7089b9c5d3f9868a54899a87fad26",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.12.14%2B20260825-aarch64-pc-windows-msvc-install_only.tar.gz"
+    },
+    "x86_64": {
+      "sha256": "15d25c455ea25d6b24d7e58eabdf744fd0db3cfb977934ae08fd2237acd8ccc1",
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.12.14%2B20260825-x86_64-pc-windows-msvc-install_only.tar.gz"
+    }
+  },
+  "schema": 1
+}

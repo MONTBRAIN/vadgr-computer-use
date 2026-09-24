@@ -429,7 +429,7 @@ never appears in.
 > capabilities. A text-only model cannot close that visual group.
 
 > All CUA E2E agent tasks, including browser, pixel and screenshot cells, use
-> GPT-5.6 Luna (`gpt-5.6-luna`) with Codex or Claude Sonnet 5
+> GPT-6 Luna (`gpt-6-luna`) with Codex or Claude Sonnet 5
 > (`claude-sonnet-5`) with Claude Code. Codex uses medium reasoning by default;
 > high is also approved without another owner decision when the run records why
 > it was needed. Claude retains medium effort where the CLI supports it. Do not
@@ -462,7 +462,7 @@ python scripts/select_cua_e2e_driver.py
 > driver is a failed prerequisite, not permission to silently substitute a model.
 
 ```sh
-codex --yolo exec --json --model gpt-5.6-luna -c 'model_reasoning_effort="medium"' <task-options>
+codex --yolo exec --json --model gpt-6-luna -c 'model_reasoning_effort="medium"' <task-options>
 claude --dangerously-skip-permissions --print --output-format stream-json --model claude-sonnet-5 <task-options>
 ```
 

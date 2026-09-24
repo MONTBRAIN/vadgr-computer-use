@@ -230,6 +230,53 @@ class TestSelfRegister:
         assert registry and registry[0][1] == str(manifest)
         assert not (home / ".vadgr-cua" / "host.bat").exists()
 
+    def test_bundled_relay_resolves_wheel_relative_manifest_path(self, tmp_path, monkeypatch):
+        from computer_use.browser import profile, winhost
+
+        module = tmp_path / "computer_use/browser/winhost/__init__.py"
+        module.parent.mkdir(parents=True)
+        module.write_text("", encoding="utf-8")
+        relay = tmp_path / "computer_use/browser/winhost/x86_64/vadgr-cua-host.exe"
+        relay.parent.mkdir()
+        relay.write_bytes(b"profile relay")
+        monkeypatch.setattr(winhost, "__file__", str(module))
+        monkeypatch.setattr(profile, "select_profile", lambda: profile.ReleaseProfile.WINDOWS_X86_64)
+        monkeypatch.setattr(
+            profile,
+            "load_input_manifest",
+            lambda _selected: {
+                "helpers": {
+                    "relay": {
+                        "path": "computer_use/browser/winhost/x86_64/vadgr-cua-host.exe",
+                        "size": relay.stat().st_size,
+                        "sha256": S._file_sha256(relay),
+                    }
+                }
+            },
+        )
+
+        assert S.bundled_relay_exe() == relay
+
+    def test_managed_windows_registration_uses_verified_parent_relay_without_copy(
+        self, tmp_path, monkeypatch
+    ):
+        manifest = tmp_path / "manifest" / "com.vadgr.cua.json"
+        relay = r"C:\Program Files\Vadgr\cua\vadgr-cua-host.exe"
+        monkeypatch.setattr(S, "_managed_package", lambda: True)
+        monkeypatch.setattr(S, "_managed_relay", lambda: (relay, tmp_path / "relay.exe"))
+
+        result = S.ensure_registered(
+            paths={"chrome": manifest},
+            platform="win32",
+            registry_writer=lambda _key, _value: None,
+            relay_installer=lambda **_kwargs: pytest.fail(
+                "managed registration must not deploy unsigned input helpers"
+            ),
+        )
+
+        assert result["host_path"] == relay
+        assert json.loads(manifest.read_text())["path"] == relay
+
 
 class TestWSLRegistration:
     """On WSL, cua-in-Linux must register to the *Windows* Chrome it drives:

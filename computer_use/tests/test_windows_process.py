@@ -94,6 +94,8 @@ def _run(
     catalog,
     endpoint=None,
     owner_sequence=None,
+    architecture="x86_64",
+    adoption=None,
 ):
     lock = tmp_path / "state" / "browser-broker.lock"
     lock.parent.mkdir()
@@ -119,7 +121,29 @@ def _run(
         lock_path=lock,
         candidate_bundle=candidate,
         catalog_path=catalog_path,
+        architecture=architecture,
+        adoption=adoption,
     )
+
+
+def _adoption(bundle: Path) -> dict[str, object]:
+    manifest = bundle / "bundle-manifest.json"
+    return {
+        "direction": "unsigned-to-signed",
+        "architecture": "x86_64",
+        "cua_version": bundle.parent.name,
+        "source_commit": "1" * 40,
+        "input_closure": {
+            "relay_sha256": "2" * 64,
+            "archive_sha256": bundle.name,
+            "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        },
+        "final_closure": {
+            "relay_sha256": "3" * 64,
+            "archive_sha256": "4" * 64,
+            "manifest_sha256": "5" * 64,
+        },
+    }
 
 
 def test_exact_cataloged_predecessor_is_replaced(tmp_path, monkeypatch):
@@ -225,6 +249,61 @@ def test_unknown_catalog_entry_fails_closed(tmp_path, monkeypatch):
         _run(tmp_path, monkeypatch, process, bundle, catalog)
 
     assert caught.value.code == "browser_broker_upgrade_unsafe"
+    assert process.terminated is False
+
+
+def test_authenticated_exact_adoption_edge_replaces_same_version_input(tmp_path, monkeypatch):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    catalog["releases"] = []
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+    endpoint = {"pid": 123, "bundle_hash": bundle.name, "process_started_ns": "input"}
+
+    result = _run(
+        tmp_path,
+        monkeypatch,
+        process,
+        bundle,
+        catalog,
+        endpoint,
+        adoption=_adoption(bundle),
+    )
+
+    assert result["state"] == "replaced"
+    assert result["version"] == "0.7.7"
+    assert process.terminated is True
+
+
+@pytest.mark.parametrize(
+    ("mutation", "value"),
+    [
+        ("direction", "signed-to-unsigned"),
+        ("architecture", "aarch64"),
+        ("cua_version", "0.7.8"),
+    ],
+)
+def test_adoption_edge_must_match_exact_input_and_architecture(
+    tmp_path, monkeypatch, mutation, value
+):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    catalog["releases"] = []
+    adoption = _adoption(bundle)
+    adoption[mutation] = value
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+
+    with pytest.raises(windows_process.UpgradeHandoffError):
+        _run(tmp_path, monkeypatch, process, bundle, catalog, adoption=adoption)
+
+    assert process.terminated is False
+
+
+def test_arm64_handoff_refuses_x64_catalog_and_manifest(tmp_path, monkeypatch):
+    bundle, catalog = _cataloged_bundle(tmp_path)
+    catalog["target"] = "aarch64-pc-windows-msvc"
+    process = FakeProcess(123, bundle / "vadgr-cua-browser-broker.exe")
+
+    with pytest.raises(windows_process.UpgradeHandoffError):
+        _run(tmp_path, monkeypatch, process, bundle, catalog, architecture="aarch64")
+
     assert process.terminated is False
 
 
