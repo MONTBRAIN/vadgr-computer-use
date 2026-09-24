@@ -97,7 +97,10 @@ def run(root, control, events, seconds, timeout):
             os.close(fifo_fd)
         pending, cut, restored = b"", None, None
         while time.monotonic() - started < timeout:
-            current = checked_path(root, events, stat.S_ISREG)
+            try:
+                current = checked_path(root, events, stat.S_ISREG)
+            except FileNotFoundError:
+                raise ValueError("event log replaced") from None
             if identity(current) != identity(log_info):
                 raise ValueError("event log replaced")
             if current.st_size < offset:
