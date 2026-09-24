@@ -97,6 +97,25 @@ Native build and live qualification remain separate results.
 
 ## Qualification and landing order
 
+`profile-review-inputs.yml` breaks the legal-inventory preparation dependency.
+It runs only trusted master tooling on the first dispatch and builds the exact
+reviewed source on native x64 and ARM64 runners without signing credentials.
+Its artifacts contain only member inventories, the exact unreviewed SPDX record,
+verbatim available notices/source receipts and build-input pins. No executable,
+archive, wheel, adoption policy, final catalog or attestation is uploaded.
+Every receipt says `publishable: false`, `legal_approval: false`,
+`signing_approval: false` and `adoption: disabled`. Every member's trust class
+remains unassigned. Review data does not establish redistribution rights,
+signature validity or permission to transform a third-party binary.
+
+Reviewers use this packet to identify every native member, conclude its legal
+duties and approve the exact rules. They must separately verify non-secret
+publisher/vendor certificate identities and authorize the exact consumer
+source/tooling allowlists and expiry. The packet is not an approval and cannot
+replace the final producer preflight. After those reviewed inputs land, the
+normal producer still rebuilds and validates the exact member set before it
+can create held final wheels. A changed member set fails closed and needs review.
+
 The trusted producer tooling lands through a separate prerequisite PR before
 the runtime implementation PR. It adds no runtime change or version bump.
 The reviewed source pin can name that still-open implementation branch's exact
