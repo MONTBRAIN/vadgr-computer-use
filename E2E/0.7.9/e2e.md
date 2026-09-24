@@ -3032,6 +3032,17 @@ count. Private evidence is in PR #182 under
 desktop sessions remain not run; final trust, signing, adoption, catalog and
 publication assertions remain owed.
 
+The documentation-only status correction at `b5c3bd7` exposed an intermittent
+macOS gate failure in workflow run `36068452640`. The relay fault harness saw
+its event log disappear between identity checks and leaked `FileNotFoundError`
+instead of the stable replaced-log refusal. The same test could also miss its
+nonblocking FIFO read and time out. Fix `d573ddbd3b8f52db57cf3510ef68cb4d63f7311f`
+normalizes the missing post-open log to `event log replaced` and makes the test
+retry the expected nonblocking read. The complete Python suite passed with 460
+tests and 49 platform skips, and the focused 32-test file passed in 50
+consecutive runs. This source-gate repair does not change the retained P01 or
+P11 artifact bytes or their Linux verdicts.
+
 ## What this runbook cannot prove
 
 An unrun cell proves nothing about native hardware, legal rights or certificate trust.
