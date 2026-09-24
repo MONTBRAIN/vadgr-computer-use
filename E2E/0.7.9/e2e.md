@@ -2928,7 +2928,7 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 
 | part | Linux | Windows | macOS | WSL | notes |
 |---|---|---|---|---|---|
-| Part P01 | blocked: trusted retained Linux profile wheel absent; aarch64 hardware not present | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P01 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P02 | not run: external consuming-vehicle qualification is outside CUA source acceptance | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P03 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
@@ -2938,24 +2938,25 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P08 | not applicable: no native Linux cell | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P09 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P10 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P11 | blocked: exact managed Linux profile artifact absent; aarch64 hardware not present | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P11 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P12 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P13 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P14 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 
 Overall: partial. P01-windows-x86_64 and all explicitly permitted unsigned
 P06/P08 x86_64 slices passed three independent runs on the frozen development
-candidate. Native Linux x86_64 was available, but P01 and P11 were blocked
-before live startup because the trusted retained profile artifacts do not exist.
-The source-only wheel passed the local package, clean-install, extension and test
-gates and remains ineligible as a live-cell substitute. Signature/adoption
-assertions, Windows ARM64 and all other applicable Windows cells remain owed with
-their written owner/input prerequisites. No complete Windows, Linux, macOS or WSL
-pass exists. No platform inherits CI results.
+candidate. P01-linux-x86_64 and P11-linux-x86_64 passed three independent native
+development runs against the exact retained, non-publishable Linux artifacts at
+source `836a7b052d0732ae5eb70e26a699b18a05ce109c` and frozen runtime/product code
+`14cb515ba54ca9346ea931ba46d4c3253164c8b4`. Those artifacts remain ineligible
+for final catalog, signature, attestation, adoption or publication assertions.
+Windows ARM64 and all other applicable Windows cells remain owed with their
+written owner/input prerequisites. No complete Windows, Linux, macOS or WSL pass
+exists. No platform inherits CI results.
 
 | Linux desktop | x86_64 | aarch64 |
 |---|---|---|
-| GNOME Wayland | blocked: trusted retained x86_64 profile artifacts absent | not run: native aarch64 hardware unavailable |
+| GNOME Wayland | pass: P01 and P11 each ran three explicitly unsigned, non-publishable development slices; final trust assertions remain owed | not run: native aarch64 hardware unavailable |
 | GNOME X11 | not run: no physical GNOME X11 session | not run: no physical GNOME X11 aarch64 session |
 | KDE Plasma | not run: no physical KDE Plasma session | not run: no physical KDE Plasma aarch64 session |
 | Minimal install | not run: no physical minimal-install session | not run: no physical minimal-install aarch64 session |
