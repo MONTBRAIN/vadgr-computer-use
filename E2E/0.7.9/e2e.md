@@ -1497,7 +1497,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-missing: released upgrade on windows-x86_64-from-076-missing
 
@@ -1515,7 +1515,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-076-corrupt: released upgrade on windows-x86_64-from-076-corrupt
 
@@ -1533,7 +1533,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-healthy: released upgrade on windows-x86_64-from-077-healthy
 
@@ -1551,7 +1551,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-missing: released upgrade on windows-x86_64-from-077-missing
 
@@ -1569,7 +1569,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-077-corrupt: released upgrade on windows-x86_64-from-077-corrupt
 
@@ -1587,7 +1587,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-healthy: released upgrade on windows-x86_64-from-078-healthy
 
@@ -1605,7 +1605,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-missing: released upgrade on windows-x86_64-from-078-missing
 
@@ -1623,7 +1623,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-windows-x86_64-from-078-corrupt: released upgrade on windows-x86_64-from-078-corrupt
 
@@ -1641,7 +1641,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P06-wsl-x86_64-from-076-healthy: released upgrade on wsl-x86_64-from-076-healthy
 
@@ -1897,7 +1897,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-unknown-owner: active work and unknown owner on windows-x86_64-unknown-owner
 
@@ -1915,7 +1915,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-pid-reuse: active work and unknown owner on windows-x86_64-pid-reuse
 
@@ -1933,7 +1933,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-x86_64-cancel: active work and unknown owner on windows-x86_64-cancel
 
@@ -1951,7 +1951,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked: unsigned development slice on native Windows, 2026-09-24. The execution environment rejected the isolated Chrome-for-Testing launch as `blocked by policy` before the product goal ran. Original registrations were restored and test-owned processes stopped; see the `20260924-windows-unsigned-process` boundary. Resume with an explicitly permitted isolated-browser launch environment and the same retained development wheel. Signature/adoption assertions remain separately owed.
 
 ### P08-windows-aarch64-drain: active work and unknown owner on windows-aarch64-drain
 
@@ -2843,9 +2843,9 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P05 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not run: no native session | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P07 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not run: no native session | not run: no native session | blocked: isolated browser launch denied; signed assertions also owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P09 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P10 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P11 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
