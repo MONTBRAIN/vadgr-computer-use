@@ -97,7 +97,9 @@ def test_data_only_managed_fixture_deploys_and_returns_bound_receipt(tmp_path):
 def _powershell(action, path):
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-         "$ErrorActionPreference='Stop'; $p=[Console]::In.ReadToEnd(); " + action],
+         "$ErrorActionPreference='Stop'; $env:PSModulePath=$PSHOME+'\\Modules'; "
+         "Import-Module -Name (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1') -Force; "
+         "$p=[Console]::In.ReadToEnd(); " + action],
         input=str(path), capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stderr
@@ -169,6 +171,8 @@ def test_adoption_converts_only_safe_inherited_parent(tmp_path, damage):
     request = {"source": str(source), "root": str(tmp_path / "private"), "damage": damage}
     script = r"""
 $ErrorActionPreference='Stop'
+$env:PSModulePath=$PSHOME+'\Modules'
+Import-Module -Name (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
 $v=[Console]::In.ReadToEnd() | ConvertFrom-Json
 $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User
 $system=[Security.Principal.SecurityIdentifier]::new('S-1-5-18')

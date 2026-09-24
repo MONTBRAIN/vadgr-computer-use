@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $env:PSModulePath = $PSHOME + '\Modules'
+Import-Module -Name (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
 $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
 $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 
@@ -213,6 +214,8 @@ if (Test-Path -LiteralPath $destination) {
         if ($LASTEXITCODE -ne 0) { throw "Failed to protect managed broker staging root" }
         & icacls.exe $staging /grant:r "${owner}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" /T /C | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Failed to protect managed broker staging payload" }
+        & icacls.exe $staging /setowner $owner /T /C | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Failed to set managed broker staging ownership" }
 
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $root = [IO.Path]::GetFullPath($staging) + [IO.Path]::DirectorySeparatorChar

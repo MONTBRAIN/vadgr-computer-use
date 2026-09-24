@@ -178,7 +178,9 @@ def test_released_078_predecessor_row_matches_retained_source_bytes():
     manifest = root / "vadgr-cua-browser-broker-win-x64.manifest.json"
 
     assert row["archive_sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
-    assert row["manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+    manifest_bytes = manifest.read_bytes().replace(b"\r\n", b"\n")
+    assert b"\r" not in manifest_bytes
+    assert row["manifest_sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
     with zipfile.ZipFile(archive) as payload:
         broker = payload.read(row["broker_relative_path"])
     assert row["broker_sha256"] == hashlib.sha256(broker).hexdigest()

@@ -3,6 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 $env:PSModulePath = $PSHOME + '\Modules'
+Import-Module -Name (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
 $inputText = [Console]::In.ReadToEnd()
 if ($inputText.Length -gt 4194304) { throw 'Adoption request exceeds its limit' }
 $request = $inputText | ConvertFrom-Json

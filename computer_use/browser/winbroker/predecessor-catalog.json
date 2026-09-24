@@ -24,7 +24,7 @@
       "archive_sha256": "cb8d47ede577c76683576a7bb4f8e5251eaa884b66bd50a2a35ad394966ce39d",
       "broker_relative_path": "vadgr-cua-browser-broker.exe",
       "broker_sha256": "9c060691b94152efdb313894385c39f0d44c3ba1ef5f258a9bdb66e4a9e839c4",
-      "manifest_sha256": "6a9364e6a9763fd4514a3aed7fdf1ee9df3e2ecf64d42c347153d6a0b6fd33a4",
+      "manifest_sha256": "51a392adfad8cdcc98bcfbda12450811e068433f98385cfeb085ae43e53644fd",
       "protocol_max": 1,
       "protocol_min": 1,
       "version": "0.7.8"
