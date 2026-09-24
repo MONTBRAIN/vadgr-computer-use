@@ -1,0 +1,201 @@
+name: profile-wheels
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "computer_use/browser/**"
+      - "packaging/profiles/**"
+      - "scripts/*profile_wheels.py"
+      - "scripts/tests/test_profile_wheels.py"
+      - "scripts/tests/test_profile_producer.py"
+      - "scripts/tests/test_profile_source_boundary.py"
+      - "scripts/*broker*.py"
+      - "scripts/tests/test_*broker*.py"
+      - "requirements/windows-broker-build.txt"
+      - ".github/workflows/profile-wheels.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ".[dev]"
+      - run: python -m pytest scripts/tests/test_profile_wheels.py scripts/tests/test_profile_producer.py scripts/tests/test_profile_source_boundary.py scripts/tests/test_broker_sbom.py scripts/tests/test_build_windows_broker.py -q
+
+  preflight:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    outputs:
+      source_commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit=$(python packaging/profiles/producer.py source-input)
+          printf 'commit=%s\n' "$source_commit" >> "$GITHUB_OUTPUT"
+      - run: python packaging/profiles/producer.py preflight
+
+  native:
+    needs: [contracts, preflight]
+    name: native-${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: windows-2025
+          - architecture: aarch64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.preflight.outputs.source_commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: "1.24.0"
+      - name: Provision the reviewed native build toolchain
+        shell: pwsh
+        run: |
+          python packaging/profiles/producer.py check-source --source source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/profiles/producer.py provision-python --architecture "${{ matrix.architecture }}" --output build/profile-wheels/python
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./build/profile-wheels/python/python/python.exe -I -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements/windows-broker-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build and test on the matching native architecture
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ needs.preflight.outputs.source_commit }}
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name, Free
+          & ./build/profile-wheels/python/python/python.exe -I scripts/build_windows_broker.py --source-repository source --source-commit "$env:SOURCE_COMMIT" --architecture "${{ matrix.architecture }}" --output build/profile-wheels/native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python packaging/profiles/producer.py native-smoke --inputs build/profile-wheels/native --output build/profile-wheels/smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location source/computer_use/browser/winhost
+          go test ./...
+          $testExit = $LASTEXITCODE
+          Pop-Location
+          if ($testExit -ne 0) { exit $testExit }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-${{ matrix.architecture }}
+          path: build/profile-wheels/native/
+          if-no-files-found: error
+          retention-days: 90
+
+  assemble:
+    needs: [preflight, native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.preflight.outputs.source_commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          path: build/profile-wheels/inputs
+      - name: Bind immutable native outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python packaging/profiles/producer.py descriptor --inputs build/profile-wheels/inputs --output build/profile-wheels/descriptor.json
+      - name: Construct all release profiles from source
+        run: |
+          python packaging/profiles/producer.py provision-verifiers --output build/profile-wheels/adoption
+          python packaging/profiles/producer.py generate-adoption --source source --inputs build/profile-wheels/inputs --descriptor build/profile-wheels/descriptor.json --output build/profile-wheels/adoption
+      - name: Freeze all nine wheels
+        run: >-
+          python scripts/build_profile_wheels.py
+          --repository source
+          --x86-64-helpers build/profile-wheels/inputs/native-x86_64
+          --aarch64-helpers build/profile-wheels/inputs/native-aarch64
+          --descriptor build/profile-wheels/descriptor.json
+          --adoption build/profile-wheels/adoption
+          --output build/profile-wheels/output
+      - run: python packaging/profiles/producer.py check-size --catalog build/profile-wheels/output/cua-profile-catalog.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: profile-wheels-unattested
+          path: build/profile-wheels/output/
+          if-no-files-found: error
+          retention-days: 90
+
+  validate:
+    needs: [preflight, assemble]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.preflight.outputs.source_commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: profile-wheels-unattested
+          path: build/profile-wheels/output
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: native-*
+          path: build/profile-wheels/inputs
+      - name: Validate retained data on a fresh hosted runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python packaging/profiles/producer.py validate-output --source source --catalog build/profile-wheels/output/cua-profile-catalog.json --inputs build/profile-wheels/inputs --descriptor build/profile-wheels/independent-descriptor.json
+      - name: Attest the validated catalog
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: build/profile-wheels/output/cua-profile-catalog.json
+      - name: Retain the separate verification bundle
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" build/profile-wheels/output/cua-profile-catalog.sigstore.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: profile-wheels-validated
+          path: build/profile-wheels/output/
+          if-no-files-found: error
+          retention-days: 90

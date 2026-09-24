@@ -8,6 +8,8 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -15,13 +17,28 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from broker_sbom import build_sbom, prepare_notices
+
 EXPECTED_PYTHON = "3.12.14"
 EXPECTED_PYINSTALLER = "6.22.2"
-VERSION = "0.7.8"
-ARCHIVE_NAME = "vadgr-cua-browser-broker-win-x64.zip"
-MANIFEST_NAME = "vadgr-cua-browser-broker-win-x64.manifest.json"
-SBOM_NAME = "vadgr-cua-browser-broker-win-x64.spdx.json"
-FIXED_ZIP_TIME = (2026, 9, 1, 0, 0, 0)
+EXPECTED_GO = "go1.24.0"
+VERSION = "0.7.9"
+ARCHITECTURES = {
+    "x86_64": {
+        "machine": {"AMD64", "X86_64"},
+        "target": "x86_64-pc-windows-msvc",
+        "goarch": "amd64",
+        "suffix": "x64",
+    },
+    "aarch64": {
+        "machine": {"ARM64", "AARCH64"},
+        "target": "aarch64-pc-windows-msvc",
+        "goarch": "arm64",
+        "suffix": "arm64",
+    },
+}
+FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
 def sha256(path: Path) -> str:
@@ -33,15 +50,18 @@ def sha256(path: Path) -> str:
 
 
 def write_zip(source: Path, destination: Path) -> None:
-    with zipfile.ZipFile(
-        destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-    ) as out:
+    """Write the signing-input archive with one deterministic byte layout."""
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_STORED) as out:
+        out.comment = b""
         for path in sorted(item for item in source.rglob("*") if item.is_file()):
             relative = path.relative_to(source).as_posix()
             info = zipfile.ZipInfo(relative, FIXED_ZIP_TIME)
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED
+            info.create_system = 3
             info.external_attr = 0o100644 << 16
-            out.writestr(info, path.read_bytes(), compresslevel=9)
+            info.comment = b""
+            info.extra = b""
+            out.writestr(info, path.read_bytes())
 
 
 def normalize_embedded_zip(path: Path) -> None:
@@ -79,13 +99,14 @@ def normalize_embedded_zip(path: Path) -> None:
 
 
 def inventory(root: Path) -> list[dict[str, object]]:
+    files = [item for item in root.rglob("*") if item.is_file()]
     return [
         {
             "path": path.relative_to(root).as_posix(),
             "size": path.stat().st_size,
             "sha256": sha256(path),
         }
-        for path in sorted(item for item in root.rglob("*") if item.is_file())
+        for path in sorted(files, key=lambda item: item.relative_to(root).as_posix())
     ]
 
 
@@ -96,9 +117,136 @@ def write_json(path: Path, value: object) -> None:
         file.write("\n")
 
 
-def build(source_commit: str, output: Path) -> None:
+def artifact_names(architecture: str) -> tuple[str, str, str]:
+    try:
+        suffix = str(ARCHITECTURES[architecture]["suffix"])
+    except KeyError as error:
+        raise ValueError(f"unsupported Windows architecture: {architecture}") from error
+    stem = f"vadgr-cua-browser-broker-win-{suffix}"
+    return f"{stem}.zip", f"{stem}.manifest.json", f"{stem}.spdx.json"
+
+
+def write_predecessor_catalog(source: Path, destination: Path, architecture: str) -> None:
+    """Generate the closed native catalog without claiming cross-architecture releases."""
+    configuration = ARCHITECTURES[architecture]
+    value = json.loads(source.read_bytes())
+    if (
+        set(value) != {"schema", "target", "releases"}
+        or value["schema"] != 1
+        or value["target"] != ARCHITECTURES["x86_64"]["target"]
+        or not isinstance(value["releases"], list)
+    ):
+        raise ValueError("released predecessor catalog is invalid")
+    expected_fields = {
+        "version",
+        "archive_sha256",
+        "broker_relative_path",
+        "broker_sha256",
+        "manifest_sha256",
+        "protocol_min",
+        "protocol_max",
+    }
+    versions = []
+    for row in value["releases"]:
+        if (
+            not isinstance(row, dict)
+            or set(row) != expected_fields
+            or row["broker_relative_path"] != "vadgr-cua-browser-broker.exe"
+            or row["protocol_min"] != 1
+            or row["protocol_max"] != 1
+        ):
+            raise ValueError("released predecessor entry is invalid")
+        versions.append(row["version"])
+        for name in ("archive_sha256", "broker_sha256", "manifest_sha256"):
+            digest = row[name]
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or digest == "0" * 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError("released predecessor digest is invalid")
+    if versions != ["0.7.6", "0.7.7", "0.7.8"]:
+        raise ValueError("released predecessor set is incomplete")
+    output = {
+        "schema": 1,
+        "target": configuration["target"],
+        "releases": value["releases"] if architecture == "x86_64" else [],
+    }
+    write_json(destination, output)
+
+
+def remove_system_api_set_forwarders(bundle: Path) -> tuple[str, ...]:
+    """Remove Windows 10+ system UCRT and virtual API-set contracts."""
+    pattern = re.compile(r"(?i)(?:api|ext)-ms-win-[a-z0-9-]+\.dll")
+    removed = []
+    for path in sorted(bundle.rglob("*")):
+        if path.name.lower() != "ucrtbase.dll" and not pattern.fullmatch(path.name):
+            continue
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Windows API-set output is not an ordinary file")
+        removed.append(path.relative_to(bundle).as_posix())
+        path.unlink()
+    return tuple(removed)
+
+
+def require_native_architecture(architecture: str) -> dict[str, object]:
+    try:
+        configuration = ARCHITECTURES[architecture]
+    except KeyError as error:
+        raise SystemExit(f"unsupported Windows architecture: {architecture}") from error
+    actual = platform.machine().upper()
+    if actual not in configuration["machine"]:
+        raise SystemExit(
+            f"the {architecture} broker must be built on native {architecture} Windows; got {actual}"
+        )
+    return configuration
+
+
+def build_relay(repository: Path, output: Path, architecture: str) -> Path:
+    """Build the relay on the matching native host without embedding VCS paths."""
+    configuration = ARCHITECTURES[architecture]
+    destination = output / "vadgr-cua-host.exe"
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "GOOS": "windows",
+            "GOARCH": str(configuration["goarch"]),
+            "CGO_ENABLED": "0",
+        }
+    )
+    version = subprocess.run(
+        ["go", "version"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+        env=environment,
+    ).stdout.split()
+    if len(version) < 3 or version[2] != EXPECTED_GO:
+        raise SystemExit(f"expected Go {EXPECTED_GO}, got {' '.join(version)}")
+    subprocess.run(
+        [
+            "go",
+            "build",
+            "-buildvcs=false",
+            "-trimpath",
+            "-ldflags=-s -w -buildid=",
+            "-o",
+            str(destination),
+            ".",
+        ],
+        cwd=repository / "computer_use" / "browser" / "winhost",
+        env=environment,
+        check=True,
+    )
+    return destination
+
+
+def build(source_commit: str, output: Path, architecture: str = "x86_64", source_repository: Path | None = None) -> None:
     if sys.platform != "win32":
         raise SystemExit("the Windows broker must be built on Windows")
+    configuration = require_native_architecture(architecture)
     runtime = ".".join(str(part) for part in sys.version_info[:3])
     if runtime != EXPECTED_PYTHON:
         raise SystemExit(f"expected CPython {EXPECTED_PYTHON}, got {runtime}")
@@ -106,7 +254,8 @@ def build(source_commit: str, output: Path) -> None:
     if pyinstaller != EXPECTED_PYINSTALLER:
         raise SystemExit(f"expected PyInstaller {EXPECTED_PYINSTALLER}, got {pyinstaller}")
 
-    repository = Path(__file__).resolve().parents[1]
+    tooling = Path(__file__).resolve().parents[1]
+    repository = source_repository.resolve() if source_repository else tooling
     entry = repository / "computer_use" / "browser" / "windows_broker_entry.py"
     source_paths = [
         repository / "computer_use" / "__init__.py",
@@ -115,6 +264,7 @@ def build(source_commit: str, output: Path) -> None:
             for name in (
                 "bridge.py",
                 "broker.py",
+                "managed_authorization.py",
                 "native_host.py",
                 "ownership.py",
                 "private_file.py",
@@ -127,11 +277,19 @@ def build(source_commit: str, output: Path) -> None:
         ),
         repository / "computer_use" / "setup" / "extension_setup.py",
         repository / "computer_use" / "browser" / "winbroker" / "predecessor-catalog.json",
+        repository / "computer_use" / "browser" / "winhost" / "main.go",
+        repository / "computer_use" / "browser" / "winhost" / "go.mod",
     ]
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="vadgr-cua-winbroker-") as temporary:
         root = Path(temporary)
         dist = root / "dist"
+        predecessor_catalog = root / "predecessor-catalog.json"
+        write_predecessor_catalog(
+            tooling / "packaging/profiles/predecessor-input.json",
+            predecessor_catalog,
+            architecture,
+        )
         env = dict(os.environ)
         env.update(
             {
@@ -164,11 +322,7 @@ def build(source_commit: str, output: Path) -> None:
                 "computer_use.setup.extension_setup",
                 "--add-data",
                 str(
-                    repository
-                    / "computer_use"
-                    / "browser"
-                    / "winbroker"
-                    / "predecessor-catalog.json"
+                    predecessor_catalog
                 )
                 + os.pathsep
                 + ".",
@@ -182,6 +336,7 @@ def build(source_commit: str, output: Path) -> None:
         executable = bundle / "vadgr-cua-browser-broker.exe"
         if not executable.is_file():
             raise SystemExit("PyInstaller did not produce the broker executable")
+        remove_system_api_set_forwarders(bundle)
         normalize_embedded_zip(bundle / "_internal" / "base_library.zip")
 
         python_license = Path(sys.base_prefix) / "LICENSE.txt"
@@ -200,14 +355,18 @@ def build(source_commit: str, output: Path) -> None:
         shutil.copyfile(pyinstaller_license, bundle / "PYINSTALLER-COPYING.txt")
         shutil.copyfile(repository / "LICENSE", bundle / "VADGR-CUA-LICENSE.txt")
 
+        _, source_receipt = prepare_notices(repository, bundle, Path(sys.base_prefix), tooling_repository=tooling)
         files = inventory(bundle)
-        archive = output / ARCHIVE_NAME
+        archive_name, manifest_name, sbom_name = artifact_names(architecture)
+        archive = output / archive_name
         write_zip(bundle, archive)
+        relay = build_relay(repository, output, architecture)
         manifest = {
             "schema": 1,
             "name": "vadgr-cua-browser-broker",
             "version": VERSION,
-            "target": "x86_64-pc-windows-msvc",
+            "architecture": architecture,
+            "target": configuration["target"],
             "source_commit": source_commit,
             "source_files": [
                 {
@@ -221,63 +380,40 @@ def build(source_commit: str, output: Path) -> None:
                 "distribution": "python-build-standalone",
                 "build": "20260825",
             },
-            "builder": {"pyinstaller": EXPECTED_PYINSTALLER, "uv": "0.12.6"},
+            "builder": {
+                "pyinstaller": EXPECTED_PYINSTALLER,
+                "go": EXPECTED_GO,
+            },
             "archive_sha256": sha256(archive),
             "archive_size": archive.stat().st_size,
+            "relay": {
+                "path": relay.name,
+                "size": relay.stat().st_size,
+                "sha256": sha256(relay),
+                "execution_os": "windows",
+                "architecture": architecture,
+            },
             "files": files,
         }
-        write_json(output / MANIFEST_NAME, manifest)
-        sbom = {
-            "spdxVersion": "SPDX-2.3",
-            "dataLicense": "CC0-1.0",
-            "SPDXID": "SPDXRef-DOCUMENT",
-            "name": f"vadgr-cua-browser-broker-{VERSION}-windows-x64",
-            "documentNamespace": (
-                "https://github.com/MONTBRAIN/vadgr-computer-use/"
-                f"sbom/{VERSION}/{manifest['archive_sha256']}"
-            ),
-            "creationInfo": {
-                "created": "2026-09-01T00:00:00Z",
-                "creators": ["Tool: scripts/build_windows_broker.py"],
-            },
-            "packages": [
-                {
-                    "name": "vadgr-computer-use",
-                    "SPDXID": "SPDXRef-Package-vadgr-cua",
-                    "versionInfo": VERSION,
-                    "downloadLocation": "NOASSERTION",
-                    "filesAnalyzed": False,
-                    "licenseConcluded": "Apache-2.0",
-                    "licenseDeclared": "Apache-2.0",
-                },
-                {
-                    "name": "CPython",
-                    "SPDXID": "SPDXRef-Package-CPython",
-                    "versionInfo": EXPECTED_PYTHON,
-                    "downloadLocation": (
-                        "https://github.com/astral-sh/python-build-standalone/releases/tag/20260825"
-                    ),
-                    "filesAnalyzed": False,
-                    "licenseConcluded": "Python-2.0",
-                    "licenseDeclared": "Python-2.0",
-                },
-                {
-                    "name": "PyInstaller",
-                    "SPDXID": "SPDXRef-Package-PyInstaller",
-                    "versionInfo": EXPECTED_PYINSTALLER,
-                    "downloadLocation": "https://pypi.org/project/pyinstaller/6.22.2/",
-                    "filesAnalyzed": False,
-                    "licenseConcluded": "GPL-2.0-only WITH Bootloader-exception",
-                    "licenseDeclared": "GPL-2.0-only WITH Bootloader-exception",
-                },
-            ],
-        }
-        write_json(output / SBOM_NAME, sbom)
+        write_json(output / manifest_name, manifest)
+        toolchain = json.loads((tooling / "packaging/profiles/toolchain.json").read_bytes())
+        sbom = build_sbom(
+            bundle,
+            relay,
+            VERSION,
+            architecture,
+            source_commit,
+            toolchain["python_inputs"][architecture],
+            source_receipt,
+        )
+        write_json(output / sbom_name, sbom)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), required=True)
+    parser.add_argument("--source-repository", type=Path)
     parser.add_argument(
         "--output",
         type=Path,
@@ -288,7 +424,7 @@ def main() -> int:
         c not in "0123456789abcdef" for c in args.source_commit
     ):
         raise SystemExit("--source-commit must be one lowercase 40-character Git commit")
-    build(args.source_commit, args.output.resolve())
+    build(args.source_commit, args.output.resolve(), args.architecture, args.source_repository)
     return 0
 
 
