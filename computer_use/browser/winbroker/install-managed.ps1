@@ -256,6 +256,12 @@ if (Test-Path -LiteralPath $destination) {
             }
         } finally { $zip.Dispose() }
         Copy-Item -LiteralPath $Manifest -Destination (Join-Path $staging 'broker-final-manifest.json')
+        # Elevated processes can assign newly created children to the
+        # Administrators group.  Preserve the protected inherited DACL, but
+        # normalize every child to the same user owner before verification.
+        $ownerName = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        & "$env:SystemRoot\System32\icacls.exe" $staging /setowner $ownerName /T /C | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to set managed broker tree owner' }
         if (-not (Test-ManagedBundle $staging $metadata)) {
             throw "Extracted managed broker failed verification"
         }
