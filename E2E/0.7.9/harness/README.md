@@ -11,3 +11,10 @@ Run the installed `vadgr-cua` entry point through the selected subscription CLI.
 These committed helpers travel with the runbook so commands work on every host.
 Start with `python E2E/0.7.9/harness/harness.py --help`.
 No helper can produce a synthetic signed fixture or mark an unobserved cell pass.
+
+`windows_fixture.py` reuses the 0.7.8 released-wheel fixture, including its
+marker, hash checks and safe process cleanup, and adds the exact released 0.7.8
+wheel as a predecessor. Its child roots still use the `vadgr-cua-078-` prefix
+inside the enclosing marked 0.7.9 root. It prepares and observes fixtures;
+it does not drive a product operation. `process_fixture.html` exposes an input
+counter for an independent no-replay DOM observation.
