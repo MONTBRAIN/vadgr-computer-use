@@ -614,7 +614,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked on native Linux x86_64 at `7798d30fa4f6115c39f51b76084a66e196534670`: the required retained, validated standalone profile wheel from a successful trusted default-branch `profile-wheels` producer does not exist. The 2026-09-24 default-branch workflow query returned no runs. The retained `unsigned-development-x86_64` artifact belongs to the feature-branch Windows-only exception and is not a permitted Linux subject. The host was Ubuntu 26.04 x86_64 on GNOME Wayland. No product, Chrome for Testing or driver process was started. Private evidence: PR #182, `20260924-linux-gnome-wayland`.
 
 ### P01-linux-aarch64: standalone selection on linux-aarch64
 
@@ -632,7 +632,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** not run: this host is x86_64, so native Linux aarch64 hardware is unavailable.
 
 ### P01-macos-x86_64: standalone selection on macos-x86_64
 
@@ -2434,7 +2434,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** blocked on native Linux x86_64 at `7798d30fa4f6115c39f51b76084a66e196534670`: the exact managed Linux profile artifact required for complete archive inventory, installation and browser work does not exist because no trusted default-branch `profile-wheels` producer has completed. The local source-only wheel passed packaging and clean-install gates but is explicitly ineligible for this cell. No live product or browser action ran. Private evidence: PR #182, `20260924-linux-gnome-wayland`.
 
 ### P11-linux-aarch64: asset exclusion on linux-aarch64
 
@@ -2452,7 +2452,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** not run: this host is x86_64, so native Linux aarch64 hardware is unavailable.
 
 ### P11-macos-x86_64: asset exclusion on macos-x86_64
 
@@ -2901,35 +2901,39 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 
 | part | Linux | Windows | macOS | WSL | notes |
 |---|---|---|---|---|---|
-| Part P01 | not run: no native session | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P02 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P03 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P04 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P05 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not run: no native session | pass: nine unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P07 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not run: no native session | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P09 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P10 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P11 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P12 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P13 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P14 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P01 | blocked: trusted retained Linux profile wheel absent; aarch64 hardware not present | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P02 | not run: external consuming-vehicle qualification is outside CUA source acceptance | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P03 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P04 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P05 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not applicable: no native Linux cell | pass: nine unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P07 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not applicable: no native Linux cell | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P09 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P10 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P11 | blocked: exact managed Linux profile artifact absent; aarch64 hardware not present | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P12 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P13 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P14 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 
 Overall: partial. P01-windows-x86_64 and all explicitly permitted unsigned
 P06/P08 x86_64 slices passed three independent runs on the frozen development
-candidate. Signature/adoption assertions, Windows ARM64 and all other applicable
-Windows cells remain owed with their written owner/input prerequisites.
-No complete Windows, Linux, macOS or WSL pass exists. No platform inherits CI results.
+candidate. Native Linux x86_64 was available, but P01 and P11 were blocked
+before live startup because the trusted retained profile artifacts do not exist.
+The source-only wheel passed the local package, clean-install, extension and test
+gates and remains ineligible as a live-cell substitute. Signature/adoption
+assertions, Windows ARM64 and all other applicable Windows cells remain owed with
+their written owner/input prerequisites. No complete Windows, Linux, macOS or WSL
+pass exists. No platform inherits CI results.
 
 | Linux desktop | x86_64 | aarch64 |
 |---|---|---|
-| GNOME Wayland | not run: host owed | not run: host owed |
-| GNOME X11 | not run: host owed | not run: host owed |
-| KDE Plasma | not run: host owed | not run: host owed |
-| Minimal install | not run: host owed | not run: host owed |
-| Sway | not run: host owed | not run: host owed |
-| Hyprland | not run: host owed | not run: host owed |
+| GNOME Wayland | blocked: trusted retained x86_64 profile artifacts absent | not run: native aarch64 hardware unavailable |
+| GNOME X11 | not run: no physical GNOME X11 session | not run: no physical GNOME X11 aarch64 session |
+| KDE Plasma | not run: no physical KDE Plasma session | not run: no physical KDE Plasma aarch64 session |
+| Minimal install | not run: no physical minimal-install session | not run: no physical minimal-install aarch64 session |
+| Sway | not run: no physical Sway session | not run: no physical Sway aarch64 session |
+| Hyprland | not run: no physical Hyprland session | not run: no physical Hyprland aarch64 session |
 
 ## Evidence
 
@@ -2985,6 +2989,18 @@ precede final wheel construction. Reviewed adoption rules and held
 signed fixtures are still absent. Native hosts, protected
 authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
+
+The 2026-09-24 native Linux x86_64 continuation used Ubuntu 26.04 on GNOME
+Wayland at `7798d30fa4f6115c39f51b76084a66e196534670`. The trusted
+default-branch `profile-wheels` workflow had no completed run, so no retained,
+validated standalone or managed Linux profile artifact existed. The available
+feature-branch `unsigned-development-x86_64` artifact is the explicit Windows
+exception and was not relabeled. P01-linux-x86_64 and P11-linux-x86_64 are
+therefore blocked before live startup. The source-only wheel passed the complete
+local Python suite, extension suite, scientific suite, static broker check,
+reproducible Go helper comparison and rootless clean-install smoke. Those gates
+do not change either live-cell verdict. Private evidence is in PR #182 under
+`20260924-linux-gnome-wayland`.
 
 ## What this runbook cannot prove
 
