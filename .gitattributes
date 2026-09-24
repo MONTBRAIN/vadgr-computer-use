@@ -1,1 +1,2 @@
-*.json text eol=lf
+# Reviewed producer inputs have canonical LF bytes on every checkout platform.
+packaging/profiles/*.json text eol=lf

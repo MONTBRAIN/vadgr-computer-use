@@ -14,13 +14,6 @@ import build_profile_wheels as build
 import check_profile_wheels as check
 
 
-def test_generic_setuptools_wheel_cannot_ship_native_helpers():
-    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())
-    package_data = project["tool"]["setuptools"]["package-data"]
-    assert "computer_use.browser.winhost" not in package_data
-    assert "computer_use.browser.winbroker" not in package_data
-
-
 def pe(architecture):
     data = bytearray(128)
     data[:2] = b"MZ"

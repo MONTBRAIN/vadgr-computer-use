@@ -323,7 +323,9 @@ receipt SHA-256 is
 The installed Windows profile manifest is SHA-256
 `331a43cd1f72519140d42b3f0015eb684cff9120f8c815bbe53a3e05af3ce321`.
 Resolve and verify these retained bytes from the common evidence boundary before
-reuse. Later result-only runbook commits are not a new product identity.
+reuse. Later result-only or landing-only commits are not a new product identity.
+Landing reconciliation preserves the tested product code and does not qualify
+new workflow artifacts as replacements for the held candidate.
 
 P06's released-predecessor process transition and P08's drain, unknown-owner,
 PID-reuse and cancellation behavior can run against that retained development
