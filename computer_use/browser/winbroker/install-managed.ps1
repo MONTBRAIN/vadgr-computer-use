@@ -83,6 +83,12 @@ function Set-PrivateDirectory([string]$Path) {
         $acl.AddAccessRule($rule)
     }
     Set-Acl -LiteralPath $Path -AclObject $acl
+    # An elevated Windows process can preserve the Administrators group as the
+    # owner even when DirectorySecurity names the current user.  Set the owner
+    # through the native ACL utility, then verify the complete descriptor.
+    $ownerName = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    & "$env:SystemRoot\System32\icacls.exe" $Path /setowner $ownerName /C | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to set managed broker owner' }
     Assert-Private $Path $true
 }
 
