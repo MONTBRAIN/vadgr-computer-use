@@ -79,6 +79,19 @@ cell; replace the branch reference with the implementation PR URL before handoff
 
 ## Producer, qualification, merge and release order
 
+Vadgr CUA 0.7.9 uses the **open-PR candidate producer** lifecycle. Trusted
+default-branch workflow code consumes the exact reviewed feature source and
+artifacts as data; merged product source is not a producer prerequisite. The
+implementation PR may therefore open after its ordinary first-host unsigned
+pass and green source checks. Every required unsigned, non-signature host
+assertion, finding and PR check still gates merge. Signing- and adoption-
+dependent assertions do not gate PR opening, but they do gate merge because the
+held candidate can be produced from the open PR. Publication promotes those
+same qualified bytes without rebuilding or re-signing, then verifies the public
+download against the retained inventory, provenance, hashes and signatures.
+Never merge #109 to manufacture its test candidate, and never use an unsigned
+result as a signing or adoption pass.
+
 The prerequisite trusted-tooling PR is
 `https://github.com/MONTBRAIN/vadgr-computer-use/pull/110`.
 It landed on master as `5c9a43816f2dd371f903bda290e21aa5c194cc29` and does not
