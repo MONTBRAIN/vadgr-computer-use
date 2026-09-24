@@ -46,6 +46,7 @@ def test_system_api_set_contracts_are_not_deployed_as_app_local_dlls(tmp_path, b
         "api-ms-win-core-console-l1-1-0.dll",
         "API-MS-WIN-CRT-RUNTIME-L1-1-0.DLL",
         "ext-ms-win-shell-shell32-l1-2-0.dll",
+        "ucrtbase.dll",
     )
     for name in removable:
         (internal / name).write_bytes(b"system contract")

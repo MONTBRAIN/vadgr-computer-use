@@ -176,11 +176,11 @@ def write_predecessor_catalog(source: Path, destination: Path, architecture: str
 
 
 def remove_system_api_set_forwarders(bundle: Path) -> tuple[str, ...]:
-    """Remove virtual Windows 10+ API-set contracts from app-local output."""
+    """Remove Windows 10+ system UCRT and virtual API-set contracts."""
     pattern = re.compile(r"(?i)(?:api|ext)-ms-win-[a-z0-9-]+\.dll")
     removed = []
     for path in sorted(bundle.rglob("*.dll")):
-        if not pattern.fullmatch(path.name):
+        if path.name.lower() != "ucrtbase.dll" and not pattern.fullmatch(path.name):
             continue
         if path.is_symlink() or not path.is_file():
             raise ValueError("Windows API-set output is not an ordinary file")
