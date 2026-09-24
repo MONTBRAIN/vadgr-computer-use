@@ -143,14 +143,15 @@ def provision_verifiers(base: Path, output: Path) -> None:
             freeze(output / architecture / name, data)
 
 
-def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: dict) -> None:
+def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: dict, *, source_repository: Path | None = None) -> None:
     """Insert only derived source/member identities; reviewed authority never comes from outputs."""
     validate_producer(descriptor["producer"])
     base = repository / "packaging/profiles"
     rules = read_json((base / "adoption-rules.json").read_bytes())
     validate_rules(rules)
     pins = read_json((base / "verifier-inputs.json").read_bytes())
-    version = tomllib.loads((repository / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+    source_repository = source_repository or repository
+    version = tomllib.loads((source_repository / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]
     commit = descriptor["producer"]["source_commit"]

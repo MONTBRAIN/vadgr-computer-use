@@ -243,7 +243,7 @@ def build_relay(repository: Path, output: Path, architecture: str) -> Path:
     return destination
 
 
-def build(source_commit: str, output: Path, architecture: str = "x86_64") -> None:
+def build(source_commit: str, output: Path, architecture: str = "x86_64", source_repository: Path | None = None) -> None:
     if sys.platform != "win32":
         raise SystemExit("the Windows broker must be built on Windows")
     configuration = require_native_architecture(architecture)
@@ -254,7 +254,8 @@ def build(source_commit: str, output: Path, architecture: str = "x86_64") -> Non
     if pyinstaller != EXPECTED_PYINSTALLER:
         raise SystemExit(f"expected PyInstaller {EXPECTED_PYINSTALLER}, got {pyinstaller}")
 
-    repository = Path(__file__).resolve().parents[1]
+    tooling = Path(__file__).resolve().parents[1]
+    repository = source_repository.resolve() if source_repository else tooling
     entry = repository / "computer_use" / "browser" / "windows_broker_entry.py"
     source_paths = [
         repository / "computer_use" / "__init__.py",
@@ -285,11 +286,7 @@ def build(source_commit: str, output: Path, architecture: str = "x86_64") -> Non
         dist = root / "dist"
         predecessor_catalog = root / "predecessor-catalog.json"
         write_predecessor_catalog(
-            repository
-            / "computer_use"
-            / "browser"
-            / "winbroker"
-            / "predecessor-catalog.json",
+            tooling / "packaging/profiles/predecessor-input.json",
             predecessor_catalog,
             architecture,
         )
@@ -358,7 +355,7 @@ def build(source_commit: str, output: Path, architecture: str = "x86_64") -> Non
         shutil.copyfile(pyinstaller_license, bundle / "PYINSTALLER-COPYING.txt")
         shutil.copyfile(repository / "LICENSE", bundle / "VADGR-CUA-LICENSE.txt")
 
-        _, source_receipt = prepare_notices(repository, bundle, Path(sys.base_prefix))
+        _, source_receipt = prepare_notices(repository, bundle, Path(sys.base_prefix), tooling_repository=tooling)
         files = inventory(bundle)
         archive_name, manifest_name, sbom_name = artifact_names(architecture)
         archive = output / archive_name
@@ -399,7 +396,7 @@ def build(source_commit: str, output: Path, architecture: str = "x86_64") -> Non
             "files": files,
         }
         write_json(output / manifest_name, manifest)
-        toolchain = json.loads((repository / "packaging/profiles/toolchain.json").read_bytes())
+        toolchain = json.loads((tooling / "packaging/profiles/toolchain.json").read_bytes())
         sbom = build_sbom(
             bundle,
             relay,
@@ -416,6 +413,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--architecture", choices=sorted(ARCHITECTURES), required=True)
+    parser.add_argument("--source-repository", type=Path)
     parser.add_argument(
         "--output",
         type=Path,
@@ -426,7 +424,7 @@ def main() -> int:
         c not in "0123456789abcdef" for c in args.source_commit
     ):
         raise SystemExit("--source-commit must be one lowercase 40-character Git commit")
-    build(args.source_commit, args.output.resolve(), args.architecture)
+    build(args.source_commit, args.output.resolve(), args.architecture, args.source_repository)
     return 0
 
 

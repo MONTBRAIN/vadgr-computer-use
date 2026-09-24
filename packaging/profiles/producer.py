@@ -7,9 +7,11 @@ import argparse
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tarfile
+import tomllib
 import urllib.request
 from pathlib import Path
 
@@ -32,14 +34,53 @@ from build_profile_wheels import (
 from check_profile_wheels import check_catalog
 
 
+def source_input() -> dict:
+    record = read_json((ROOT / "packaging/profiles/source-input.json").read_bytes())
+    if (
+        set(record) != {"schema", "source_commit", "version"}
+        or record["schema"] != 1
+        or not isinstance(record["source_commit"], str)
+        or not re.fullmatch(r"[0-9a-f]{40}", record["source_commit"])
+        or record["source_commit"] == "0" * 40
+        or record["version"] != "0.7.9"
+    ):
+        raise ValueError("reviewed source input identity differs")
+    return record
+
+
+def git_output(source: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(source), *arguments], capture_output=True,
+        text=True, check=True, timeout=30,
+    )
+    return result.stdout.strip()
+
+
+def checked_source(source: Path) -> Path:
+    record = source_input()
+    source = source.resolve()
+    if git_output(source, "rev-parse", "HEAD") != record["source_commit"]:
+        raise ValueError("source checkout head differs from reviewed input")
+    if git_output(source, "status", "--porcelain", "--untracked-files=all"):
+        raise ValueError("source checkout must be clean")
+    modes = git_output(source, "ls-tree", "-r", "--format=%(objectmode)", "HEAD").splitlines()
+    if any(mode not in {"100644", "100755"} for mode in modes):
+        raise ValueError("source checkout contains a symlink or submodule")
+    project = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
+    if project["project"]["version"] != record["version"]:
+        raise ValueError("source version differs from reviewed input")
+    return source
+
+
 def preflight() -> None:
     base = ROOT / "packaging" / "profiles"
     required = [
-        base / name for name in ("size-budgets.json", "verifier-inputs.json", "adoption-rules.json")
+        base / name for name in ("source-input.json", "size-budgets.json", "verifier-inputs.json", "adoption-rules.json")
     ] + [ROOT / "requirements/windows-broker-build.txt"]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
     if missing:
         raise ValueError("reviewed producer inputs are missing: " + ", ".join(missing))
+    source_input()
     validate_rules(read_json((base / "adoption-rules.json").read_bytes()))
     budgets = read_json((base / "size-budgets.json").read_bytes())
     if set(budgets) != {*PROFILES, "standalone"} or any(
@@ -127,7 +168,7 @@ def descriptor(inputs: Path, output: Path) -> None:
         "repository": "MONTBRAIN/vadgr-computer-use",
         "repository_id": int(os.environ["GITHUB_REPOSITORY_ID"]),
         "owner_id": int(os.environ["GITHUB_REPOSITORY_OWNER_ID"]),
-        "source_commit": os.environ["GITHUB_SHA"],
+        "source_commit": source_input()["source_commit"],
         "tooling_commit": os.environ["GITHUB_SHA"],
         "workflow": ".github/workflows/profile-wheels.yml",
         "workflow_id": run["workflow_id"],
@@ -139,7 +180,7 @@ def descriptor(inputs: Path, output: Path) -> None:
     }
     validate_producer(producer)
     if (
-        run["head_sha"] != producer["source_commit"]
+        run["head_sha"] != producer["tooling_commit"]
         or run["run_attempt"] != 1
         or run["event"] != "workflow_dispatch"
         or run["head_branch"] != "master"
@@ -169,7 +210,7 @@ def descriptor(inputs: Path, output: Path) -> None:
         artifact = matching[0]
         if (
             artifact["workflow_run"]["id"] != run_id
-            or artifact["workflow_run"]["head_sha"] != producer["source_commit"]
+            or artifact["workflow_run"]["head_sha"] != producer["tooling_commit"]
         ):
             raise ValueError("native artifact belongs to another source or workflow run")
         root = inputs / name
@@ -207,14 +248,15 @@ def check_size(path: Path) -> None:
             print(f"  {component}: {size} uncompressed bytes")
 
 
-def validate_output(path: Path, inputs: Path, descriptor_path: Path) -> None:
+def validate_output(path: Path, inputs: Path, descriptor_path: Path, source: Path) -> None:
     """Recheck source, policy and API identities on the fresh attesting runner."""
     descriptor(inputs, descriptor_path)
     expected = read_json(descriptor_path.read_bytes())
     catalog = check_catalog(path)
     if catalog["producer"] != expected["producer"]:
         raise ValueError("catalog producer differs from independently observed GitHub run")
-    common = source_files(ROOT)
+    source = checked_source(source)
+    common = source_files(source)
     for profile, row in catalog["profiles"].items():
         if row["evidence"] != expected["profiles"][profile]:
             raise ValueError("catalog native evidence differs from retained artifact")
@@ -224,7 +266,7 @@ def validate_output(path: Path, inputs: Path, descriptor_path: Path) -> None:
     # Regenerate policies from fixed review inputs and independently retained helpers.
     generated = descriptor_path.parent / "validated-adoption"
     provision_verifiers(ROOT / "packaging/profiles", generated)
-    generate_policies(ROOT, inputs, generated, expected)
+    generate_policies(ROOT, inputs, generated, expected, source_repository=source)
     standalone = zip_members(
         (path.parent / catalog["standalone"]["wheel"]["filename"]).read_bytes()
     )
@@ -244,6 +286,8 @@ def main() -> None:
         "operation",
         choices=(
             "preflight",
+            "source-input",
+            "check-source",
             "descriptor",
             "check-size",
             "provision-python",
@@ -258,8 +302,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--catalog", type=Path)
     parser.add_argument("--descriptor", type=Path)
+    parser.add_argument("--source", type=Path)
     args = parser.parse_args()
-    if args.operation == "preflight":
+    if args.operation == "source-input":
+        print(source_input()["source_commit"])
+    elif args.operation == "check-source":
+        checked_source(args.source)
+        print("Reviewed source checkout verified")
+    elif args.operation == "preflight":
         preflight()
         print("All reviewed producer inputs are present")
     elif args.operation == "descriptor":
@@ -273,10 +323,11 @@ def main() -> None:
         provision_verifiers(ROOT / "packaging/profiles", args.output)
         print("Both native offline verifiers, licenses and root verified")
     elif args.operation == "generate-adoption":
-        generate_policies(ROOT, args.inputs, args.output, read_json(args.descriptor.read_bytes()))
+        source = checked_source(args.source)
+        generate_policies(ROOT, args.inputs, args.output, read_json(args.descriptor.read_bytes()), source_repository=source)
         print("Both source-bound adoption policies frozen from reviewed rules")
     elif args.operation == "validate-output":
-        validate_output(args.catalog, args.inputs, args.descriptor)
+        validate_output(args.catalog, args.inputs, args.descriptor, args.source)
         print("Retained outputs match independently observed source, policy and GitHub identities")
     else:
         native_smoke(args.inputs, args.output)

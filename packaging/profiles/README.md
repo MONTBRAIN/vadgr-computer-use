@@ -18,8 +18,10 @@ one broker ZIP and its member manifest from `build_windows_broker.py`. It also
 requires a producer descriptor with `producer` and `profiles` mappings. Each
 profile evidence record has `build_sha256`, `test_sha256`, `sbom_sha256`, numeric
 `native_job_ids`, and immutable `artifacts` records with `id` and `sha256`.
-The descriptor binds the exact source and tooling commits and the first hosted
-workflow attempt on master. No artifact or release ID is guessed.
+The descriptor binds the exact source and tooling commits separately and the
+first hosted workflow attempt on master. `source-input.json` pins the reviewed
+product commit and version. It accepts no workflow input or environment override.
+No artifact or release ID is guessed.
 
 The producer creates one adoption directory per architecture under its isolated
 build output. These generated directories do not belong in Git:
@@ -82,12 +84,36 @@ invent a legal approval. Its canonical JSON schema is:
   `rfc3161-sha256`. The producer derives `input_sha256` from the built bytes.
 
 The trusted workflow runs only from master, on its first dispatched attempt.
-It verifies numeric repository/owner identities and uses the same source and
-tooling commit. The fresh validator re-reads the GitHub run, successful native
-jobs, retained artifact IDs/digests and evidence hashes. It compares packaged
-source with its checkout, independently regenerates both policies from the fixed
-review inputs, and checks all nine wheels before attesting the catalog. Native
-build and live qualification remain separate results.
+Its separate source checkout uses the exact reviewed commit. Every source checkout
+must be clean, match the pinned version, and contain no symlink or submodule.
+The native build jobs can execute candidate source but have no signing or
+attestation permissions and retain no checkout credential. A fresh validator
+runs only master tooling and reads the candidate source and artifacts as data.
+It verifies numeric repository/owner identities, binds the workflow run, native
+jobs and artifact origins to the tooling commit, and binds packaged source and
+helper manifests to the source commit. It independently regenerates both policies
+from master review inputs and checks all nine wheels before attesting the catalog.
+Native build and live qualification remain separate results.
+
+## Qualification and landing order
+
+The trusted producer tooling lands through a separate prerequisite PR before
+the runtime implementation PR. It adds no runtime change or version bump.
+The reviewed source pin can name that still-open implementation branch's exact
+commit. Moving the branch does not move the pin; a product fix requires a new
+reviewed input commit and new retained artifacts.
+
+After the tooling and exact adoption rules land, dispatch `profile-wheels.yml`
+on master once. Keep all nine wheels and the catalog held. Qualify native
+Linux/macOS, Windows and WSL against those retained bytes. The separately approved
+signing job transforms the Windows helper closure once per architecture for both
+native Windows and WSL. Signed/adoption cells run against its actual held output.
+Only the complete required live matrix and final green checks make the runtime
+implementation PR eligible for owner-approved merge. Publication follows its own
+review and publishes the retained qualified artifacts without rebuilding.
+
+Missing reviewed `adoption-rules.json` prevents producer dispatch. A tooling PR,
+an unsigned development pass or a catalog attestation is no signed-helper pass.
 
 ## Package size ceilings
 

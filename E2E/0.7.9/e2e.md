@@ -1,11 +1,12 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: not run: written before the first live cell.
-> Implementation branch: `feature/0.7.9-profile-packaging`.
+> Status: partial: only P01-windows-x86_64 has a recorded live pass.
+> Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
-> Tested head: `8bc81e68cdbdb69524bb5d1738b2b764f6baf3dd`.
+> Tested unsigned development product: `b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`.
+> Reviewed producer source pin: `bcc0969e9edbc1030cb96491f80abdc8ed013cad`.
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
-> No release, protected signing result or native pass is claimed.
+> No complete platform pass, held signed candidate or release is claimed.
 
 Read this file, [E2E rules](../README.md), [template](../TEMPLATE.md), `AGENTS.md`,
 `CLAUDE.md`, and the public README installation/platform instructions completely.
@@ -42,6 +43,38 @@ they do not choose tool calls or replace a real agent. Create evidence directori
 before action. Publish no implementation PR before the first native pass and green
 branch checks. Resolve the tested commit and common evidence PR before any live
 cell; replace the branch reference with the implementation PR URL before handoff.
+
+## Producer, qualification, merge and release order
+
+The prerequisite trusted-tooling PR is
+`https://github.com/MONTBRAIN/vadgr-computer-use/pull/110`.
+It starts from current master and does not change shipped runtime code or version.
+It must land before the protected producer can run. This does not waive any final
+merge gate for implementation PR #109.
+
+The landed producer reads `packaging/profiles/source-input.json`, which pins the
+exact reviewed source commit separately from its own default-branch tooling commit.
+Native build jobs execute source without signing or attestation credentials.
+The fresh attestation job executes only trusted tooling and treats source and
+artifacts as data. Catalog and helper source identities bind the source commit;
+workflow run, native jobs, artifact origins and attestation bind the tooling commit.
+Do not require those two commits to be equal or silently follow a moving branch.
+
+Land the exact reviewed `adoption-rules.json` before dispatch. It must identify
+the actual approved signing/legal member policy and authorized consumer producer
+identities. Its absence currently blocks the trusted producer; do not fabricate it.
+Dispatch `profile-wheels.yml` on master once, record both exact commits, and retain
+the validated nine-wheel catalog, attestation, artifact IDs, sizes and hashes.
+No successful trusted candidate run is recorded yet.
+
+Qualify unsigned profile behavior only where the cell permits it. Protected
+signing transforms each approved Windows helper closure once for native Windows
+and WSL. Run all signed/adoption oracles against those actual retained outputs.
+Product fixes require a reviewed source-pin update and new artifacts, followed
+by affected reruns. Do not replace retained bytes under an existing identity.
+Only the complete required native matrix and green checks make #109 eligible
+for owner-approved merge. Publication is separate and uses the retained qualified
+artifacts without a rebuild. Never merge #109 to manufacture its test candidate.
 
 ## The approach: a headless agent CLI session
 
@@ -190,8 +223,8 @@ shasum -a 256 "$CUA_WHEEL"
 ```
 
 Native Windows normally uses that same retained, validated standalone profile
-wheel. Before the implementation PR exists, P01-windows-x86_64 alone may instead
-use the exact `unsigned-development-x86_64` artifact produced for the tested
+wheel. P01-windows-x86_64 and the explicitly unsigned P06/P08 slices below may
+instead use the exact `unsigned-development-x86_64` artifact produced for the tested
 feature-branch commit by `development-profile.yml`. Record the run and artifact
 IDs, archive/wheel hashes and `development-receipt.json`; require its package trust
 to say `development: true`, `publishable: false`, `signing: unsigned-input`, and
@@ -204,6 +237,23 @@ py -m venv "$env:CUA_TEST_ROOT/venv"
 & "$env:CUA_TEST_ROOT/venv/Scripts/python.exe" -m pip install "$env:CUA_WHEEL"
 Get-FileHash -Algorithm SHA256 -LiteralPath "$env:CUA_WHEEL"
 ```
+
+The retained Windows development candidate above is product commit
+`b6a72a1a59d796dab4d2047838d4a3de8f5a31ac`, workflow run `35979374403`.
+Resolve and verify its exact retained receipt and artifact hashes from the common
+evidence boundary before reuse. A later runbook head is not a new product identity.
+The newer reviewed producer source pin does not retroactively qualify that source.
+
+P06's released-predecessor process transition and P08's drain, unknown-owner,
+PID-reuse and cancellation behavior can run against that retained development
+wheel when their complete unsigned process/operation oracles are available.
+Record each result as an **unsigned development slice**, not a signed-cell pass.
+Use only exact released predecessors or declared test-owned process fixtures.
+Do not create synthetic signed/adoption fixtures. Any signature, catalog trust,
+authorized adoption or signed transition oracle remains blocked until the exact
+held signed inputs exist. The cell retains that owed oracle; no aggregate platform
+pass follows from the unsigned slice. Rerun the affected cell on the held final
+candidate. All other cells keep their existing prerequisites.
 
 Missing native helpers, verifier or trust policy fail the build prerequisite;
 do not relabel x64 assets. A development wheel intentionally lacks verifier and
@@ -2783,7 +2833,9 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 | Part P13 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 | Part P14 | not run: no native session | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 
-Overall: not run: no live cell executed. No platform inherits CI results.
+Overall: partial. P01-windows-x86_64 passed on the recorded unsigned development
+candidate. Windows ARM64 and every other applicable Windows cell remain owed.
+No complete Windows, Linux, macOS or WSL pass exists. No platform inherits CI results.
 
 | Linux desktop | x86_64 | aarch64 |
 |---|---|---|
@@ -2835,8 +2887,15 @@ Use the same procedure after failed or interrupted passes.
 
 ## Findings
 
-No live findings: execution has not begun. Exact fixtures, protected authorization,
-native hosts, packaged verifier policy and evidence identity are prerequisites.
+P01-windows-x86_64 has one accepted pass (attempt 11) and ten retained earlier
+attempts. Read those evidence boundaries before any continuation; do not erase
+failed attempts or treat their noise as passing results. The public cell above
+records the exact tested subject and accepted observations.
+
+The trusted-producer/final-merge circular prerequisite is repaired by separate
+tooling PR #110 and the exact source/tooling identity split. Reviewed adoption
+rules and held signed fixtures are still absent. Native hosts, protected
+authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
 
 ## What this runbook cannot prove

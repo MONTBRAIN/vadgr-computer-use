@@ -131,7 +131,7 @@ def collect_go_sources(repository: Path, bundle: Path) -> dict:
     }
 
 
-def prepare_notices(repository: Path, bundle: Path, python_root: Path) -> tuple[dict, dict]:
+def prepare_notices(repository: Path, bundle: Path, python_root: Path, *, tooling_repository: Path | None = None) -> tuple[dict, dict]:
     origins = python_origins(bundle, python_root)
     components = {row["component"] for row in origins.values()}
     static_components = set()
@@ -149,7 +149,7 @@ def prepare_notices(repository: Path, bundle: Path, python_root: Path) -> tuple[
         if filename in names:
             components.add(component)
             static_components.add(component)
-    pins = read_json((repository / "packaging/profiles/notice-inputs.json").read_bytes())
+    pins = read_json(((tooling_repository or repository) / "packaging/profiles/notice-inputs.json").read_bytes())
     for component in sorted(components & NOTICE_COMPONENTS.keys()):
         name, _ = NOTICE_COMPONENTS[component]
         data = (python_root / "notices" / name).read_bytes()

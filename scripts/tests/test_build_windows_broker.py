@@ -173,7 +173,7 @@ def test_predecessor_catalog_is_native_architecture_closed(
 ):
     source = (
         pathlib.Path(__file__).resolve().parents[2]
-        / "computer_use/browser/winbroker/predecessor-catalog.json"
+        / "packaging/profiles/predecessor-input.json"
     )
     output = tmp_path / "predecessor-catalog.json"
 
@@ -203,7 +203,7 @@ def test_predecessor_catalog_refuses_missing_released_input(tmp_path, builder):
 
 def test_released_078_predecessor_row_matches_retained_source_bytes():
     root = pathlib.Path(__file__).resolve().parents[2] / "computer_use/browser/winbroker"
-    catalog = json.loads((root / "predecessor-catalog.json").read_bytes())
+    catalog = json.loads((root.parents[2] / "packaging/profiles/predecessor-input.json").read_bytes())
     row = next(item for item in catalog["releases"] if item["version"] == "0.7.8")
     archive = root / "vadgr-cua-browser-broker-win-x64.zip"
     manifest = root / "vadgr-cua-browser-broker-win-x64.manifest.json"
