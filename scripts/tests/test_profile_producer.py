@@ -12,6 +12,8 @@ import build_profile_wheels as build
 import check_profile_wheels as check
 import producer
 from build_development_profile import build_development
+from build_native_development_profiles import build_native_development
+from check_native_development_profiles import check_native_development_receipt
 from test_profile_wheels import package_inputs as _package_inputs
 
 profile_inputs = _package_inputs
@@ -128,6 +130,72 @@ def test_development_wheel_is_explicit_and_cannot_be_a_release_catalog(profile_i
     assert set(trust["manifest_sha256"]) == {"windows-x86_64", "wsl-x86_64"}
     with pytest.raises(ValueError):
         check.check_catalog(output / "development-receipt.json")
+
+
+@pytest.mark.parametrize("platform,architecture", [("linux", "x86_64"), ("macos", "aarch64")])
+def test_native_development_profiles_are_exact_nonpublishable_artifacts(
+    profile_inputs, tmp_path, platform, architecture
+):
+    source, _helpers, _output, descriptor, _adoption = profile_inputs
+    output = tmp_path / "native"
+    receipt = build_native_development(
+        source,
+        platform,
+        architecture,
+        descriptor["producer"]["source_commit"],
+        output,
+    )
+    path = output / f"native-development-{platform}-{architecture}-receipt.json"
+    assert check_native_development_receipt(path) == receipt
+    assert receipt["development"] is True
+    assert receipt["publishable"] is False
+    assert receipt["signing"] == "not-applicable"
+    assert receipt["adoption"] == "disabled"
+    assert set(receipt["artifacts"]) == {"managed", "standalone"}
+    assert (
+        receipt["artifacts"]["managed"]["wheel"]["filename"]
+        != receipt["artifacts"]["standalone"]["wheel"]["filename"]
+    )
+    for artifact in receipt["artifacts"].values():
+        assert "0development" in artifact["wheel"]["filename"]
+    with pytest.raises(ValueError):
+        check.check_catalog(path)
+
+
+def test_native_development_receipt_rejects_platform_or_hash_drift(profile_inputs, tmp_path):
+    source, _helpers, _output, descriptor, _adoption = profile_inputs
+    output = tmp_path / "native"
+    receipt = build_native_development(
+        source, "linux", "x86_64", descriptor["producer"]["source_commit"], output
+    )
+    path = output / "native-development-linux-x86_64-receipt.json"
+    receipt["platform"] = "macos"
+    path.write_bytes(build.canonical(receipt))
+    with pytest.raises(ValueError):
+        check_native_development_receipt(path)
+
+
+def test_native_development_wheels_exclude_windows_and_adoption_payloads(profile_inputs, tmp_path):
+    source, _helpers, _output, descriptor, _adoption = profile_inputs
+    output = tmp_path / "native"
+    receipt = build_native_development(
+        source, "linux", "x86_64", descriptor["producer"]["source_commit"], output
+    )
+    for artifact in receipt["artifacts"].values():
+        files = build.zip_members((output / artifact["wheel"]["filename"]).read_bytes())
+        assert not any(name.startswith(build.PREFIX + "adoption/") for name in files)
+        assert not any(name.endswith(".ps1") for name in files)
+        assert not any(name.startswith(build.PREFIX + "winhost/") for name in files)
+        assert not any(
+            name.startswith(build.PREFIX + "winbroker/") and not name.endswith(".py")
+            for name in files
+        )
+    standalone = build.zip_members(
+        (output / receipt["artifacts"]["standalone"]["wheel"]["filename"]).read_bytes()
+    )
+    trust = check.package_trust(standalone)
+    assert trust["development"] is True
+    assert "adoption" not in trust
 
 
 def test_preflight_requires_reviewed_rules_instead_of_committed_future_policy(

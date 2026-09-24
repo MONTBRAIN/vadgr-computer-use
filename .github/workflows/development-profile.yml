@@ -16,6 +16,51 @@ permissions:
   contents: read
 
 jobs:
+  native-development:
+    name: native-development-${{ matrix.platform }}-${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            architecture: x86_64
+            runner: ubuntu-24.04
+          - platform: linux
+            architecture: aarch64
+            runner: ubuntu-24.04-arm
+          - platform: macos
+            architecture: x86_64
+            runner: macos-15-intel
+          - platform: macos
+            architecture: aarch64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Build the native development profiles
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: >-
+          python scripts/build_native_development_profiles.py
+          --platform "${{ matrix.platform }}"
+          --architecture "${{ matrix.architecture }}"
+          --source-commit "$SOURCE_COMMIT"
+          --output build/native-development/output
+      - name: Validate the native development receipt
+        run: >-
+          python scripts/check_native_development_profiles.py
+          --receipt
+          "build/native-development/output/native-development-${{ matrix.platform }}-${{ matrix.architecture }}-receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-development-${{ matrix.platform }}-${{ matrix.architecture }}
+          path: build/native-development/output/
+          if-no-files-found: error
+          retention-days: 30
+
   unsigned-development:
     name: unsigned-development-${{ matrix.architecture }}
     strategy:

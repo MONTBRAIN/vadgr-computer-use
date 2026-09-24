@@ -172,3 +172,21 @@ catalog checker rejects this receipt, and the publication workflow requires the
 trusted nine-wheel catalog. Development artifacts never satisfy signed or
 offline-adoption cells. Run the same builder locally only from the exact clean
 committed source with native helper inputs from that commit.
+
+The workflow also builds native Linux and macOS development profiles from the
+exact clean feature commit. Each supported hosted architecture produces one
+managed wheel, one standalone-development wheel, one canonical profile manifest
+and one canonical receipt. These jobs need no Windows helper, adoption rule,
+signing input, attestation or final catalog. Their filenames and wheel build tags
+contain `0development`, and every wheel contains a canonical development marker.
+The marker and receipt state the exact source commit, platform, architecture,
+`development: true`, `publishable: false`, disabled adoption and inapplicable
+signing.
+
+`scripts/check_native_development_profiles.py` validates those retained bytes.
+It checks the exact profile, manifest, wheel records, hashes and the absence of
+Windows helper, installer and adoption payloads. The final catalog checker still
+accepts only all eight managed release profiles plus the release standalone
+wheel from the trusted producer. The publication path still requires that
+catalog and its attestation. A native development receipt or wheel cannot enter
+either path and cannot prove signing, adoption, attestation or publication.

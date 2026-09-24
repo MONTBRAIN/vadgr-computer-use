@@ -543,6 +543,27 @@ to the cell, but both use the same isolation rule.
 
 [chrome-for-testing-downloads]: https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
 
+## Native development profile artifacts
+
+When a minor changes profile packaging before final signing inputs exist, P01
+and P11 on native Linux or macOS may use exact retained development artifacts.
+The workflow must produce a platform-specific managed wheel, a conspicuously
+named standalone-development wheel, canonical manifests and a canonical receipt.
+Each artifact must identify the exact clean source commit, platform and
+architecture. Each must state `development: true`, `publishable: false`, and
+that signing and adoption are disabled or not applicable.
+
+Download the retained workflow artifact only after its run succeeds. Record the
+workflow run, job, artifact ID, archive digest, filenames, byte sizes, wheel
+digests, manifest digests and receipt digest. Verify all values independently
+before installation. Never rebuild or relabel substitute bytes locally.
+
+The development exception closes only written unsigned P01 and P11 assertions.
+It never proves signing, adoption, attestation, final catalog completeness or
+publication. Final catalog and publication validation must reject every
+development receipt and wheel. Hosted CI produces bytes and unit evidence only.
+It never establishes a native desktop pass.
+
 ## Persistent helper lifecycle recovery
 
 > Complete this section whenever the release starts or changes a broker,

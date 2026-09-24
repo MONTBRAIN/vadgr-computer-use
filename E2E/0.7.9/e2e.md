@@ -285,16 +285,30 @@ native helper, verifier, adoption policy, PowerShell installer or helper archive
 and is a packaging gate rather than a live-cell subject. Never install it for P01
 or relabel it as a profile wheel.
 
-Linux/macOS install the exact retained, validated standalone profile wheel from
-the trusted default-branch producer. Record its workflow run, artifact ID, archive
-hash, wheel hash and catalog/attestation identities before extraction. With
-`CUA_WHEEL` set to that verified wheel outside the checkout:
+Linux/macOS normally install the exact retained, validated standalone profile
+wheel from the trusted default-branch producer. Before final signing inputs exist,
+P01 and P11 may instead use the exact native development artifact produced by
+`development-profile.yml` for the tested feature commit. P01 uses its
+standalone-development wheel. P11 uses its managed wheel. Record the successful
+workflow run, job and artifact IDs, archive hash, receipt hash, canonical manifest
+hash, wheel filenames, sizes and hashes before extraction. Require the receipt
+and both embedded markers to name the exact source commit, platform and
+architecture with `development: true`, `publishable: false`, signing not
+applicable and adoption disabled. Independently validate the retained bytes with
+`scripts/check_native_development_profiles.py`. Never rebuild or relabel a local
+substitute. With `CUA_WHEEL` set to the verified retained wheel outside the checkout:
 
 ```sh
 python3 -m venv "$CUA_TEST_ROOT/venv"
 "$CUA_TEST_ROOT/venv/bin/python" -m pip install "$CUA_WHEEL"
 shasum -a 256 "$CUA_WHEEL"
 ```
+
+The native development exception establishes only the unsigned P01/P11 slice.
+It cannot satisfy signing, adoption, attestation, final catalog or publication
+oracles. Hosted CI creates and checks the artifact but never establishes a native
+desktop verdict. The final trusted producer remains blocked until reviewed
+adoption rules exist and still requires the complete nine-wheel catalog.
 
 Native Windows normally uses that same retained, validated standalone profile
 wheel. P01-windows-x86_64 and the explicitly unsigned P06/P08 slices below may
