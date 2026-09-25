@@ -32,6 +32,18 @@ SIGNATURE_FIELDS = {
     "digest_algorithm",
     "timestamp_algorithm",
 }
+RULE_FIELDS = SIGNATURE_FIELDS | {"input_sha256"}
+# These are verifier capabilities, not defaults or evidence for a vendor file.
+# A newly observed vendor scheme needs a reviewed verifier change before admission.
+VENDOR_SIGNATURE_ALGORITHMS = {("sha256", "rfc3161-sha256")}
+
+
+def reviewed_digest(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+        and value != "0" * 64
+    )
 
 
 def checked_download(url: str, sha256: str, size: int) -> bytes:
@@ -68,10 +80,12 @@ def validate_rules(rules: dict) -> None:
             raise ValueError("reviewed signing paths collide")
         for name, row in rows.items():
             safe_path(name)
-            if set(row) != SIGNATURE_FIELDS:
+            if set(row) != RULE_FIELDS:
                 raise ValueError("reviewed signing class fields differ")
+            if not reviewed_digest(row["input_sha256"]):
+                raise ValueError("missing exact reviewed input digest")
             if row["trust_class"] == "data":
-                if any(v is not None for k, v in row.items() if k != "trust_class"):
+                if any(row[k] is not None for k in SIGNATURE_FIELDS - {"trust_class"}):
                     raise ValueError("data cannot assert a signature identity")
                 continue
             if row["trust_class"] not in {"publisher-sign", "vendor-preserve"}:
@@ -82,19 +96,18 @@ def validate_rules(rules: dict) -> None:
                 "certificate_sha256",
                 "chain_root_sha256",
             ):
-                if (
-                    not isinstance(row[key], str)
-                    or not re.fullmatch(r"[0-9a-f]{64}", row[key])
-                    or row[key] == "0" * 64
-                ):
+                if not reviewed_digest(row[key]):
                     raise ValueError("missing exact reviewed legal or signature identity")
             if not isinstance(row["signer"], str) or not row["signer"].strip():
                 raise ValueError("missing reviewed signer subject")
-            if (
-                row["digest_algorithm"] != "sha256"
-                or row["timestamp_algorithm"] != "rfc3161-sha256"
+            algorithms = (row["digest_algorithm"], row["timestamp_algorithm"])
+            if row["trust_class"] == "publisher-sign":
+                if algorithms != ("sha256", "rfc3161-sha256"):
+                    raise ValueError("publisher signature requires SHA-256 and RFC 3161")
+            elif not all(isinstance(value, str) for value in algorithms) or (
+                algorithms not in VENDOR_SIGNATURE_ALGORITHMS
             ):
-                raise ValueError("unsupported reviewed signature algorithms")
+                raise ValueError("unsupported reviewed vendor signature algorithms")
 
 
 def provision_verifiers(base: Path, output: Path) -> None:
@@ -144,7 +157,7 @@ def provision_verifiers(base: Path, output: Path) -> None:
 
 
 def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: dict, *, source_repository: Path | None = None) -> None:
-    """Insert only derived source/member identities; reviewed authority never comes from outputs."""
+    """Bind derived closure identities only after every member matches its reviewed bytes."""
     validate_producer(descriptor["producer"])
     base = repository / "packaging/profiles"
     rules = read_json((base / "adoption-rules.json").read_bytes())
@@ -170,9 +183,14 @@ def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: 
         files = {}
         for path, data in sorted(members.items()):
             row = rules["files"][architecture][path]
+            if digest(data) != row["input_sha256"]:
+                raise ValueError(
+                    f"member bytes differ from reviewed input: {architecture}/{path}; "
+                    "renew the exact review before producing a policy"
+                )
             if (native_identity(data) is not None) == (row["trust_class"] == "data"):
                 raise ValueError("native member signing class differs")
-            files[path] = {**row, "input_sha256": digest(data)}
+            files[path] = dict(row)
         directory = output / architecture
         root = (directory / "trusted-root.json").read_bytes()
         verifier = (directory / "gh.exe").read_bytes()
