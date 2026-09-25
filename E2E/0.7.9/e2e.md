@@ -1,6 +1,6 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: partial: three native Windows x86_64 unsigned passes complete; signed/adoption qualification remains owed.
+> Status: partial: three native Windows/Linux x86_64 and macOS arm64 unsigned passes complete; final trust qualification remains owed.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
 > Tested unsigned development product: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
@@ -677,7 +677,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** not run: physical native Intel macOS hardware is unavailable on this arm64 Mac; no emulated result is substituted. Final trusted-candidate prerequisites remain owed.
 
 ### P01-macos-aarch64: standalone selection on macos-aarch64
 
@@ -695,7 +695,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** pass, unsigned development slice in three independent native macOS 26.5.2 arm64 passes at `b94f6d49ce0e2e0fb1aa5074f5077e16076d0641`. Each installed retained standalone wheel SHA-256 `d7de4561b7ded1419edfe3e42e6a76768e78a85257e262e245caaf5fec13ef2f`, used scoped filesystem and browser-only drivers, and agreed with independent file hashes and DOM counters. The first tab stayed unchanged; native process architecture, registrations and crash-handler isolation matched. Final catalog, signing, attestation and adoption remain owed. Private evidence: PR #182, `20260925-macos-native-development/sessions/P01-pass-1-rerun` through `P01-pass-3-rerun`; failed setup attempts are retained.
 
 ## Part P02: managed clean install handoff
 
@@ -823,7 +823,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: external consuming-vehicle qualification has not run.
+**Result:** blocked: the external consuming vehicle has no held approved artifact, complete pinned combined-install inventory or authorized parent launch. This handoff remains outside CUA source acceptance.
 
 ### P02-macos-aarch64: managed clean install handoff on macos-aarch64
 
@@ -841,7 +841,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: external consuming-vehicle qualification has not run.
+**Result:** blocked: the external consuming vehicle has no held approved artifact, complete pinned combined-install inventory or authorized parent launch. This handoff remains outside CUA source acceptance.
 
 ## Part P03: nested signed deployment
 
@@ -2497,7 +2497,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** not run: physical native Intel macOS hardware is unavailable on this arm64 Mac; no emulated result is substituted. Final trusted-candidate prerequisites remain owed.
 
 ### P11-macos-aarch64: asset exclusion on macos-aarch64
 
@@ -2515,7 +2515,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** not run: native execution and prerequisites have not been verified.
+**Result:** pass, unsigned development slice in three independent native macOS 26.5.2 arm64 passes at `b94f6d49ce0e2e0fb1aa5074f5077e16076d0641`. Each installed retained managed wheel SHA-256 `d7a54c65deac65a82236ca32c0e1f56840df7f38cf70854819ff7149d798cfc7` through private Python. Complete 105-member inventories and native-header scans found no native Windows helper, PowerShell, verifier, adoption or nested executable payload. Shared Python modules remain source. Browser-only agents edited/read both owned targets and preserved the first across a switch; independent DOM confirmed exact values and counters. Final catalog, signing, attestation and adoption remain owed. Private evidence: PR #182, `20260925-macos-native-development/sessions/P11-pass-1-rerun`, `P11-pass-2` and `P11-pass-3`.
 
 ## Part P13: standalone and managed coexistence
 
@@ -2928,20 +2928,20 @@ Only applicable explicit IDs contribute to each host. P02 remains external.
 
 | part | Linux | Windows | macOS | WSL | notes |
 |---|---|---|---|---|---|
-| Part P01 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P02 | not run: external consuming-vehicle qualification is outside CUA source acceptance | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P03 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P04 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P05 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P06 | not applicable: no native Linux cell | pass: nine unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P07 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P08 | not applicable: no native Linux cell | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P09 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P10 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P11 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P12 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P13 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
-| Part P14 | not applicable: no native Linux cell | not run: no native session | not run: no native session | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P01 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | pass: three unsigned x86_64 slices at 14cb515; signed/adoption and ARM64 remain owed | pass: three explicitly unsigned arm64 development slices at b94f6d4; final trust and native Intel remain owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P02 | not run: external consuming-vehicle qualification is outside CUA source acceptance | not run: no native session | blocked: external consuming-vehicle artifact, inventory and authorization unavailable | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P03 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P04 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P05 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P06 | not applicable: no native Linux cell | pass: nine unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P07 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P08 | not applicable: no native Linux cell | pass: four unsigned x86_64 cases in each of three passes at 14cb515; signed/adoption and ARM64 remain owed | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P09 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P10 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P11 | pass: three explicitly unsigned, non-publishable x86_64 development slices at 14cb515; final catalog, signing, attestation and adoption plus aarch64 remain owed | not run: no native session | pass: three explicitly unsigned arm64 development slices at b94f6d4; final trust and native Intel remain owed | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P12 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P13 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
+| Part P14 | not applicable: no native Linux cell | not run: no native session | not applicable: no native macOS cell | not run: no WSL session | Applicable explicit IDs above; P02 is external. |
 
 Overall: partial. P01-windows-x86_64 and all explicitly permitted unsigned
 P06/P08 x86_64 slices passed three independent runs on the frozen development
@@ -2953,6 +2953,14 @@ for final catalog, signature, attestation, adoption or publication assertions.
 Windows ARM64 and all other applicable Windows cells remain owed with their
 written owner/input prerequisites. No complete Windows, Linux, macOS or WSL pass
 exists. No platform inherits CI results.
+
+P01-macos-aarch64 and P11-macos-aarch64 passed three independent unsigned
+development slices at `b94f6d49ce0e2e0fb1aa5074f5077e16076d0641`, using retained
+native development artifact `10838095100` from push workflow `36069659834`.
+Runtime/product source remains `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
+The macOS summary is partial. Native Intel hardware, external P02 and final
+catalog, signing, attestation and adoption remain owed. T01-T77 lack their exact
+approved retained fixture; unsigned development bytes cannot supply it.
 
 | Linux desktop | x86_64 | aarch64 |
 |---|---|---|
@@ -3042,6 +3050,17 @@ retry the expected nonblocking read. The complete Python suite passed with 460
 tests and 49 platform skips, and the focused 32-test file passed in 50
 consecutive runs. This source-gate repair does not change the retained P01 or
 P11 artifact bytes or their Linux verdicts.
+
+The 2026-09-25 macOS continuation retains four earlier failed setup roots.
+The driver initially omitted native login context; a transient launcher also
+stopped the fixture/browser. Later roots used a profile outside the isolated
+native-registration lookup. Fresh roots retained normal driver authentication,
+detached test-owned fixture/browser processes and matched the documented isolated
+Chrome profile to its native registration. Six accepted P01/P11 executions had
+zero MCP tool errors. No product code changed, so Windows/Linux evidence remains
+valid. An initial Python gate overrode discovery in mocked cross-platform tests;
+scoping that override to product children yielded 1,837 passes and 119 skips.
+Private evidence in PR #182 retains failures, reruns and independent oracles.
 
 ## What this runbook cannot prove
 
