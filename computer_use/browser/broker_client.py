@@ -398,13 +398,24 @@ class BrokerClient:
 
     def send(self, op: str, /, **params: Any) -> Any:
         cancelled = params.pop("_cancelled", None)
+        typing_stream = params.get("typing_stream") if op == "human_type_stream" else None
+        typing_action = typing_stream.get("action") if isinstance(typing_stream, dict) else None
+        # The broker connection owns extension stream cleanup. Once `begin`
+        # succeeds, every later phase must stay on that exact authenticated
+        # connection; closing it aborts the extension-side stream. A genuine
+        # transport loss still fails the write/read below without replay.
+        stream_owns_transport = typing_action in {"chunk", "finish", "abort"}
         with self._lock:
             # A confirmed broker exit cannot have received this operation. Drop
             # that generation before dispatch so rejected reconnect credentials
             # reach the replacement broker's target_lost fence on the first
             # caller-controlled request. An ambiguous transport failure still
             # follows the no-replay path below.
-            if self._file is not None and self._transport_is_definitively_stale():
+            if (
+                self._file is not None
+                and not stream_owns_transport
+                and self._transport_is_definitively_stale()
+            ):
                 self._close()
             if self._file is None:
                 self._connect()

@@ -219,6 +219,13 @@ qualified model. Permission bypass avoids unattended approval stalls. It does
 not authorize unrelated changes, destructive work, host network changes or
 protected owner actions, and it does not replace evidence or cleanup.
 
+For a browser-tier cell, enforce the tier in the driver configuration as well
+as the goal: expose only the CUA DOM browser tools the cell needs and explicitly
+deny desktop/pixel input, native accessibility, shell, filesystem, HTTP and
+application-launch tools. Disable unrelated built-in driver tools. A browser
+cell that selects or can select a desktop tool is setup-ineligible even when
+the observed page result happens to match.
+
 **Do not turn subscription usage into an invented API bill.** Do not impose
 API-list-price-equivalent dollar or token ceilings on these CLI runs, stop at
 such a ceiling, or ask the owner to approve raising it. Continue the requested
@@ -812,7 +819,24 @@ that name. Nothing here assumes a particular machine, user or absolute path.
 
 - **Every fix gets a test that fails without it.** Stash it, watch it go red,
   restore.
-- **Browser-tier work is proven against real Chrome**, not a mock DOM.
+- **Browser-tier work is proven against an official versioned Chrome for
+  Testing build**, not a mock DOM and never the owner's installed Chrome,
+  Chromium or Edge executable, process, profile or debugging endpoint. Every
+  pass creates a fresh profile below its marked test root, loads only the
+  matching unpacked development extension, records the executable and archive
+  hashes, and removes only its owned browser state after evidence is pushed.
+  The agent owns the download, hash check, extension build, `browser-setup`,
+  Chrome for Testing launch, connection proof and cleanup. Do not ask the owner
+  to launch a browser, run a setup command or operate normal browser controls.
+  Ask only for an unavoidable protected browser or operating-system prompt.
+  Use the runbook's repository harness or normal native process launcher. If
+  the current agent environment forbids process launch, continue in an approved
+  environment that can launch the isolated Chrome for Testing process. Never
+  substitute the owner's browser or turn that substitution into a pass.
+- **Browser-tier cells use the DOM extension path, not the operating system's
+  native accessibility tier.** UIA, AX and AT-SPI prove native application
+  controls. They do not replace Chrome for Testing, the development extension
+  or DOM read-backs in a browser-tier cell.
 - **Never report a result from a command whose exit code you did not read** -
   `cmd | head` reports `head`'s status.
 - After any mutating browser operation, confirm with a **structured read-back**,

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>CUA process transition fixture</title>
+<h1>Isolated process transition fixture</h1>
+<label for="arena">Transition value</label><textarea id="arena"></textarea>
+<output id="mutations">0</output>
+<script>
+document.querySelector('#arena').addEventListener('input', () => {
+  const counter = document.querySelector('#mutations');
+  counter.textContent = String(Number(counter.textContent) + 1);
+});
+</script></html>

@@ -159,7 +159,12 @@ present in a given runbook, the entry is all there is.
 22. **Every browser-tier cell uses a versioned Chrome for Testing executable
     with a fresh isolated profile and the matching development extension.**
     Never attach to the owner's normal browser process or profile. A normal
-    Chrome, Chromium or Edge profile is not a fallback. [Browser isolation]
+    Chrome, Chromium or Edge executable, process, profile or debugging endpoint
+    is not a fallback. The agent performs browser download, hash verification,
+    extension build, `browser-setup`, launch, readiness proof and cleanup. The
+    owner is not asked to launch Chrome for Testing or perform a normal browser
+    control. Native UIA, AX or AT-SPI automation does not replace the DOM
+    extension path. [Browser isolation]
 
 23. **The agent driver uses the CLI's existing interactive login and permission
     bypass.** Do not require, read, export or pass a provider API key solely to
@@ -167,14 +172,21 @@ present in a given runbook, the entry is all there is.
     task with `codex --yolo exec --json` or Claude Code with
     `--dangerously-skip-permissions`. [The approach]
 
-24. **The driver is the CLI whose session is driving the pass.** A pass running
+24. **Browser-tier driver tools are mechanically restricted, not merely
+    described in a prompt.** Expose only the isolated CUA DOM browser tools the
+    cell requires; explicitly deny desktop/pixel input, native accessibility,
+    shell, filesystem, HTTP and application-launch tools, and disable unrelated
+    built-in driver tools. Any browser observation made while a desktop tool was
+    selectable is setup-ineligible. [Browser isolation]
+
+25. **The driver is the CLI whose session is driving the pass.** A pass running
    under Claude Code launches its drivers with `claude`, under Codex with
    `codex`, each with the login and bypass rule 23 describes. Not the other
    one: a driver on an account this session cannot see is one it cannot check,
    top up, or read the state of when it stops.
    [The approach: a headless agent CLI session]
 
-25. **A long-lived helper is tested as a state machine, not only from a clean
+26. **A long-lived helper is tested as a state machine, not only from a clean
    start.** Cross its process, lock, discovery endpoint, registration and
    version states in isolated storage. Prove missing and stale state recovers,
    or returns the exact designed error and matching remedy. [Persistent helper
@@ -437,7 +449,7 @@ never appears in.
 > capabilities. A text-only model cannot close that visual group.
 
 > All CUA E2E agent tasks, including browser, pixel and screenshot cells, use
-> GPT-5.6 Luna (`gpt-5.6-luna`) with Codex or Claude Sonnet 5
+> GPT-6 Luna (`gpt-6-luna`) with Codex or Claude Sonnet 5
 > (`claude-sonnet-5`) with Claude Code. Codex uses medium reasoning by default;
 > high is also approved without another owner decision when the run records why
 > it was needed. Claude retains medium effort where the CLI supports it. Do not
@@ -470,7 +482,7 @@ python scripts/select_cua_e2e_driver.py
 > driver is a failed prerequisite, not permission to silently substitute a model.
 
 ```sh
-codex --yolo exec --json --model gpt-5.6-luna -c 'model_reasoning_effort="medium"' <task-options>
+codex --yolo exec --json --model gpt-6-luna -c 'model_reasoning_effort="medium"' <task-options>
 claude --dangerously-skip-permissions --print --output-format stream-json --model claude-sonnet-5 <task-options>
 ```
 
@@ -490,6 +502,24 @@ Every cua browser-tier cell uses Chrome for Testing from the
 browser version, download URL and downloaded archive hash. Do not silently use
 an installed normal Chrome, Chromium or Edge executable when Chrome for Testing
 is unavailable. Mark the affected cells `blocked` instead.
+
+The agent owns the complete isolated-browser lifecycle. It downloads and hashes
+the archive, builds the matching extension, runs the installed
+`vadgr-cua browser-setup`, starts Chrome for Testing, proves the extension bridge
+is connected, drives the goal, records the read-backs, and stops only the owned
+process. Do not ask the owner to launch the browser, paste a launch command or
+perform ordinary browser controls. Ask only for a protected browser or
+operating-system prompt that automation cannot accept. Use the repository
+harness where the runbook supplies one, otherwise use the normal native process
+launcher. If the current agent environment forbids browser process launch, move
+the pass to an approved environment that can launch the isolated process. Never
+fall back to the owner's browser.
+
+Browser-tier cells are driven through the matching development extension and
+verified through DOM read-backs. Native accessibility automation such as UIA,
+AX or AT-SPI is for native application cells. It does not replace Chrome for
+Testing or the DOM extension path, and it is not a browser-tier launcher,
+driver or oracle.
 
 Create a new `--user-data-dir` below the pass's isolated test root. Load only
 the matching built `extension/dist` as an unpacked development extension. Do
@@ -520,6 +550,27 @@ operating system. A headed desktop or `xvfb` can provide the display according
 to the cell, but both use the same isolation rule.
 
 [chrome-for-testing-downloads]: https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json
+
+## Native development profile artifacts
+
+When a minor changes profile packaging before final signing inputs exist, P01
+and P11 on native Linux or macOS may use exact retained development artifacts.
+The workflow must produce a platform-specific managed wheel, a conspicuously
+named standalone-development wheel, canonical manifests and a canonical receipt.
+Each artifact must identify the exact clean source commit, platform and
+architecture. Each must state `development: true`, `publishable: false`, and
+that signing and adoption are disabled or not applicable.
+
+Download the retained workflow artifact only after its run succeeds. Record the
+workflow run, job, artifact ID, archive digest, filenames, byte sizes, wheel
+digests, manifest digests and receipt digest. Verify all values independently
+before installation. Never rebuild or relabel substitute bytes locally.
+
+The development exception closes only written unsigned P01 and P11 assertions.
+It never proves signing, adoption, attestation, final catalog completeness or
+publication. Final catalog and publication validation must reject every
+development receipt and wheel. Hosted CI produces bytes and unit evidence only.
+It never establishes a native desktop pass.
 
 ## Persistent helper lifecycle recovery
 

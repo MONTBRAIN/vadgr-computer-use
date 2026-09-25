@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.7.9] - Unreleased
+
+### Added
+
+- Package explicit Windows, WSL, Linux and macOS artifacts for x86_64 and ARM64.
+- Keep one standalone installation with native Windows helpers for both architectures.
+- Require authenticated final helper identities for managed installations and
+  verify exact signed helper adoption offline for standalone clients.
+- Publish retained profile artifacts without rebuilding their validated bytes.
+
+### Fixed
+
+- Select Windows helpers by the native system architecture, including the
+  Windows host used by WSL, and refuse mismatched execution profiles.
+- Preserve exact member identity through signed deployment, shared Windows/WSL
+  helper use, restart and authorized predecessor handoff.
+- Refuse unsigned fallback after signed helper adoption.
+
 ## [0.7.8] - 2026-09-12
 
 ### Added

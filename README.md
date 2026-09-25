@@ -14,6 +14,21 @@ Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, sam
 pip install vadgr-computer-use
 ```
 
+The standalone package selects helpers for the actual native operating system
+and architecture. Windows and WSL support x86_64 and ARM64 helpers; WSL also
+checks the Windows host architecture before deployment. Native Linux and macOS
+do not deploy Windows helpers. Installation needs no owner compiler or helper
+download.
+
+Managed installations use eight explicit profile artifacts from the GitHub
+release. Linux and WSL profile selection comes from the verified artifact
+catalog, not competing PyPI wheels. Managed profiles require an authenticated
+parent launch and cannot fall back to standalone input validation.
+
+Standalone clients can adopt an exactly authorized installed signed helper
+offline. After adoption they retain verified signed bytes or report a repair
+requirement; they cannot silently return to unsigned helpers.
+
 That ships a console script called `vadgr-cua`. On **Linux**, run the one-time
 system-dependency step (the second of the two install commands):
 

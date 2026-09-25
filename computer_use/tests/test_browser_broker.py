@@ -323,6 +323,38 @@ def test_broker_client_disconnect_aborts_a_stream_between_requests():
     assert calls[2] == ("disconnect", {})
 
 
+@pytest.mark.parametrize("action", ["chunk", "finish", "abort"])
+def test_broker_client_pins_later_typing_phases_to_begin_transport(monkeypatch, action):
+    client = broker_client.BrokerClient()
+    connection = io.BytesIO()
+    client._file = connection
+    writes = []
+    connects = []
+    monkeypatch.setattr(client, "_transport_is_definitively_stale", lambda: True)
+    monkeypatch.setattr(client, "_write", lambda file, message: writes.append((file, message)))
+    monkeypatch.setattr(client, "_read", lambda _file: {"ok": True, "result": {"kept": True}})
+    monkeypatch.setattr(client, "_connect", lambda: connects.append(True))
+
+    result = client.send(
+        "human_type_stream",
+        typing_stream={"action": action, "stream_id": "owned-stream"},
+    )
+
+    assert result == {"kept": True}
+    assert connects == []
+    assert not connection.closed
+    assert writes == [
+        (
+            connection,
+            {
+                "id": 1,
+                "op": "human_type_stream",
+                "params": {"typing_stream": {"action": action, "stream_id": "owned-stream"}},
+            },
+        )
+    ]
+
+
 def test_authenticated_upgrade_drain_stops_an_idle_broker():
     server = object.__new__(BrokerServer)
     server.auth_token = "token"
