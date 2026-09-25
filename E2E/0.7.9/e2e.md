@@ -3062,6 +3062,14 @@ valid. An initial Python gate overrode discovery in mocked cross-platform tests;
 scoping that override to product children yielded 1,837 passes and 119 skips.
 Private evidence in PR #182 retains failures, reruns and independent oracles.
 
+The runbook-only macOS commit's Windows CI ACL oracle twice exceeded its
+ten-second cold PowerShell startup limit in run `36174687362`. A test-only
+repair allows a bounded sixty-second startup without changing the strict
+owner-only ACL assertion or retrying the subprocess. A deterministic regression
+failed before that repair and checks both accepted and rejected ACL results.
+This changes no runtime, payload or live-cell behavior and invalidates no earlier
+Windows, Linux or macOS artifact evidence. Both failed CI attempts remain filed.
+
 ## What this runbook cannot prove
 
 An unrun cell proves nothing about native hardware, legal rights or certificate trust.
