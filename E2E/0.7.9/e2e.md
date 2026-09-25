@@ -114,24 +114,36 @@ the validated nine-wheel catalog, attestation, artifact IDs, sizes and hashes.
 No successful trusted candidate run is recorded yet.
 
 Review-data prerequisite PR #111 landed as
-`3ad419a654e4317ecefdf8019c91d8d5e0e40abf`. Its `profile-review-inputs.yml`
-run `36011211883`, attempt 1, succeeded on native x64 and ARM64 against the source
-pin above. It retained only unapproved member inventories, SPDX, notices/source receipts and
-build pins. Its receipt is non-publishable and grants no legal, signing or adoption
-approval. It uploads no executable, wheel, final catalog or attestation. Use this
-data to complete exact target review before creating `adoption-rules.json`.
-The final producer preflight remains unchanged and still requires actual approval.
+`3ad419a654e4317ecefdf8019c91d8d5e0e40abf`. PR #113 then corrected the trusted
+reviewed-source pin to the qualified runtime and landed as
+`4ee4570ff4a1ec6393fdc61e8dc199cfd86e5fa9`. Its `profile-review-inputs.yml` run
+`36181636747`, attempt 1, succeeded on native x64 and ARM64 against source
+`14cb515ba54ca9346ea931ba46d4c3253164c8b4`. It retained only unapproved member
+inventories, SPDX, notices/source receipts and build pins. Its receipt is
+non-publishable and grants no legal, signing or adoption approval. It uploads no
+executable, wheel, final catalog or attestation. Use this data to complete exact
+target review before creating `adoption-rules.json`. The final producer preflight
+remains unchanged and still requires actual approval.
 
-| Review artifact | Artifact ID | Archive bytes | GitHub archive SHA-256 | Receipt SHA-256 |
+| Review artifact | Artifact ID | Artifact bytes | GitHub artifact digest | Receipt SHA-256 |
 |---|---|---|---|---|
-| `review-inputs-x86_64` | `10812288732` | 97462 | `1516abcbbef57368b65b5dc16d4d9f688a997b4a66faf8dac10228a53828943a` | `1e65f603536264632fd0c70df2addf4fe66908f3a97f92d7e8ac2d38f4639a89` |
-| `review-inputs-aarch64` | `10812747136` | 97150 | `aa1a599b086a46e23357ec111aa3f6268e0e50392bd0ae390b1de352792f47ab` | `b22b888a2cb93b3cf37c75a7acb3f343969d035363d431dc72043def68f1bcd6` |
+| `review-inputs-x86_64` | `10884018883` | 97460 | `8bfe5b558257319562ca3f05a7f1950a12e0309e566f573813cc91a9e26d315f` | `4df434e5082912907052aa235e87ac8e31451d978c5f9b171fdfd92a05a13782` |
+| `review-inputs-aarch64` | `10884617368` | 97151 | `886b952ca07916f8ead8fa6b1b6c2bc1929e1522f004287f69beba7e40002c59` | `7c7e923901baefa2b7e9e1cdab43d5c70dcf32fb062e2b2e52df8aef2c90241d` |
 
 Both extracted packets have 26 text files. Independent local file-hash, size,
 inventory-count and forbidden-payload checks passed. x64 lists 43 members,
 24 native; ARM64 lists 42 members, 23 native. Every trust classification is null.
 These are review observations, not P01 or signing qualification. A later rebuild
 does not inherit exact-byte legal approval if its reviewed inventory changes.
+
+Independent Authenticode inspection of the exact qualified development closures
+found valid Microsoft signatures on x64 `VCRUNTIME140.dll` and
+`VCRUNTIME140_1.dll`, and ARM64 `VCRUNTIME140.dll`. Every other native member is
+unsigned. The technical proposal is `vendor-preserve` for only those three named
+members, `publisher-sign` for every other native member, and `data` for non-native
+members. Private evidence PR #182 records the exact digests and certificate
+identities. This proposal is not legal, signing or adoption approval, and no paid
+signing operation or signing quota was used.
 
 Qualify unsigned profile behavior only where the cell permits it. Protected
 signing transforms each approved Windows helper closure once for native Windows
@@ -3019,10 +3031,14 @@ records the exact tested subject and accepted observations.
 
 The trusted-producer/final-merge circular prerequisite is repaired by separate
 tooling PR #110, landed as `5c9a438`, and the exact source/tooling identity split.
-PR #111 landed as `3ad419a`; its data-only run `36011211883` succeeded for both
-native architectures. This separate lane exists because legal member review must
-precede final wheel construction. Reviewed adoption rules and held
-signed fixtures are still absent. Native hosts, protected
+PR #111 landed as `3ad419a`. PR #113 corrected the reviewed-source pin and landed
+as `4ee4570`; its data-only run `36181636747` succeeded for both native
+architectures against the exact qualified runtime `14cb515`. Independent
+Authenticode inspection classified only the three named Microsoft VC runtime
+members as vendor-preserve; every other native member requires publisher signing.
+This separate lane exists because legal member review must precede final wheel
+construction. Reviewed adoption rules and held signed fixtures are still absent.
+No paid signing operation has run. Native hosts, protected
 authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
 
