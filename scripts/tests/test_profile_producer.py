@@ -30,6 +30,7 @@ def rules_for(members):
                 digest_algorithm="sha256",
                 timestamp_algorithm="rfc3161-sha256",
             )
+        row["input_sha256"] = build.digest(data)
         rows[name] = row
     return rows
 
@@ -90,6 +91,7 @@ def test_generation_refuses_drift_before_any_policy_is_frozen(adoption_setup, mu
     if mutation == "extra-member":
         rules["files"]["x86_64"]["extra"] = dict.fromkeys(adoption.SIGNATURE_FIELDS)
         rules["files"]["x86_64"]["extra"]["trust_class"] = "data"
+        rules["files"]["x86_64"]["extra"]["input_sha256"] = build.digest(b"extra")
         (source / "packaging/profiles/adoption-rules.json").write_bytes(build.canonical(rules))
     elif mutation == "wrong-ref":
         descriptor["producer"]["ref"] = "refs/heads/feature"
@@ -109,6 +111,52 @@ def test_reviewed_authority_cannot_be_invented_or_expired(adoption_setup, field,
     rules = adoption_setup[-1]
     rules[field] = value
     with pytest.raises(ValueError):
+        adoption.validate_rules(rules)
+
+
+@pytest.mark.parametrize("architecture", adoption.ARCHITECTURES)
+@pytest.mark.parametrize("path", ["LICENSE", "vadgr-cua-browser-broker.exe", "vadgr-cua-host.exe"])
+def test_generation_rejects_changed_reviewed_bytes_before_freezing(
+    adoption_setup, architecture, path
+):
+    source, inputs, output, descriptor, rules = adoption_setup
+    # The builder's payload is internally valid, but the review approved other bytes.
+    rules["files"][architecture][path]["input_sha256"] = build.digest(b"earlier review")
+    (source / "packaging/profiles/adoption-rules.json").write_bytes(build.canonical(rules))
+    with pytest.raises(ValueError, match="member bytes differ from reviewed input"):
+        adoption.generate_policies(source, inputs, output, descriptor)
+    assert not list(output.rglob("adoption-policy.json"))
+
+
+@pytest.mark.parametrize("value", [None, "", "0" * 64, "A" * 64, "a" * 63])
+def test_every_reviewed_member_requires_a_real_exact_digest(adoption_setup, value):
+    rules = adoption_setup[-1]
+    rules["files"]["x86_64"]["LICENSE"]["input_sha256"] = value
+    with pytest.raises(ValueError, match="reviewed input digest"):
+        adoption.validate_rules(rules)
+
+
+def test_vendor_algorithms_are_explicit_reviewed_values(adoption_setup):
+    source, inputs, output, descriptor, rules = adoption_setup
+    row = rules["files"]["x86_64"]["vadgr-cua-browser-broker.exe"]
+    row["trust_class"] = "vendor-preserve"
+    (source / "packaging/profiles/adoption-rules.json").write_bytes(build.canonical(rules))
+    adoption.generate_policies(source, inputs, output, descriptor)
+    policy = build.read_json((output / "x86_64/adoption-policy.json").read_bytes())
+    assert policy["files"]["vadgr-cua-browser-broker.exe"] == row
+
+
+@pytest.mark.parametrize("field,value", [
+    ("digest_algorithm", None), ("digest_algorithm", "sha1"),
+    ("timestamp_algorithm", None), ("timestamp_algorithm", "authenticode-sha1"),
+    ("timestamp_algorithm", "rfc3161-sha384"),
+])
+def test_vendor_algorithms_are_not_defaulted_or_silently_broadened(adoption_setup, field, value):
+    rules = adoption_setup[-1]
+    row = rules["files"]["x86_64"]["vadgr-cua-browser-broker.exe"]
+    row["trust_class"] = "vendor-preserve"
+    row[field] = value
+    with pytest.raises(ValueError, match="unsupported reviewed vendor signature algorithms"):
         adoption.validate_rules(rules)
 
 

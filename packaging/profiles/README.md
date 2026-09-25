@@ -42,9 +42,11 @@ adoption/
 
 Each generated policy binds the actual source/version and helper closure to the
 reviewed root, verifier, signing classes and signer/source allowlists. The package
-contains separate digest pins for each policy, root and verifier. Source and
-helper hashes are derived after building, so no committed policy must name the
-commit that contains itself. Derivation does not authorize a new signer or class.
+contains separate digest pins for each policy, root and verifier. Every member
+must first match its independently reviewed input hash. The producer then derives
+the source and enclosing closure identities, so no committed policy must name
+the commit that contains itself. Derivation does not authorize changed bytes,
+a new signer or a new class.
 
 The protected-input review must supply these files before the producer can run:
 
@@ -76,12 +78,19 @@ invent a legal approval. Its canonical JSON schema is:
   signing workflow code, not the CUA source being built.
 - `files`: exactly `x86_64` and `aarch64`. Each maps every broker member and
   `vadgr-cua-host.exe` to its fixed rule. A missing or extra path fails. Each
-  rule contains `trust_class`, `signer_policy_sha256`, `legal_approval_sha256`,
+  rule contains `input_sha256`, `trust_class`, `signer_policy_sha256`, `legal_approval_sha256`,
   `signer`, `certificate_sha256`, `chain_root_sha256`, `digest_algorithm`, and
   `timestamp_algorithm`. The classes are `publisher-sign`, `vendor-preserve`
-  or `data`. Data uses null signature fields. Native classes need real reviewed
-  policy/legal hashes, certificate/root hashes, subject, `sha256` and
-  `rfc3161-sha256`. The producer derives `input_sha256` from the built bytes.
+  or `data`. Every class requires a nonzero lowercase `input_sha256` copied from
+  the exact reviewed inventory. Data uses null signature fields. Native classes
+  need real reviewed policy/legal hashes, certificate/root hashes and subject.
+  Publisher signing requires `sha256` and `rfc3161-sha256`. Vendor preservation
+  records independently verified upstream digest and timestamp algorithms; no
+  algorithm is defaulted from publisher policy. The current native verifier
+  supports the vendor pair `sha256` / `rfc3161-sha256`. A missing, weaker or
+  unsupported vendor pair fails closed and needs a reviewed verifier change.
+  The producer compares built member bytes with the reviewed `input_sha256`;
+  it never replaces that approval with a hash derived from new output.
 
 The trusted workflow runs only from master, on its first dispatched attempt.
 Its separate source checkout uses the exact reviewed commit. Every source checkout
@@ -113,8 +122,66 @@ duties and approve the exact rules. They must separately verify non-secret
 publisher/vendor certificate identities and authorize the exact consumer
 source/tooling allowlists and expiry. The packet is not an approval and cannot
 replace the final producer preflight. After those reviewed inputs land, the
-normal producer still rebuilds and validates the exact member set before it
-can create held final wheels. A changed member set fails closed and needs review.
+normal producer still rebuilds and validates the exact member set and every
+member hash before it can create held final wheels. A changed path or byte,
+including a notice or relay byte, fails before either adoption policy is frozen.
+Renew the exact review before changing its approved hash. A later build does
+not inherit approval merely because its paths and classifications match.
+
+### Preparing the review draft
+
+Download and independently verify the retained review artifacts first. Record
+the trusted workflow/source identities and the receipt hash for each architecture.
+The following command reads the extracted text packets and freezes only two new
+draft files. Replace each path and receipt hash with the recorded exact value:
+
+```sh
+python scripts/prepare_adoption_review.py --x86-64-review REVIEW_X64 --x86-64-receipt-sha256 RECEIPT_X64_SHA256 --aarch64-review REVIEW_ARM64 --aarch64-receipt-sha256 RECEIPT_ARM64_SHA256 --output NEW_REVIEW_DIRECTORY
+```
+
+Both packets must match the committed CUA source/version and the same review
+run, attempt and tooling commit. Their file inventories must match exactly.
+The command refuses a changed receipt, missing/extra file or changed file hash.
+`adoption-rules.draft.json` copies every exact member hash and marks non-native
+members as data. Native classes and all signature/legal fields remain null;
+source/signer allowlists remain empty and expiry remains null. This draft fails
+the final producer's validation. `review-binding.json` records the selected
+receipt identities and the draft digest. Neither file grants approval.
+
+Complete the redistribution and transformation review for all members, including
+code inside non-native archives and retained notices. Independently verify every
+vendor signature, chain, digest and timestamp. Keep the Authenticode chain-root
+hash distinct from the offline Sigstore root hash. Enter only the reviewed
+publisher/vendor identities and exact legal and signature-policy record hashes.
+Never convert a successful signature check into a redistribution conclusion.
+
+The producer allowlists identify the separately reviewed Vadgr source and signing
+workflow commits, not the CUA source or this tooling commit. Select those exact
+identities from the reviewed signing bootstrap before freezing the standalone
+wheel. Review a concrete expiry. After these decisions, land the completed
+canonical `adoption-rules.json` through its own review. Preparing a draft does
+not authorize that landing, signing, merge or publication.
+
+The subsequent protected preview identifies exact retained candidate inputs,
+both Windows/WSL consumer bindings, every preserved member and its verification,
+and all signing operations. Count publisher-sign members once per architecture;
+the matching WSL consumer uses identical signed bytes. Other vehicle operations
+and a second signed fixture have separate budgets. Approve the exact one-use
+claim only after reviewing that complete preview. Never retry an uncertain
+vendor call without reconciliation and a new authorization.
+
+Data admission checks for this prerequisite are:
+
+```sh
+python -m pytest scripts/tests/test_adoption_review.py scripts/tests/test_profile_producer.py scripts/tests/test_profile_review_inputs.py scripts/tests/test_profile_source_boundary.py -q
+python packaging/profiles/producer.py preflight
+```
+
+Until complete approved rules exist, the second command must refuse with the
+missing `adoption-rules.json` prerequisite. Test each changed-member case against
+both architectures, including native broker, relay and non-native notice bytes;
+no rejected case may freeze either policy. These checks exercise build tooling
+only. They do not replace native signature checks or signed/adoption live cells.
 
 The trusted producer tooling lands through a separate prerequisite PR before
 the runtime implementation PR. It adds no runtime change or version bump.
