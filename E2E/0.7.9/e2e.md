@@ -106,12 +106,27 @@ artifacts as data. Catalog and helper source identities bind the source commit;
 workflow run, native jobs, artifact origins and attestation bind the tooling commit.
 Do not require those two commits to be equal or silently follow a moving branch.
 
-Land the exact reviewed `adoption-rules.json` before dispatch. It must identify
-the actual approved signing/legal member policy and authorized consumer producer
-identities. Its absence currently blocks the trusted producer; do not fabricate it.
-Dispatch `profile-wheels.yml` on master once, record both exact commits, and retain
-the validated nine-wheel catalog, attestation, artifact IDs, sizes and hashes.
-No successful trusted candidate run is recorded yet.
+The exact reviewed `adoption-rules.json` landed through PR #116. Both authenticated
+Vadgr commit fields pin trusted candidate workflow commit
+`519c73500c53dcae9011dff3c9424009aa0c2d5d`. The trusted producer ran once from
+CUA tooling commit `301e772f971bc752731ecd7e737824f6d2eba3fd` against frozen
+product source `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. Run
+`36312377525`, attempt 1, passed and retained the validated nine-wheel catalog.
+
+| Producer artifact | Artifact ID | Artifact bytes | GitHub artifact digest |
+|---|---:|---:|---|
+| `native-x86_64` | `10929740907` | 10768103 | `063237cc0403dfbd01327b679e05b3c650b37e774e780d1771755583d623bd24` |
+| `native-aarch64` | `10929104811` | 10130262 | `89fea927e64224245253fe1484cf02f960e77e2a86bf86b098a4ffc9d948c23d` |
+| `profile-wheels-unattested` | `10929558105` | 93189012 | `c8ed0607de1c9997d375cdd178db9edd46b8417d1a1104e38275489e1d1420b1` |
+| `profile-wheels-validated` | `10929319541` | 93196173 | `459ece64363fc9ffcc0f83e80ae98ebe39bc090efa9b93884990d7fdbac97fcb` |
+
+The catalog SHA-256 is
+`9624df5842ad9d4f26fef1b678bd11985816c1c6f57c795bbca47d993369ca62`.
+The separate attestation bundle SHA-256 is
+`1e49f09483dfdfa6e1738c8e6acf1e4e77a1f0682e2cdd8dd9b37f557f30da92`.
+The standalone wheel SHA-256 is
+`fd95ea7e5eb9bab58f45c51c6df4caa035cbc3d8d7d707b4acd25a7b30624626`.
+These held artifacts are not published and do not establish a signed-helper pass.
 
 Review-data prerequisite PR #111 landed as
 `3ad419a654e4317ecefdf8019c91d8d5e0e40abf`. PR #113 then corrected the trusted
