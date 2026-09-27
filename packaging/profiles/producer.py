@@ -34,8 +34,19 @@ from build_profile_wheels import (
 from check_profile_wheels import check_catalog
 
 
+def reviewed_input(name: str) -> Path:
+    if name not in {"source-input.json", "adoption-rules.json"}:
+        raise ValueError("unknown reviewed input")
+    selection = os.environ.get("CUA_PROFILE_INPUT_SET", "primary")
+    if selection not in {"primary", "upgrade-fixture"}:
+        raise ValueError("unknown reviewed input set")
+    base = ROOT / "packaging/profiles"
+    return (base if selection == "primary" else base / "fixtures/upgrade") / name
+
+
 def source_input() -> dict:
-    record = read_json((ROOT / "packaging/profiles/source-input.json").read_bytes())
+    selected = reviewed_input("source-input.json")
+    record = read_json(selected.read_bytes())
     if (
         set(record) != {"schema", "source_commit", "version"}
         or record["schema"] != 1
@@ -45,6 +56,9 @@ def source_input() -> dict:
         or record["version"] != "0.7.9"
     ):
         raise ValueError("reviewed source input identity differs")
+    primary = ROOT / "packaging/profiles/source-input.json"
+    if selected != primary and record["source_commit"] == read_json(primary.read_bytes())["source_commit"]:
+        raise ValueError("upgrade fixture requires a distinct reviewed source revision")
     return record
 
 
@@ -75,13 +89,13 @@ def checked_source(source: Path) -> Path:
 def preflight() -> None:
     base = ROOT / "packaging" / "profiles"
     required = [
-        base / name for name in ("source-input.json", "size-budgets.json", "verifier-inputs.json", "adoption-rules.json")
-    ] + [ROOT / "requirements/windows-broker-build.txt"]
+        base / name for name in ("size-budgets.json", "verifier-inputs.json")
+    ] + [reviewed_input(name) for name in ("source-input.json", "adoption-rules.json")] + [ROOT / "requirements/windows-broker-build.txt"]
     missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
     if missing:
         raise ValueError("reviewed producer inputs are missing: " + ", ".join(missing))
     source_input()
-    validate_rules(read_json((base / "adoption-rules.json").read_bytes()))
+    validate_rules(read_json(reviewed_input("adoption-rules.json").read_bytes()))
     budgets = read_json((base / "size-budgets.json").read_bytes())
     if set(budgets) != {*PROFILES, "standalone"} or any(
         type(n) is not int or n <= 0 for n in budgets.values()
@@ -266,7 +280,8 @@ def validate_output(path: Path, inputs: Path, descriptor_path: Path, source: Pat
     # Regenerate policies from fixed review inputs and independently retained helpers.
     generated = descriptor_path.parent / "validated-adoption"
     provision_verifiers(ROOT / "packaging/profiles", generated)
-    generate_policies(ROOT, inputs, generated, expected, source_repository=source)
+    generate_policies(ROOT, inputs, generated, expected, source_repository=source,
+                      rules_path=reviewed_input("adoption-rules.json"))
     standalone = zip_members(
         (path.parent / catalog["standalone"]["wheel"]["filename"]).read_bytes()
     )
@@ -324,7 +339,8 @@ def main() -> None:
         print("Both native offline verifiers, licenses and root verified")
     elif args.operation == "generate-adoption":
         source = checked_source(args.source)
-        generate_policies(ROOT, args.inputs, args.output, read_json(args.descriptor.read_bytes()), source_repository=source)
+        generate_policies(ROOT, args.inputs, args.output, read_json(args.descriptor.read_bytes()), source_repository=source,
+                          rules_path=reviewed_input("adoption-rules.json"))
         print("Both source-bound adoption policies frozen from reviewed rules")
     elif args.operation == "validate-output":
         validate_output(args.catalog, args.inputs, args.descriptor, args.source)

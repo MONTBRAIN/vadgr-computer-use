@@ -146,14 +146,17 @@ def _adoption_row(adoption: dict[str, object], bundle: Path, *, target: str) -> 
         "input_closure",
         "final_closure",
     }
+    signed = isinstance(adoption, dict) and adoption.get("direction") == "signed-to-signed"
+    if signed:
+        required |= {"predecessor_version", "predecessor_source_commit"}
     if not isinstance(adoption, dict) or set(adoption) != required:
         raise _unsafe()
     architecture = adoption.get("architecture")
     if (
-        adoption.get("direction") != "unsigned-to-signed"
+        adoption.get("direction") not in {"unsigned-to-signed", "signed-to-signed"}
         or not isinstance(architecture, str)
         or _target(architecture) != target
-        or adoption.get("cua_version") != bundle.parent.name
+        or adoption.get("predecessor_version" if signed else "cua_version") != bundle.parent.name
         or not isinstance(adoption.get("source_commit"), str)
         or len(adoption["source_commit"]) != 40
         or any(character not in "0123456789abcdef" for character in adoption["source_commit"])
@@ -180,15 +183,24 @@ def _adoption_row(adoption: dict[str, object], bundle: Path, *, target: str) -> 
     predecessor = closures[0]
     if predecessor["archive_sha256"] != bundle.name:
         raise _unsafe()
-    return {
-        "version": adoption["cua_version"],
+    row = {
+        "version": adoption["predecessor_version" if signed else "cua_version"],
         "archive_sha256": predecessor["archive_sha256"],
         "broker_relative_path": BROKER_EXECUTABLE,
         "broker_sha256": None,
         "manifest_sha256": predecessor["manifest_sha256"],
         "protocol_min": 1,
         "protocol_max": 1,
+        "target_archive_sha256": closures[1]["archive_sha256"],
     }
+    if signed:
+        source = adoption["predecessor_source_commit"]
+        if not isinstance(source, str) or len(source) != 40 or source == "0" * 40 or any(
+            char not in "0123456789abcdef" for char in source
+        ):
+            raise _unsafe()
+        row.update(manifest_kind="managed-signed", source_commit=source)
+    return row
 
 
 def _catalog_row(
@@ -196,7 +208,7 @@ def _catalog_row(
     bundle: Path,
     *,
     target: str,
-    adoption: dict[str, object] | None = None,
+    adoption: dict[str, object] | list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     version = bundle.parent.name
     archive_hash = bundle.name
@@ -208,10 +220,19 @@ def _catalog_row(
         and row.get("archive_sha256") == archive_hash
     ]
     if not rows and adoption is not None:
-        return _adoption_row(adoption, bundle, target=target)
+        edges = adoption if isinstance(adoption, list) else [adoption]
+        matching = [edge for edge in edges if isinstance(edge, dict)
+                    and isinstance(edge.get("input_closure"), dict)
+                    and edge["input_closure"].get("archive_sha256") == archive_hash]
+        if len(matching) != 1:
+            raise _unsafe()
+        return _adoption_row(matching[0], bundle, target=target)
     if len(rows) != 1:
         raise _unsafe()
     row = rows[0]
+    if set(row) != {"version", "archive_sha256", "broker_relative_path", "broker_sha256",
+                    "manifest_sha256", "protocol_min", "protocol_max"}:
+        raise _unsafe()
     required = ("broker_relative_path", "broker_sha256", "manifest_sha256")
     if any(not isinstance(row.get(name), str) or not row[name] for name in required):
         raise _unsafe()
@@ -223,16 +244,29 @@ def _catalog_row(
 def _verify_bundle(bundle: Path, row: dict[str, object], *, target: str) -> Path:
     root = bundle.resolve(strict=True)
     _ordinary(root, directory=True)
-    manifest_path = root / "bundle-manifest.json"
+    signed = row.get("manifest_kind") == "managed-signed"
+    manifest_name = "broker-final-manifest.json" if signed else "bundle-manifest.json"
+    manifest_path = root / manifest_name
     _ordinary(manifest_path)
     raw_manifest = manifest_path.read_bytes()
     if hashlib.sha256(raw_manifest).hexdigest() != row["manifest_sha256"]:
         raise _unsafe()
     try:
-        manifest = json.loads(raw_manifest)
+        if signed:
+            from computer_use.browser.managed_authorization import validate_final_manifest
+
+            manifest = validate_final_manifest(raw_manifest)
+        else:
+            manifest = json.loads(raw_manifest)
     except ValueError as error:
         raise _unsafe() from error
-    if (
+    if signed:
+        if (manifest["cua_version"] != row["version"]
+                or _target(manifest["architecture"]) != target
+                or manifest["source_commit"] != row["source_commit"]
+                or manifest["archive"]["sha256"] != row["archive_sha256"]):
+            raise _unsafe()
+    elif (
         manifest.get("version") != row["version"]
         or manifest.get("target") != target
         or manifest.get("archive_sha256") != row["archive_sha256"]
@@ -265,7 +299,7 @@ def _verify_bundle(bundle: Path, row: dict[str, object], *, target: str) -> Path
             _ordinary(path, directory=True)
             continue
         _ordinary(path)
-        if relative == "bundle-manifest.json":
+        if relative == manifest_name:
             continue
         if relative not in expected or not _below(path.resolve(strict=True), root):
             raise _unsafe()
@@ -551,7 +585,7 @@ def perform_upgrade_handoff(
     candidate_bundle: Path,
     catalog_path: Path,
     architecture: str = "x86_64",
-    adoption: dict[str, object] | None = None,
+    adoption: dict[str, object] | list[dict[str, object]] | None = None,
     timeout_ms: int = _WAIT_MS,
 ) -> dict[str, object]:
     """Replace one fully proved predecessor or leave all uncertain state intact."""
@@ -604,6 +638,8 @@ def perform_upgrade_handoff(
             target = _target(architecture)
             catalog = _load_catalog(catalog_path, target=target)
             row = _catalog_row(catalog, bundle, target=target, adoption=adoption)
+            if "target_archive_sha256" in row and row["target_archive_sha256"] != candidate_bundle.name:
+                raise _unsafe()
             broker = _verify_bundle(bundle, row, target=target)
             if not _same_path(image, broker):
                 raise _unsafe()

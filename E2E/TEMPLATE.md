@@ -192,13 +192,19 @@ present in a given runbook, the entry is all there is.
    or returns the exact designed error and matching remedy. [Persistent helper
    lifecycle recovery]
 
-26. **Protected signing must not create a circular PR gate.** Identify whether
+27. **Protected signing must not create a circular PR gate.** Identify whether
    the approved producer can hold a candidate from an open PR or requires
    merged product source. In the latter case, unsigned development acceptance
    opens and gates the implementation PR; signing-dependent cells stay owed
    before release and run against the held post-merge candidate. Unsigned
    evidence never passes a signing assertion. [Unsigned development and
    protected release candidates]
+
+28. **Signed upgrade and rollback require two distinct reviewed fixtures.**
+   Preserve both one-use input claims, signed final manifests and authenticated
+   forward/reverse edges. Labels alone do not make distinct fixtures. Missing
+   eligible fixtures block signed cells, not independent unsigned work.
+   [../README.md: Signed upgrade and rollback fixtures]
 
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep

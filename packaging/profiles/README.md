@@ -20,7 +20,11 @@ profile evidence record has `build_sha256`, `test_sha256`, `sbom_sha256`, numeri
 `native_job_ids`, and immutable `artifacts` records with `id` and `sha256`.
 The descriptor binds the exact source and tooling commits separately and the
 first hosted workflow attempt on master. `source-input.json` pins the reviewed
-product commit and version. It accepts no workflow input or environment override.
+product commit and version. A dispatch selects only `primary` or `upgrade-fixture`.
+The latter reads `fixtures/upgrade/source-input.json` and its separate
+`adoption-rules.json` from trusted tooling. It requires a different exact source
+commit and fails when either reviewed record is absent. No dispatch or environment
+value can supply a source hash, arbitrary input path, signer or member policy.
 No artifact or release ID is guessed.
 
 The producer creates one adoption directory per architecture under its isolated
@@ -103,6 +107,11 @@ jobs and artifact origins to the tooling commit, and binds packaged source and
 helper manifests to the source commit. It independently regenerates both policies
 from master review inputs and checks all nine wheels before attesting the catalog.
 Native build and live qualification remain separate results.
+
+Signed transition production and its exact producer contract are specified in
+[SIGNED-TRANSITIONS.md](SIGNED-TRANSITIONS.md). Its second fixture must change
+reviewed input payload bytes, not only a candidate identifier or manifest label.
+Both native architectures need separate retained inputs and qualification.
 
 ## Qualification and landing order
 

@@ -81,7 +81,8 @@ def test_adoption_edge_is_bound_to_authorization_and_candidate(monkeypatch, tmp_
         windows_broker_entry,
         "_candidate",
         lambda _bundle: (
-            {"cua_version": "0.7.9", "archive": {"sha256": final["archive_sha256"]}},
+            {"cua_version": "0.7.9", "archive": {"sha256": final["archive_sha256"]},
+             "source_commit": "2" * 40, "pre_signing_claim_sha256": "1" * 64},
             final["manifest_sha256"],
             "x86_64",
             True,
@@ -92,7 +93,7 @@ def test_adoption_edge_is_bound_to_authorization_and_candidate(monkeypatch, tmp_
         tmp_path, str(authorization.resolve()), hashlib.sha256(raw).hexdigest()
     )
 
-    assert actual == edge
+    assert actual == [edge]
     assert architecture == "x86_64"
 
 

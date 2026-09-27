@@ -28,6 +28,10 @@ parent launch and cannot fall back to standalone input validation.
 Standalone clients can adopt an exactly authorized installed signed helper
 offline. After adoption they retain verified signed bytes or report a repair
 requirement; they cannot silently return to unsigned helpers.
+Signed upgrades and rollbacks require an authenticated catalog naming the exact
+previous and replacement helper bytes. A different version label or installation
+identifier alone does not authorize a replacement. Signed state persists across
+changes to the packaged input, and an unlisted predecessor remains untouched.
 
 That ships a console script called `vadgr-cua`. On **Linux**, run the one-time
 system-dependency step (the second of the two install commands):

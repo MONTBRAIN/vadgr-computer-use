@@ -528,6 +528,62 @@ def test_complete_resolver_binds_two_attestations_and_commits_only_verified_stat
     assert runtime.resolve()["manifest"] == result["manifest"]
 
 
+@pytest.mark.parametrize("cataloged", [True, False])
+def test_resolver_transitions_from_other_signed_input_only_with_authenticated_catalog(installed_case, cataloged):
+    from computer_use.browser.signed_transitions import closure_key
+    from computer_use.tests.test_signed_transitions import authorize, fixture, state
+
+    helper = installed_case["helper"]
+    chain = {key: (helper / name).read_bytes() for key, name in (
+        ("claim_bytes", "pre-signing-claim.json"), ("manifest_bytes", "broker-final-manifest.json"),
+        ("authorization_bytes", "helper-closure-authorization.json"))}
+    chain["receipt_bytes"] = [(helper / name).read_bytes() for name in ("receipt-windows.json", "receipt-wsl.json")]
+    claim = strict_json(chain["claim_bytes"])
+    claim["helper_closure_id"] = closure_key("x86_64", claim["input_closure"])
+    claim["signing_claim_ref"] = "refs/tags/cua-signing-claims/" + claim["helper_closure_id"]
+    chain["claim_bytes"] = canonical_json(claim)
+    manifest = strict_json(chain["manifest_bytes"])
+    for key in ("helper_closure_id", "signing_claim_ref"):
+        manifest[key] = claim[key]
+    manifest["pre_signing_claim_sha256"] = sha256(chain["claim_bytes"])
+    chain["manifest_bytes"] = canonical_json(manifest)
+    auth = strict_json(chain["authorization_bytes"])
+    auth["helper_closure_id"] = claim["helper_closure_id"]
+    auth["pre_signing_claim_sha256"] = sha256(chain["claim_bytes"])
+    auth["final_closure"]["manifest_sha256"] = sha256(chain["manifest_bytes"])
+    auth["output_artifact"]["subjects"]["manifest_sha256"] = sha256(chain["manifest_bytes"])
+    chain["authorization_bytes"] = canonical_json(auth)
+    predecessor = fixture("b")
+    prior = strict_json(predecessor["authorization_bytes"])
+    installed_case["state"][0] = canonical_json(state(prior)).decode()
+    authorize(chain, predecessor)
+    if not cataloged:
+        old = strict_json(installed_case["state"][0].encode())
+        old["final_closure"]["manifest_sha256"] = h("unlisted previous")
+        installed_case["state"][0] = canonical_json(old).decode()
+    for key, name in (("claim_bytes", "pre-signing-claim.json"),
+                      ("manifest_bytes", "broker-final-manifest.json"),
+                      ("authorization_bytes", "helper-closure-authorization.json")):
+        (helper / name).write_bytes(chain[key])
+    for name, raw in zip(("receipt-windows.json", "receipt-wsl.json"), chain["receipt_bytes"]):
+        (helper / name).write_bytes(raw)
+    path = installed_case["installed"] / "cua-runtime-authorization.json"
+    envelope = strict_json(path.read_bytes())
+    envelope.update(broker_final_manifest_sha256=sha256(chain["manifest_bytes"]),
+                    helper_closure_authorization_sha256=sha256(chain["authorization_bytes"]))
+    path.write_bytes(canonical_json(envelope))
+    before = installed_case["state"][0]
+    if cataloged:
+        assert runtime.resolve()["manifest"] == manifest
+        assert installed_case["state"][0] != before
+        assert [call["operation"] for call in installed_case["calls"]] == ["probe", "deploy", "publish-state"]
+    else:
+        with pytest.raises(AuthorizationError, match="exact signed transition"):
+            runtime.resolve()
+        assert installed_case["state"][0] == before
+        assert [call["operation"] for call in installed_case["calls"]] == ["probe"]
+
+
 @pytest.mark.parametrize(
     "name",
     [

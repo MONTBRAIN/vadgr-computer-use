@@ -13,6 +13,7 @@ import struct
 from collections.abc import Callable
 
 from computer_use.browser.managed_authorization import (
+    canonical_json,
     closure_identity,
     digest,
     fields,
@@ -277,6 +278,7 @@ def adoption_state(
     final_closure: dict,
     previous: bytes | None,
     retained_available: bool,
+    authorization: dict | None = None,
 ) -> dict:
     """Validate monotonic state before an owner-only atomic publication.
 
@@ -296,7 +298,17 @@ def adoption_state(
     if previous is not None:
         old = strict_json(previous)
         fields(old, "schema architecture input_closure final_closure authorization_sha256 mode")
-        require(old == value, "adoption state changed; an exact signed transition is required")
+        require_signed_after_adoption(previous, requested_mode="managed-signed")
+        if old != value:
+            from computer_use.browser.signed_transitions import allows_state_transition
+
+            require(authorization is not None
+                    and sha256(canonical_json(authorization)) == authorization_sha256
+                    and authorization["architecture"] == policy["architecture"]
+                    and authorization["input_closure"] == policy["input_closure"]
+                    and authorization["final_closure"] == final_closure
+                    and allows_state_transition(authorization, old),
+                    "adoption state changed; an exact signed transition is required")
     require(
         retained_available, "retained signed helper is missing; repair or reinstall is required"
     )
@@ -434,14 +446,16 @@ def adopt_signed_closure(
             require(row[key] == policy["files"][path][key], "member trust policy changed")
         expected_report = sha256(reports[path]) if path in reports else None
         require(row["signature_report_sha256"] == expected_report, "member report changed")
-    require(
-        verify_installed(authorization, manifest, final, reports) is True,
-        "installed helper verification failed",
-    )
-    return adoption_state(
+    state = adoption_state(
         policy=policy,
         authorization_sha256=sha256(authorization_bytes),
         final_closure=authorization["final_closure"],
         previous=previous_state,
         retained_available=True,
+        authorization=authorization,
     )
+    require(
+        verify_installed(authorization, manifest, final, reports) is True,
+        "installed helper verification failed",
+    )
+    return state

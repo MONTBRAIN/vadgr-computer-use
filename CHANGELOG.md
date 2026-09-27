@@ -19,6 +19,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Preserve exact member identity through signed deployment, shared Windows/WSL
   helper use, restart and authorized predecessor handoff.
 - Refuse unsigned fallback after signed helper adoption.
+- Verify signed predecessor manifests during exact cataloged upgrades and
+  rollbacks. Preserve signed adoption state across changes to packaged inputs.
 
 ## [0.7.8] - 2026-09-12
 

@@ -52,6 +52,8 @@ def _candidate(bundle: Path) -> tuple[dict, str, str, bool]:
 
     if path == final_path:
         manifest = validate_final_manifest(raw)
+        if manifest["archive"]["sha256"] != bundle.name:
+            raise RuntimeError("candidate signed archive differs")
         return manifest, sha256(raw), manifest["architecture"], True
     try:
         manifest = json.loads(raw)
@@ -69,7 +71,7 @@ def _candidate(bundle: Path) -> tuple[dict, str, str, bool]:
 
 def _adoption_edge(
     bundle: Path, authorization_path: str | None, expected_sha256: str | None
-) -> tuple[dict[str, object] | None, str]:
+) -> tuple[list[dict[str, object]] | None, str]:
     """Load only a caller-authenticated authorization bound to this candidate."""
     manifest, manifest_sha256, architecture, managed = _candidate(bundle)
     if authorization_path is None and expected_sha256 is None:
@@ -82,31 +84,25 @@ def _adoption_edge(
     if path.name != "helper-closure-authorization.json" or not path.is_absolute():
         raise RuntimeError("adoption authorization path is invalid")
     raw = _ordinary(path)
-    from computer_use.browser.managed_authorization import fields, sha256, strict_json
+    from computer_use.browser.managed_authorization import sha256, strict_json
+    from computer_use.browser.signed_transitions import authorization_fields, transition_edges
 
     if sha256(raw) != expected_sha256:
         raise RuntimeError("adoption authorization digest differs")
     authorization = strict_json(raw)
-    fields(
-        authorization,
-        "schema pre_signing_claim_sha256 helper_closure_id architecture "
-        "cua_version source_commit tooling_commit input_closure final_closure consumer_inputs "
-        "signing_run_id signing_attempt signing_job_id output_artifact "
-        "publisher_policy_sha256 legal_policy_sha256 mapping_sha256 adoption_edges",
-    )
+    authorization_fields(authorization)
     final = authorization["final_closure"]
     if (
         authorization["architecture"] != architecture
         or authorization["cua_version"] != manifest["cua_version"]
+        or authorization["source_commit"] != manifest["source_commit"]
+        or authorization["pre_signing_claim_sha256"] != manifest["pre_signing_claim_sha256"]
         or not isinstance(final, dict)
         or final.get("archive_sha256") != manifest["archive"]["sha256"]
         or final.get("manifest_sha256") != manifest_sha256
     ):
         raise RuntimeError("adoption authorization targets a different candidate")
-    edges = authorization["adoption_edges"]
-    if not isinstance(edges, list) or len(edges) != 1:
-        raise RuntimeError("adoption authorization has an invalid transition set")
-    return edges[0], architecture
+    return transition_edges(authorization), architecture
 
 
 def _serve() -> int:

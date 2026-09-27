@@ -156,11 +156,12 @@ def provision_verifiers(base: Path, output: Path) -> None:
             freeze(output / architecture / name, data)
 
 
-def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: dict, *, source_repository: Path | None = None) -> None:
+def generate_policies(repository: Path, inputs: Path, output: Path, descriptor: dict, *, source_repository: Path | None = None,
+                      rules_path: Path | None = None) -> None:
     """Bind derived closure identities only after every member matches its reviewed bytes."""
     validate_producer(descriptor["producer"])
     base = repository / "packaging/profiles"
-    rules = read_json((base / "adoption-rules.json").read_bytes())
+    rules = read_json((rules_path or base / "adoption-rules.json").read_bytes())
     validate_rules(rules)
     pins = read_json((base / "verifier-inputs.json").read_bytes())
     source_repository = source_repository or repository

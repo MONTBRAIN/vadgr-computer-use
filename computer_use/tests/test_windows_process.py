@@ -140,7 +140,7 @@ def _adoption(bundle: Path) -> dict[str, object]:
         },
         "final_closure": {
             "relay_sha256": "3" * 64,
-            "archive_sha256": "4" * 64,
+            "archive_sha256": "b" * 64,
             "manifest_sha256": "5" * 64,
         },
     }

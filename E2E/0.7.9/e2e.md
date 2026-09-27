@@ -8,6 +8,37 @@
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
 
+Signed-transition repair, 2026-09-27: the current source adds exact authenticated
+signed predecessor catalogs, final-manifest handoff verification and signed
+state transitions across different packaged inputs. The historical frozen source
+above lacks this repair and is not the new signed qualification subject. Its
+recorded observations remain history. Rebaseline the source pins and both native
+review packets after the repaired runtime commit is pushed and reviewed.
+No signed P05/P07 result is claimed by the synthetic regression tests.
+
+For every P07 and P05 approved-rollback cell below, prepare two real signed
+fixtures from distinct reviewed input closures. Use the trusted producers'
+`primary` and `upgrade-fixture` input sets, with independently reviewed source
+and member policies. A different candidate ID or manifest-only change is not a
+second input. Preserve the closure-keyed one-use signing claims. Retain exact
+input/final manifests, signature reports, forward/reverse schema-2 authorization
+catalogs, attestation bundles and both consumer receipts. Bind their exact hashes
+into the installed runtime and parent launch records before any cell starts.
+The complete producer schema is in
+[`SIGNED-TRANSITIONS.md`](../../packaging/profiles/SIGNED-TRANSITIONS.md).
+
+P07 must prove A-to-B adoption, one verified replacement, no browser restart and
+no uncertain-operation replay. P05 approved rollback must prove the separately
+cataloged B-to-A transition using retained verified bytes, not re-signing. Capture
+the protected signed state before and after each operation and after restart.
+The state must survive changes to the packaged input and must reject unsigned
+fallback. Unknown predecessors, changed final manifests, changed closure hashes,
+an unlisted reverse edge and concurrent stale-state publication must fail without
+terminating the predecessor or publishing new state. Preserve every failed attempt.
+Missing either fixture or its authenticated edge leaves the written cell blocked;
+it never becomes a pass or a deleted obligation. Cleanup preserves all retained
+fixtures, signing claims and evidence and removes only owned disposable test state.
+
 Native Windows continuation, 2026-09-24: permitted ordinary launches of official
 Chrome for Testing with fresh isolated profiles executed the P06/P08 goals.
 Earlier launch denials remain history, not the current blocker. The nine P06

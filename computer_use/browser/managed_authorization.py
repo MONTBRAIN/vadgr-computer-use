@@ -323,17 +323,9 @@ def _validate_chain(
     closure_identity(claim["input_closure"])
     manifest = validate_final_manifest(manifest_bytes)
     authorization = strict_json(authorization_bytes)
-    fields(
-        authorization,
-        "schema pre_signing_claim_sha256 helper_closure_id architecture "
-        "cua_version source_commit tooling_commit input_closure final_closure consumer_inputs "
-        "signing_run_id signing_attempt signing_job_id output_artifact "
-        "publisher_policy_sha256 legal_policy_sha256 mapping_sha256 adoption_edges",
-    )
-    require(
-        type(authorization["schema"]) is int and authorization["schema"] == 1,
-        "invalid closure authorization",
-    )
+    from computer_use.browser.signed_transitions import authorization_fields, transition_edges
+
+    authorization_fields(authorization)
     claim_hash = sha256(claim_bytes)
     require(
         manifest["pre_signing_claim_sha256"] == claim_hash
@@ -390,20 +382,10 @@ def _validate_chain(
     require(
         isinstance(inputs, list) and inputs == [claim["input_closure"]], "unknown adoption input"
     )
-    require(
-        authorization["adoption_edges"]
-        == [
-            {
-                "direction": "unsigned-to-signed",
-                "architecture": claim["architecture"],
-                "cua_version": claim["cua_version"],
-                "source_commit": claim["source_commit"],
-                "input_closure": inputs[0],
-                "final_closure": final,
-            }
-        ],
-        "invalid adoption transformation edge",
-    )
+    transition_edges(authorization)
+    if authorization["schema"] == 2:
+        require(claim["signing_claim_ref"] == "refs/tags/cua-signing-claims/" + claim["helper_closure_id"],
+                "signed transition changed the closure-keyed signing claim")
     paths = claim["publisher_sign_paths"]
     require(isinstance(paths, list) and bool(paths), "missing signing paths")
     require(paths == sorted(set(paths)), "duplicate or unsorted signing path")

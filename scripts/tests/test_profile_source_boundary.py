@@ -57,6 +57,36 @@ def test_source_checkout_rejects_changed_or_wrong_head(tmp_path, monkeypatch):
         producer.checked_source(source)
 
 
+def test_upgrade_fixture_uses_separate_reviewed_source_and_member_rules(tmp_path, monkeypatch):
+    base = tmp_path / "packaging/profiles"
+    selected = base / "fixtures/upgrade"
+    selected.mkdir(parents=True)
+    primary = {"schema": 1, "source_commit": "a" * 40, "version": "0.7.9"}
+    (base / "source-input.json").write_bytes(canonical(primary))
+    monkeypatch.setattr(producer, "ROOT", tmp_path)
+    monkeypatch.setenv("CUA_PROFILE_INPUT_SET", "upgrade-fixture")
+    with pytest.raises(FileNotFoundError):
+        producer.source_input()
+    (selected / "source-input.json").write_bytes(canonical(primary))
+    with pytest.raises(ValueError, match="distinct reviewed"):
+        producer.source_input()
+    secondary = {**primary, "source_commit": "b" * 40}
+    (selected / "source-input.json").write_bytes(canonical(secondary))
+    assert producer.source_input() == secondary
+    assert producer.reviewed_input("adoption-rules.json") == selected / "adoption-rules.json"
+    monkeypatch.setenv("CUA_PROFILE_INPUT_SET", "../../foreign")
+    with pytest.raises(ValueError, match="input set"):
+        producer.source_input()
+
+
+def test_both_trusted_producers_expose_only_named_reviewed_input_sets():
+    for name in ("profile-wheels.yml", "profile-review-inputs.yml"):
+        workflow = (ROOT / ".github/workflows" / name).read_text()
+        assert "options: [primary, upgrade-fixture]" in workflow
+        assert "CUA_PROFILE_INPUT_SET: ${{ inputs.input_set || 'primary' }}" in workflow
+        assert "github.ref == 'refs/heads/master'" in workflow
+
+
 def test_credential_job_never_executes_candidate_source():
     workflow = (ROOT / ".github/workflows/profile-wheels.yml").read_text()
     validator = workflow.split("  validate:", 1)[1]

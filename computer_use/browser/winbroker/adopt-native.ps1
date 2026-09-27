@@ -15,7 +15,9 @@ $installed = Join-Path $local 'Programs\Vadgr'
 if ($request.architecture -notin @('x86_64', 'aarch64')) { throw 'Invalid adoption architecture' }
 if ($request.operation -ne 'attestation' -and $request.input_key -notmatch '^[0-9a-f]{64}$') { throw 'Invalid adoption input key' }
 $stateParent = Join-Path $local ('vadgr-cua\adoption\' + $request.architecture)
-$stateRoot = if ($request.operation -eq 'attestation') { $stateParent } else { Join-Path $stateParent $request.input_key }
+# One architecture-wide state survives a package input change. A per-input path
+# would forget that another reviewed input had already adopted signed helpers.
+$stateRoot = if ($request.operation -eq 'attestation') { $stateParent } else { Join-Path $stateParent 'current' }
 $statePath = Join-Path $stateRoot 'state.json'
 
 function Assert-Keys($Value, [string[]]$Keys) {
@@ -28,6 +30,49 @@ function Hash-Bytes([byte[]]$Bytes) {
     finally { $sha.Dispose() }
 }
 function Hash-File([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
+function Same-Closure($Left, $Right) {
+    $keys = @('archive_sha256','manifest_sha256','relay_sha256')
+    Assert-Keys $Left $keys
+    Assert-Keys $Right $keys
+    foreach ($key in $keys) {
+        if ($Left.$key -cnotmatch '^[0-9a-f]{64}$' -or $Left.$key -ceq ('0' * 64) -or
+            $Right.$key -cnotmatch '^[0-9a-f]{64}$' -or $Right.$key -ceq ('0' * 64)) { throw 'Invalid closure digest' }
+        if ($Left.$key -cne $Right.$key) { return $false }
+    }
+    return $true
+}
+function Assert-SignedTransition($Previous, $Next) {
+    Assert-Keys $Previous @('schema','architecture','input_closure','final_closure','authorization_sha256','mode')
+    if ($Previous.schema -ne 1 -or $Previous.mode -cne 'managed-signed' -or
+        $Previous.architecture -cne $request.architecture) { throw 'Invalid previous signed state' }
+    $authorizationPath = Within $installed (Join-Path $installed ('lib\cua\managed-helpers\' + $request.architecture + '\helper-closure-authorization.json'))
+    Assert-Private $authorizationPath
+    if ((Hash-File $authorizationPath) -cne $request.authorization_sha256) { throw 'Signed transition authorization changed' }
+    $authorization = Get-Content -LiteralPath $authorizationPath -Raw | ConvertFrom-Json
+    if ($authorization.schema -ne 2 -or $authorization.architecture -cne $request.architecture -or
+        -not (Same-Closure $authorization.input_closure $Next.input_closure) -or
+        -not (Same-Closure $authorization.final_closure $Next.final_closure)) { throw 'Signed transition target differs' }
+    # Same signed bytes may receive a new authenticated reverse-edge catalog.
+    if ((Same-Closure $Previous.input_closure $Next.input_closure) -and
+        (Same-Closure $Previous.final_closure $Next.final_closure)) { return }
+    $catalog = $authorization.signed_predecessors
+    Assert-Keys $catalog @('schema','architecture','entries')
+    if ($catalog.schema -ne 1 -or $catalog.architecture -cne $request.architecture) { throw 'Signed predecessor catalog differs' }
+    $matches = @($catalog.entries | Where-Object {
+        (Same-Closure $_.input_closure $Previous.input_closure) -and
+        (Same-Closure $_.final_closure $Previous.final_closure)
+    })
+    if ($matches.Count -ne 1 -or (Same-Closure $Previous.input_closure $Next.input_closure) -or
+        $Previous.final_closure.archive_sha256 -ceq $Next.final_closure.archive_sha256) { throw 'Signed predecessor is not uniquely cataloged' }
+    $edges = @($authorization.adoption_edges | Where-Object {
+        $_.direction -ceq 'signed-to-signed' -and $_.architecture -ceq $request.architecture -and
+        $_.cua_version -ceq $authorization.cua_version -and $_.source_commit -ceq $authorization.source_commit -and
+        $_.predecessor_version -ceq $matches[0].cua_version -and $_.predecessor_source_commit -ceq $matches[0].source_commit -and
+        (Same-Closure $_.input_closure $Previous.final_closure) -and
+        (Same-Closure $_.final_closure $Next.final_closure)
+    })
+    if ($edges.Count -ne 1) { throw 'Signed adoption transition is not authorized' }
+}
 function Assert-Path([string]$Path) {
     $current = [IO.Path]::GetFullPath($Path)
     while ($current) {
@@ -437,7 +482,9 @@ try {
     Assert-Private $lockPath
     $previous = Read-State
     if (($null -eq $previous) -ne ($null -eq $request.previous) -or $previous -cne $request.previous) { throw 'Adoption state changed concurrently' }
-    if ($null -ne $previous -and $previous -cne $state) { throw 'Signed adoption transition is not authorized' }
+    if ($null -ne $previous -and $previous -cne $state) {
+        Assert-SignedTransition ($previous | ConvertFrom-Json) $parsed
+    }
     $temporary = Join-Path $stateRoot ('.state-' + [guid]::NewGuid().ToString('N'))
     try {
         $bytes = [Text.UTF8Encoding]::new($false,$true).GetBytes($state)
