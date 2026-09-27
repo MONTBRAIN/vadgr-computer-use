@@ -21,6 +21,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Refuse unsigned fallback after signed helper adoption.
 - Verify signed predecessor manifests during exact cataloged upgrades and
   rollbacks. Preserve signed adoption state across changes to packaged inputs.
+- Return a structured unsafe-upgrade refusal for invalid candidate or adoption
+  records without exposing private paths or hiding unexpected runtime faults.
 
 ## [0.7.8] - 2026-09-12
 

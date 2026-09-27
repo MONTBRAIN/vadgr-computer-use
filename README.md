@@ -32,6 +32,8 @@ Signed upgrades and rollbacks require an authenticated catalog naming the exact
 previous and replacement helper bytes. A different version label or installation
 identifier alone does not authorize a replacement. Signed state persists across
 changes to the packaged input, and an unlisted predecessor remains untouched.
+Invalid candidate or adoption records return `browser_broker_upgrade_unsafe`
+with a repair instruction before the running broker is touched.
 
 That ships a console script called `vadgr-cua`. On **Linux**, run the one-time
 system-dependency step (the second of the two install commands):

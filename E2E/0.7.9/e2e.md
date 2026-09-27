@@ -15,6 +15,12 @@ above lacks this repair and is not the new signed qualification subject. Its
 recorded observations remain history. Rebaseline the source pins and both native
 review packets after the repaired runtime commit is pushed and reviewed.
 No signed P05/P07 result is claimed by the synthetic regression tests.
+The follow-up verification-error repair makes missing or malformed authorization,
+wrong digests and invalid candidate manifests return a structured
+`browser_broker_upgrade_unsafe` refusal before process handoff. The relevant
+negative cells must capture that exact code and remedy, zero process mutation
+and no private path in the reply. Unexpected implementation or device I/O faults
+remain faults, not successful or ordinary refusal results.
 
 For every P07 and P05 approved-rollback cell below, prepare two real signed
 fixtures from distinct reviewed input closures. Use the trusted producers'

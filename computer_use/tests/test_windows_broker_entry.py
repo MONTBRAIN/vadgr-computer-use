@@ -127,3 +127,40 @@ def test_main_passes_adoption_arguments_as_values(monkeypatch):
         "path": "C:\\safe path\\authorization.json",
         "digest": "a" * 64,
     }
+
+
+@pytest.mark.parametrize("damage", ["missing", "digest", "schema", "candidate"])
+def test_handoff_returns_safe_refusal_for_invalid_authorization(monkeypatch, tmp_path, capsys, damage):
+    from computer_use.browser import windows_process
+
+    authorization = tmp_path / "helper-closure-authorization.json"
+    raw = b"{}\n"
+    if damage != "missing":
+        authorization.write_bytes(raw)
+    if damage != "candidate":
+        monkeypatch.setattr(windows_broker_entry, "_candidate", lambda _: ({}, "1" * 64, "x86_64", True))
+    else:
+        monkeypatch.setattr(windows_broker_entry.sys, "executable", str(tmp_path / "broker.exe"))
+    called = []
+    monkeypatch.setattr(windows_process, "perform_upgrade_handoff", lambda **kwargs: called.append(kwargs))
+    digest = "2" * 64 if damage == "digest" else hashlib.sha256(raw).hexdigest()
+    assert windows_broker_entry._upgrade_handoff(str(authorization), digest) == 0
+    output = capsys.readouterr()
+    reply = json.loads(output.out)
+    assert reply["state"] == "refused"
+    assert reply["code"] == windows_process.UPGRADE_UNSAFE
+    assert reply["remediation"]
+    assert not called and not output.err
+    assert str(tmp_path) not in output.out
+
+
+@pytest.mark.parametrize("error", [RuntimeError("unexpected"), KeyError("unexpected"), OSError(5, "device fault")])
+def test_handoff_does_not_hide_unexpected_verification_faults(monkeypatch, capsys, error):
+    def fault(*args):
+        raise error
+
+    monkeypatch.setattr(windows_broker_entry, "_adoption_edge", fault)
+    with pytest.raises(type(error)) as caught:
+        windows_broker_entry._upgrade_handoff()
+    assert caught.value is error
+    assert capsys.readouterr().out == ""
