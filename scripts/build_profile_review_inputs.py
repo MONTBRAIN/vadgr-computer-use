@@ -97,7 +97,8 @@ def export(inputs: Path, output: Path, architecture: str) -> None:
         "broker.spdx.json": sbom_bytes,
         **notices,
     }
-    for name in ("source-input.json", "toolchain.json", "notice-inputs.json", "predecessor-input.json"):
+    files["build-inputs/source-input.json"] = canonical(source)
+    for name in ("toolchain.json", "notice-inputs.json", "predecessor-input.json"):
         files["build-inputs/" + name] = (ROOT / "packaging/profiles" / name).read_bytes()
     files["build-inputs/windows-broker-build.txt"] = (ROOT / "requirements/windows-broker-build.txt").read_bytes()
     receipt = {

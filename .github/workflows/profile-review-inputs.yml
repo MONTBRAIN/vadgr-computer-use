@@ -2,6 +2,12 @@ name: profile-review-inputs
 
 on:
   workflow_dispatch:
+    inputs:
+      input_set:
+        description: Reviewed source and member policy set
+        type: choice
+        default: primary
+        options: [primary, upgrade-fixture]
   pull_request:
     paths:
       - .github/workflows/profile-review-inputs.yml
@@ -14,6 +20,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  CUA_PROFILE_INPUT_SET: ${{ inputs.input_set || 'primary' }}
 
 jobs:
   contracts:

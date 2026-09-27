@@ -2,6 +2,12 @@ name: profile-wheels
 
 on:
   workflow_dispatch:
+    inputs:
+      input_set:
+        description: Reviewed source and member policy set
+        type: choice
+        default: primary
+        options: [primary, upgrade-fixture]
   pull_request:
     paths:
       - "computer_use/browser/**"
@@ -17,6 +23,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  CUA_PROFILE_INPUT_SET: ${{ inputs.input_set || 'primary' }}
 
 jobs:
   contracts:
