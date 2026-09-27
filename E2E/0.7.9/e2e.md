@@ -136,9 +136,10 @@ reviewed-source pin to the qualified runtime and landed as
 `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. It retained only unapproved member
 inventories, SPDX, notices/source receipts and build pins. Its receipt is
 non-publishable and grants no legal, signing or adoption approval. It uploads no
-executable, wheel, final catalog or attestation. Use this data to complete exact
-target review before creating `adoption-rules.json`. The final producer preflight
-remains unchanged and still requires actual approval.
+executable, wheel, final catalog or attestation. That data supported the exact
+target review recorded in the later `adoption-rules.json`; PR #116 landed those
+rules and trusted producer run `36312377525` applied them. Signed-helper adoption
+qualification remains separate and is not implied by the producer pass.
 
 | Review artifact | Artifact ID | Artifact bytes | GitHub artifact digest | Receipt SHA-256 |
 |---|---|---|---|---|
@@ -347,8 +348,10 @@ shasum -a 256 "$CUA_WHEEL"
 The native development exception establishes only the unsigned P01/P11 slice.
 It cannot satisfy signing, adoption, attestation, final catalog or publication
 oracles. Hosted CI creates and checks the artifact but never establishes a native
-desktop verdict. The final trusted producer remains blocked until reviewed
-adoption rules exist and still requires the complete nine-wheel catalog.
+desktop verdict. Reviewed adoption rules now exist and trusted producer run
+`36312377525` retained the complete validated nine-wheel catalog. Neither fact
+establishes signed-helper adoption, final catalog publication or a native desktop
+verdict.
 
 Native Windows normally uses that same retained, validated standalone profile
 wheel. P01-windows-x86_64 and the explicitly unsigned P06/P08 slices below may
@@ -3052,8 +3055,9 @@ architectures against the exact qualified runtime `14cb515`. Independent
 Authenticode inspection classified only the three named Microsoft VC runtime
 members as vendor-preserve; every other native member requires publisher signing.
 This separate lane exists because legal member review must precede final wheel
-construction. Reviewed adoption rules and held signed fixtures are still absent.
-No paid signing operation has run. Native hosts, protected
+construction. Reviewed adoption rules landed through PR #116 and trusted producer
+run `36312377525` retained the validated catalog. Held signed fixtures are still
+absent. No paid signing operation has run. Native hosts, protected
 authorization and packaged verifier policy remain real prerequisites where named.
 They are never fabricated failures or synthetic passes.
 
