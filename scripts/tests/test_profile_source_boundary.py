@@ -88,6 +88,32 @@ def test_both_trusted_producers_expose_only_named_reviewed_input_sets():
         assert "github.ref == 'refs/heads/master'" in workflow
 
 
+@pytest.mark.parametrize("selection", ["primary", "upgrade-fixture"])
+def test_final_preflight_accepts_each_reviewed_input_set(monkeypatch, selection):
+    monkeypatch.setenv("CUA_PROFILE_INPUT_SET", selection)
+    producer.preflight()
+
+
+@pytest.mark.parametrize("selection,legal", [
+    ("primary", {
+        "x86_64": "971bf06aff0cf2f9f73b3b488ce88052e40c9f6400271814cb1fdc851526b32c",
+        "aarch64": "8de5ba4af010e0f8ba430d08bd6be083a59057b995216d2a6e6e633e89995ad9",
+    }),
+    ("upgrade-fixture", {
+        "x86_64": "6b94c9688668ac7848614e7a650834b4a03ccdc9982e223684dc493e84023c3c",
+        "aarch64": "d3a9401d9519385674a170a320469bb69a5037c073feaf4cf7cb28adacc20281",
+    }),
+])
+def test_transition_rules_bind_exact_legal_records(monkeypatch, selection, legal):
+    monkeypatch.setenv("CUA_PROFILE_INPUT_SET", selection)
+    rules = producer.read_json(producer.reviewed_input("adoption-rules.json").read_bytes())
+    trusted = ["0c561b672cc41efa65f7ad9b6f95c23c370fb46c"]
+    assert rules["source_sha_allowlist"] == rules["signer_sha_allowlist"] == trusted
+    for architecture, rows in rules["files"].items():
+        assert {row["legal_approval_sha256"] for row in rows.values()
+                if row["trust_class"] != "data"} == {legal[architecture]}
+
+
 def test_credential_job_never_executes_candidate_source():
     workflow = (ROOT / ".github/workflows/profile-wheels.yml").read_text()
     validator = workflow.split("  validate:", 1)[1]
