@@ -25,6 +25,7 @@ def test_reviewed_source_does_not_accept_an_environment_override(tmp_path, monke
     record = {"schema": 1, "source_commit": "b" * 40, "version": "0.7.9"}
     (base / "source-input.json").write_bytes(canonical(record))
     monkeypatch.setattr(producer, "ROOT", tmp_path)
+    monkeypatch.setenv("CUA_PROFILE_INPUT_SET", "primary")
     monkeypatch.setenv("CUA_SOURCE_COMMIT", "e" * 40)
     assert producer.source_input() == record
     record["source_commit"] = "refs/heads/feature"
