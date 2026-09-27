@@ -67,6 +67,24 @@ def validate_descriptor(value: dict, version: str) -> None:
             raise ValueError("exact retained artifact digest required")
 
 
+def attestation_command(catalog_path: Path, bundle_path: Path, producer: dict) -> list[str]:
+    return [
+        "gh", "attestation", "verify", str(catalog_path), "--bundle", str(bundle_path),
+        "--repo", REPOSITORY, "--cert-identity",
+        f"https://github.com/{REPOSITORY}/{producer['workflow']}@refs/heads/master",
+        "--cert-oidc-issuer", "https://token.actions.githubusercontent.com",
+        "--source-ref", "refs/heads/master", "--source-digest", producer["tooling_commit"],
+        "--signer-digest", producer["tooling_commit"], "--deny-self-hosted-runners",
+    ]
+
+
+def validate_run_identity(run: dict, producer: dict) -> None:
+    if (run["head_sha"] != producer["tooling_commit"] or run["run_attempt"] != 1
+            or run["workflow_id"] != producer["workflow_id"] or run["event"] != "workflow_dispatch"
+            or run["head_branch"] != "master" or run["conclusion"] != "success"):
+        raise ValueError("retained producer run identity or success differs")
+
+
 def prepare(descriptor: Path, destination: Path, version: str) -> dict:
     value = read_json(descriptor.read_bytes())
     validate_descriptor(value, version)
@@ -75,10 +93,7 @@ def prepare(descriptor: Path, destination: Path, version: str) -> dict:
     if repository["id"] != producer["repository_id"] or repository["owner"]["id"] != producer["owner_id"]:
         raise ValueError("repository/owner numeric identity differs")
     run = gh("api", f"repos/{REPOSITORY}/actions/runs/{producer['run_id']}")
-    if (run["head_sha"] != producer["source_commit"] or run["run_attempt"] != 1
-            or run["workflow_id"] != producer["workflow_id"] or run["event"] != "workflow_dispatch"
-            or run["head_branch"] != "master" or run["conclusion"] != "success"):
-        raise ValueError("retained producer run identity or success differs")
+    validate_run_identity(run, producer)
     workflow = gh("api", f"repos/{REPOSITORY}/actions/workflows/{producer['workflow_id']}")
     if workflow["path"] != producer["workflow"]:
         raise ValueError("producer workflow path differs")
@@ -94,14 +109,8 @@ def prepare(descriptor: Path, destination: Path, version: str) -> dict:
     if (sha(catalog_path.read_bytes()) != value["catalog_sha256"]
             or sha(bundle_path.read_bytes()) != value["bundle_sha256"]):
         raise ValueError("catalog or verification bundle differs")
-    subprocess.run([
-        "gh", "attestation", "verify", str(catalog_path), "--bundle", str(bundle_path),
-        "--repo", REPOSITORY, "--cert-identity",
-        f"https://github.com/{REPOSITORY}/{producer['workflow']}@refs/heads/master",
-        "--cert-oidc-issuer", "https://token.actions.githubusercontent.com",
-        "--source-ref", "refs/heads/master", "--source-digest", producer["source_commit"],
-        "--signer-digest", producer["tooling_commit"], "--deny-self-hosted-runners",
-    ], check=True, timeout=180)
+    subprocess.run(attestation_command(catalog_path, bundle_path, producer),
+                   check=True, timeout=180)
     catalog = check_catalog(catalog_path)
     if catalog["producer"] != producer or catalog["cua_version"] != version:
         raise ValueError("attested catalog differs from reviewed producer")

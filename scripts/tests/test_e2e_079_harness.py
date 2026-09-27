@@ -150,6 +150,36 @@ def test_publication_refuses_missing_or_reused_assets(publication, tmp_path):
         publication.publication_record(tmp_path, release, "0.7.9")
 
 
+def test_publication_attestation_binds_trusted_tooling_not_candidate_source(publication, tmp_path):
+    producer = {
+        "workflow": ".github/workflows/profile-wheels.yml",
+        "source_commit": "a" * 40,
+        "tooling_commit": "b" * 40,
+    }
+    command = publication.attestation_command(
+        tmp_path / publication.CATALOG, tmp_path / publication.BUNDLE, producer
+    )
+    source_digest = command[command.index("--source-digest") + 1]
+    signer_digest = command[command.index("--signer-digest") + 1]
+    assert source_digest == producer["tooling_commit"]
+    assert signer_digest == producer["tooling_commit"]
+    assert producer["source_commit"] not in command
+
+    producer.update({"workflow_id": 17})
+    run = {
+        "head_sha": producer["tooling_commit"],
+        "run_attempt": 1,
+        "workflow_id": producer["workflow_id"],
+        "event": "workflow_dispatch",
+        "head_branch": "master",
+        "conclusion": "success",
+    }
+    publication.validate_run_identity(run, producer)
+    run["head_sha"] = producer["source_commit"]
+    with pytest.raises(ValueError, match="producer run identity"):
+        publication.validate_run_identity(run, producer)
+
+
 def test_release_workflow_does_not_rebuild_or_overwrite_wheels():
     workflow = (ROOT / ".github/workflows/publish.yml").read_text()
     assert "python -m build" not in workflow
