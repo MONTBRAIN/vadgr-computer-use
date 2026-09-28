@@ -70,3 +70,10 @@ def test_generic_setuptools_wheel_cannot_ship_native_helpers():
     package_data = project["tool"]["setuptools"]["package-data"]
     assert "computer_use.browser.winhost" not in package_data
     assert "computer_use.browser.winbroker" not in package_data
+
+
+def test_runtime_dependencies_exclude_unused_agpl_browser_driver():
+    root = Path(__file__).resolve().parents[2]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = project["project"]["dependencies"]
+    assert all(not dependency.casefold().startswith("nodriver") for dependency in dependencies)
