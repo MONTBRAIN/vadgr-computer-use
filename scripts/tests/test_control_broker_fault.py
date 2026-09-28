@@ -50,7 +50,11 @@ def run_fixture(control, isolated, rows, *, partial=False, change=None):
     def writer():
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
-            data = os.read(reader, 4096)
+            try:
+                data = os.read(reader, 4096)
+            except BlockingIOError:
+                time.sleep(0.005)
+                continue
             if data:
                 received.append(json.loads(data))
                 break
@@ -109,11 +113,14 @@ def test_mismatched_or_missing_events(control, isolated, rows, monkeypatch):
         run_fixture(control, isolated, rows)
 
 
-@pytest.mark.parametrize("change", ["replace", "truncate"])
+@pytest.mark.parametrize("change", ["replace", "remove", "truncate"])
 def test_log_changes_fail(control, isolated, change):
     def mutate(path):
         if change == "replace":
             path.rename(path.with_suffix(".old"))
+        elif change == "remove":
+            path.unlink()
+            return
         path.write_text("")
     with pytest.raises(ValueError, match="replaced|truncated"):
         run_fixture(control, isolated, [], change=mutate)

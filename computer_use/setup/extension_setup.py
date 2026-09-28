@@ -35,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -169,8 +170,106 @@ def bundled_relay_exe() -> Path:
     """Path to the packaged Windows relay shim (shipped as package data next to
     ``computer_use/browser/winhost/__init__.py``)."""
     from computer_use.browser import winhost
+    from computer_use.browser.profile import (
+        ProfileRefusal,
+        load_input_manifest,
+        select_profile,
+    )
 
-    return Path(winhost.__file__).resolve().parent / "vadgr-cua-host.exe"
+    # Profile manifests use paths relative to the wheel root, not the browser
+    # package.  This is the source root in a checkout and site-packages after
+    # installation.
+    wheel_root = Path(winhost.__file__).resolve().parents[3]
+    try:
+        adopted = _adopted_relay()
+        if adopted is not None:
+            return adopted
+        profile = select_profile()
+        manifest = load_input_manifest(profile)
+        helpers = manifest.get("helpers")
+        if not profile.windows_helpers or not isinstance(helpers, dict):
+            raise ProfileRefusal(
+                "windows-helper-unavailable",
+                "This release profile does not carry a Windows browser relay",
+            )
+        relay = helpers.get("relay")
+        if not isinstance(relay, dict) or set(relay) != {"path", "size", "sha256"}:
+            raise ProfileRefusal("invalid-manifest", "The relay manifest is invalid")
+        source = wheel_root / str(relay["path"])
+        if (
+            not source.is_file()
+            or source.stat().st_size != relay["size"]
+            or _file_sha256(source) != relay["sha256"]
+        ):
+            raise ProfileRefusal(
+                "relay-digest-mismatch", "The packaged Windows relay changed"
+            )
+        return source
+    except ProfileRefusal as error:
+        # The exact released 0.7.8 binary remains in source only as a predecessor
+        # fixture. It keeps existing source tests usable but is never an installed
+        # 0.7.9 package fallback.
+        repository = Path(__file__).resolve().parents[2]
+        legacy = Path(winhost.__file__).resolve().parent / "vadgr-cua-host.exe"
+        if error.code == "missing-package-trust" and (repository / ".git").exists():
+            return legacy
+        raise
+
+
+def _managed_relay() -> tuple[str, Path]:
+    """Verify and return the final relay bound by the inherited parent channel."""
+    from computer_use.browser.managed_authorization import managed_launch_authorization
+    from computer_use.browser.profile import load_package_trust, select_profile
+    from computer_use.browser.windows_broker import _managed_authorization_pipe
+
+    profile = select_profile()
+    trust = load_package_trust()
+    if trust.get("mode") != "managed" or trust.get("release_profile") != profile.value:
+        raise OSError("the managed relay package profile is invalid")
+    envelope, _manifest = managed_launch_authorization(
+        _managed_authorization_pipe, profile=profile.value
+    )
+    windows_path = str(envelope["relay"]["path"])
+    root_path = str(envelope["installed_root"])
+    if sys.platform == "win32":
+        local_path = Path(windows_path)
+    else:
+        from computer_use.platform.wsl2 import win_to_wsl_path
+
+        local_path = Path(win_to_wsl_path(windows_path))
+    if (
+        not local_path.is_file()
+        or local_path.stat().st_size != envelope["relay"]["size"]
+        or _file_sha256(local_path) != envelope["relay"]["sha256"]
+    ):
+        raise OSError("the installed managed relay changed")
+    command = (
+        "$env:PSModulePath=$PSHOME+'\\Modules';"
+        "$v=[Console]::In.ReadToEnd()|ConvertFrom-Json;"
+        "$s=Get-AuthenticodeSignature -LiteralPath $v.path;"
+        "$a=Get-Acl -LiteralPath $v.root;"
+        "$ids=@($a.Access|ForEach-Object {$_.IdentityReference.Translate("
+        "[Security.Principal.SecurityIdentifier]).Value}|Sort-Object -Unique);"
+        "$ok=$s.Status -eq 'Valid' -and $a.AreAccessRulesProtected -and "
+        "@($ids|Where-Object {$_ -notin @('S-1-5-18',"
+        "[Security.Principal.WindowsIdentity]::GetCurrent().User.Value)}).Count -eq 0;"
+        "@{ok=$ok;status=[string]$s.Status}|ConvertTo-Json -Compress"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        input=json.dumps({"path": windows_path, "root": root_path}),
+        capture_output=True,
+        text=True,
+        stdin=None,
+        timeout=15,
+    )
+    try:
+        verification = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError) as error:
+        raise OSError("the installed managed relay could not be verified") from error
+    if result.returncode != 0 or verification != {"ok": True, "status": "Valid"}:
+        raise OSError("the installed managed relay signature or ACL is invalid")
+    return windows_path, local_path
 
 
 def relay_exe_dest(
@@ -220,6 +319,10 @@ def ensure_relay_exe(
     Chrome process can keep its old executable open while registration moves
     atomically to the new payload.
     """
+    if src is None and dest is None:
+        adopted = _adopted_relay()
+        if adopted is not None:
+            return adopted
     src = Path(src) if src is not None else bundled_relay_exe()
     explicit_destination = dest is not None
     dest = Path(dest) if dest is not None else relay_exe_dest(windows_user, src=src)
@@ -382,6 +485,32 @@ def _resolve_platform(platform: str | None) -> str:
     return "wsl" if detect_platform() is Platform.WSL2 else sys.platform
 
 
+def _managed_package() -> bool:
+    from computer_use.browser.profile import ProfileRefusal, load_package_trust
+
+    try:
+        return load_package_trust().get("mode") == "managed"
+    except ProfileRefusal as error:
+        repository = Path(__file__).resolve().parents[2]
+        if error.code == "missing-package-trust" and (repository / ".git").exists():
+            return False
+        raise
+
+
+def _adopted_relay() -> Path | None:
+    from computer_use.browser.profile import ProfileRefusal
+    from computer_use.browser.standalone_adoption import resolve
+
+    try:
+        result = resolve()
+        return result["relay"] if result else None
+    except ProfileRefusal as error:
+        repository = Path(__file__).resolve().parents[2]
+        if error.code == "missing-package-trust" and (repository / ".git").exists():
+            return None
+        raise
+
+
 def ensure_registered(
     *,
     paths: dict | None = None,
@@ -407,12 +536,17 @@ def ensure_registered(
         # (a .exe Chrome spawns on Windows); the launcher script is irrelevant.
         # Place the packaged relay shim where the manifest points - no manual copy.
         if host_path is None:
-            installed = (relay_installer or ensure_relay_exe)(windows_user=windows_user)
-            host = (
-                _mnt_to_windows_path(installed)
-                if isinstance(installed, Path)
-                else windows_relay_path(windows_user=windows_user)
-            )
+            if _managed_package():
+                host, _local = _managed_relay()
+            else:
+                installed = (relay_installer or ensure_relay_exe)(
+                    windows_user=windows_user
+                )
+                host = (
+                    _mnt_to_windows_path(installed)
+                    if isinstance(installed, Path)
+                    else windows_relay_path(windows_user=windows_user)
+                )
         else:
             host = host_path
         written = install_manifests(host, targets)
@@ -427,12 +561,17 @@ def ensure_registered(
     targets = paths if paths is not None else manifest_paths(plat)
     if plat.startswith("win"):
         if host_path is None:
-            source = bundled_relay_exe()
-            destination = native_windows_relay_dest(src=source)
-            installed = (relay_installer or ensure_relay_exe)(
-                src=source, dest=destination
-            )
-            host = str(installed if isinstance(installed, Path) else destination)
+            if _managed_package():
+                host, _local = _managed_relay()
+            else:
+                adopted = _adopted_relay()
+                if adopted is not None:
+                    host = str(adopted)
+                else:
+                    source = bundled_relay_exe()
+                    destination = native_windows_relay_dest(src=source)
+                    installed = (relay_installer or ensure_relay_exe)(src=source, dest=destination)
+                    host = str(installed if isinstance(installed, Path) else destination)
         else:
             host = host_path
         written = install_manifests(host, targets)

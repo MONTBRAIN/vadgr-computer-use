@@ -106,7 +106,17 @@ def _below(path: Path, root: Path) -> bool:
         return False
 
 
-def _load_catalog(path: Path) -> dict[str, object]:
+def _target(architecture: str) -> str:
+    try:
+        return {
+            "x86_64": "x86_64-pc-windows-msvc",
+            "aarch64": "aarch64-pc-windows-msvc",
+        }[architecture]
+    except KeyError as error:
+        raise _unsafe() from error
+
+
+def _load_catalog(path: Path, *, target: str) -> dict[str, object]:
     _ordinary(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -114,14 +124,92 @@ def _load_catalog(path: Path) -> dict[str, object]:
         raise _unsafe() from error
     if (
         value.get("schema") != 1
-        or value.get("target") != "x86_64-pc-windows-msvc"
+        or value.get("target") != target
         or not isinstance(value.get("releases"), list)
     ):
         raise _unsafe()
     return value
 
 
-def _catalog_row(catalog: dict[str, object], bundle: Path) -> dict[str, object]:
+def _adoption_row(adoption: dict[str, object], bundle: Path, *, target: str) -> dict[str, object]:
+    """Construct one predecessor row from an authenticated exact transition.
+
+    The caller must authenticate the authorization record before invoking the
+    native handoff. This function still checks its complete closed shape and
+    binds it to the candidate architecture and content-addressed predecessor.
+    """
+    required = {
+        "direction",
+        "architecture",
+        "cua_version",
+        "source_commit",
+        "input_closure",
+        "final_closure",
+    }
+    signed = isinstance(adoption, dict) and adoption.get("direction") == "signed-to-signed"
+    if signed:
+        required |= {"predecessor_version", "predecessor_source_commit"}
+    if not isinstance(adoption, dict) or set(adoption) != required:
+        raise _unsafe()
+    architecture = adoption.get("architecture")
+    if (
+        adoption.get("direction") not in {"unsigned-to-signed", "signed-to-signed"}
+        or not isinstance(architecture, str)
+        or _target(architecture) != target
+        or adoption.get("predecessor_version" if signed else "cua_version") != bundle.parent.name
+        or not isinstance(adoption.get("source_commit"), str)
+        or len(adoption["source_commit"]) != 40
+        or any(character not in "0123456789abcdef" for character in adoption["source_commit"])
+    ):
+        raise _unsafe()
+    closures = []
+    for name in ("input_closure", "final_closure"):
+        closure = adoption.get(name)
+        if not isinstance(closure, dict) or set(closure) != {
+            "relay_sha256",
+            "archive_sha256",
+            "manifest_sha256",
+        }:
+            raise _unsafe()
+        for value in closure.values():
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or value == "0" * 64
+                or any(character not in "0123456789abcdef" for character in value)
+            ):
+                raise _unsafe()
+        closures.append(closure)
+    predecessor = closures[0]
+    if predecessor["archive_sha256"] != bundle.name:
+        raise _unsafe()
+    row = {
+        "version": adoption["predecessor_version" if signed else "cua_version"],
+        "archive_sha256": predecessor["archive_sha256"],
+        "broker_relative_path": BROKER_EXECUTABLE,
+        "broker_sha256": None,
+        "manifest_sha256": predecessor["manifest_sha256"],
+        "protocol_min": 1,
+        "protocol_max": 1,
+        "target_archive_sha256": closures[1]["archive_sha256"],
+    }
+    if signed:
+        source = adoption["predecessor_source_commit"]
+        if not isinstance(source, str) or len(source) != 40 or source == "0" * 40 or any(
+            char not in "0123456789abcdef" for char in source
+        ):
+            raise _unsafe()
+        row.update(manifest_kind="managed-signed", source_commit=source)
+    return row
+
+
+def _catalog_row(
+    catalog: dict[str, object],
+    bundle: Path,
+    *,
+    target: str,
+    adoption: dict[str, object] | list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     version = bundle.parent.name
     archive_hash = bundle.name
     rows = [
@@ -131,9 +219,20 @@ def _catalog_row(catalog: dict[str, object], bundle: Path) -> dict[str, object]:
         and row.get("version") == version
         and row.get("archive_sha256") == archive_hash
     ]
+    if not rows and adoption is not None:
+        edges = adoption if isinstance(adoption, list) else [adoption]
+        matching = [edge for edge in edges if isinstance(edge, dict)
+                    and isinstance(edge.get("input_closure"), dict)
+                    and edge["input_closure"].get("archive_sha256") == archive_hash]
+        if len(matching) != 1:
+            raise _unsafe()
+        return _adoption_row(matching[0], bundle, target=target)
     if len(rows) != 1:
         raise _unsafe()
     row = rows[0]
+    if set(row) != {"version", "archive_sha256", "broker_relative_path", "broker_sha256",
+                    "manifest_sha256", "protocol_min", "protocol_max"}:
+        raise _unsafe()
     required = ("broker_relative_path", "broker_sha256", "manifest_sha256")
     if any(not isinstance(row.get(name), str) or not row[name] for name in required):
         raise _unsafe()
@@ -142,21 +241,34 @@ def _catalog_row(catalog: dict[str, object], bundle: Path) -> dict[str, object]:
     return row
 
 
-def _verify_bundle(bundle: Path, row: dict[str, object]) -> Path:
+def _verify_bundle(bundle: Path, row: dict[str, object], *, target: str) -> Path:
     root = bundle.resolve(strict=True)
     _ordinary(root, directory=True)
-    manifest_path = root / "bundle-manifest.json"
+    signed = row.get("manifest_kind") == "managed-signed"
+    manifest_name = "broker-final-manifest.json" if signed else "bundle-manifest.json"
+    manifest_path = root / manifest_name
     _ordinary(manifest_path)
     raw_manifest = manifest_path.read_bytes()
     if hashlib.sha256(raw_manifest).hexdigest() != row["manifest_sha256"]:
         raise _unsafe()
     try:
-        manifest = json.loads(raw_manifest)
+        if signed:
+            from computer_use.browser.managed_authorization import validate_final_manifest
+
+            manifest = validate_final_manifest(raw_manifest)
+        else:
+            manifest = json.loads(raw_manifest)
     except ValueError as error:
         raise _unsafe() from error
-    if (
+    if signed:
+        if (manifest["cua_version"] != row["version"]
+                or _target(manifest["architecture"]) != target
+                or manifest["source_commit"] != row["source_commit"]
+                or manifest["archive"]["sha256"] != row["archive_sha256"]):
+            raise _unsafe()
+    elif (
         manifest.get("version") != row["version"]
-        or manifest.get("target") != "x86_64-pc-windows-msvc"
+        or manifest.get("target") != target
         or manifest.get("archive_sha256") != row["archive_sha256"]
         or not isinstance(manifest.get("files"), list)
     ):
@@ -187,7 +299,7 @@ def _verify_bundle(bundle: Path, row: dict[str, object]) -> Path:
             _ordinary(path, directory=True)
             continue
         _ordinary(path)
-        if relative == "bundle-manifest.json":
+        if relative == manifest_name:
             continue
         if relative not in expected or not _below(path.resolve(strict=True), root):
             raise _unsafe()
@@ -198,8 +310,15 @@ def _verify_bundle(bundle: Path, row: dict[str, object]) -> Path:
     if actual != set(expected):
         raise _unsafe()
 
-    broker = root / str(row["broker_relative_path"])
-    if not _below(broker.resolve(strict=True), root) or _sha256(broker) != row["broker_sha256"]:
+    broker_relative = str(row["broker_relative_path"])
+    broker = root / broker_relative
+    broker_record = expected.get(broker_relative)
+    expected_broker_sha = row["broker_sha256"]
+    if expected_broker_sha is None:
+        if broker_record is None or not isinstance(broker_record.get("sha256"), str):
+            raise _unsafe()
+        expected_broker_sha = broker_record["sha256"]
+    if not _below(broker.resolve(strict=True), root) or _sha256(broker) != expected_broker_sha:
         raise _unsafe()
     return broker
 
@@ -295,8 +414,7 @@ def _restart_manager_lock_owners(path: Path) -> tuple[tuple[int, int], ...]:
             return tuple(
                 (
                     int(item.process.pid),
-                    (int(item.process.started.high) << 32)
-                    | int(item.process.started.low),
+                    (int(item.process.started.high) << 32) | int(item.process.started.low),
                 )
                 for item in values[: count.value]
             )
@@ -466,6 +584,8 @@ def perform_upgrade_handoff(
     lock_path: Path,
     candidate_bundle: Path,
     catalog_path: Path,
+    architecture: str = "x86_64",
+    adoption: dict[str, object] | list[dict[str, object]] | None = None,
     timeout_ms: int = _WAIT_MS,
 ) -> dict[str, object]:
     """Replace one fully proved predecessor or leave all uncertain state intact."""
@@ -515,21 +635,24 @@ def perform_upgrade_handoff(
             if not _below(image, common_root):
                 raise _unsafe()
             bundle = image.parent
-            catalog = _load_catalog(catalog_path)
-            row = _catalog_row(catalog, bundle)
-            broker = _verify_bundle(bundle, row)
+            target = _target(architecture)
+            catalog = _load_catalog(catalog_path, target=target)
+            row = _catalog_row(catalog, bundle, target=target, adoption=adoption)
+            if "target_archive_sha256" in row and row["target_archive_sha256"] != candidate_bundle.name:
+                raise _unsafe()
+            broker = _verify_bundle(bundle, row, target=target)
             if not _same_path(image, broker):
                 raise _unsafe()
             endpoint = _read_endpoint(lock_path)
             if endpoint is not None and (
                 endpoint.get("pid") != process.pid
                 or endpoint.get("bundle_hash") != row["archive_sha256"]
+                or endpoint.get("process_created_filetime") != str(created)
             ):
                 raise _unsafe()
             if (
                 _restart_manager_lock_owners(lock_path) != ((process.pid, created),)
-                or
-                process.creation_filetime() != created
+                or process.creation_filetime() != created
                 or not _same_path(process.image_path(), image)
                 or not process.is_running()
             ):

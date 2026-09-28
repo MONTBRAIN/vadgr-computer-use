@@ -14,9 +14,11 @@ env:
 
 jobs:
   build:
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       id-token: write
       attestations: write
     outputs:
@@ -57,13 +59,15 @@ jobs:
           fi
           echo "Tagged commit is on master."
 
-      - name: Verify the committed Windows broker payload
-        run: python scripts/check_windows_broker_bundle.py
-
-      - name: Build Python distributions
+      - name: Verify and retrieve reviewed retained profile artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m pip install --upgrade pip build
-          python -m build
+          set -euo pipefail
+          test -f packaging/profiles/release-input.json
+          python scripts/e2e_079/publication.py prepare \
+            --descriptor packaging/profiles/release-input.json \
+            --destination release-assets --version "${{ steps.version.outputs.version }}"
 
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -99,15 +103,21 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
-            dist/*
             vadgr-cua-extension-*.zip
-            computer_use/browser/winbroker/vadgr-cua-browser-broker-win-x64.zip
 
-      - name: Upload Python dist artifact
+      - name: Upload retained release artifact set
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dist
-          path: dist/
+          name: profile-release-assets
+          path: release-assets/
+          if-no-files-found: error
+
+      - name: Upload standalone PyPI wheel only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: standalone-dist
+          path: pypi-dist/
+          if-no-files-found: error
 
       - name: Upload extension zips artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -117,7 +127,8 @@ jobs:
 
   pypi:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, github-release]
+    if: startsWith(github.ref, 'refs/tags/')
     environment:
       name: release
       url: https://pypi.org/p/vadgr-computer-use
@@ -127,45 +138,81 @@ jobs:
       - name: Download Python dist artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: dist
+          name: standalone-dist
           path: dist/
 
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
         with:
           packages-dir: dist/
-          skip-existing: true
+          skip-existing: false
 
   github-release:
     runs-on: ubuntu-latest
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
+    environment: release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
-      - name: Download Python dist artifact
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Download verified profile artifact set
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: dist
-          path: dist/
+          name: profile-release-assets
+          path: release-assets/
 
       - name: Download extension zips artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: extension-zips
-          path: .
+          path: release-assets/
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - name: Require immutable releases and a new tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          enabled=$(gh api "repos/${GITHUB_REPOSITORY}/immutable-releases" --jq .enabled)
+          test "$enabled" = true
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft \
+            --title "$GITHUB_REF_NAME - native profile packaging" --notes-from-tag
+          gh release upload "$GITHUB_REF_NAME" release-assets/*
+
+      - name: Bind actual immutable asset identities outside the catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/e2e_079/publication.py record --root release-assets \
+            --version "${{ needs.build.outputs.version }}" --output cua-publication.json
+
+      - name: Attest publication record
+        id: publication
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          generate_release_notes: true
-          files: |
-            dist/*
-            vadgr-cua-extension-*.zip
+          subject-path: cua-publication.json
+
+      - name: Seal release without overwriting retained assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLICATION_BUNDLE: ${{ steps.publication.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          cp "$PUBLICATION_BUNDLE" cua-publication.sigstore.json
+          gh release upload "$GITHUB_REF_NAME" cua-publication.json cua-publication.sigstore.json
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          immutable=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq .immutable)
+          test "$immutable" = true
 
   chrome-webstore:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, github-release]
     if: startsWith(github.ref, 'refs/tags/')
     # Human gate: the chrome-web-store environment requires a reviewer's approval,
     # and holds the (non-secret) WIF vars unreadable until approved.

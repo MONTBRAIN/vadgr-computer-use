@@ -195,9 +195,42 @@ def assert_windows_owner_only(path):
     )
     result = subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
-        input=encoded, text=True, capture_output=True, timeout=10, check=True,
+        # Cold PowerShell startup on hosted Windows can exceed ten seconds.
+        # This bounds oracle startup, not product latency; keep the ACL strict.
+        input=encoded, text=True, capture_output=True, timeout=60, check=True,
     )
     assert json.loads(result.stdout) == {"protected": True, "count": 1, "owner_only": True}
+
+
+@pytest.mark.parametrize("owner_only", [True, False])
+def test_acl_oracle_allows_cold_start_without_relaxing_permissions(
+    isolated, monkeypatch, owner_only,
+):
+    from types import SimpleNamespace
+
+    alias = isolated / "alias.json"
+    alias.write_text("{}")
+    calls = []
+
+    def cold_powershell(argv, **kwargs):
+        calls.append((argv, kwargs))
+        assert json.loads(kwargs["input"]) == str(alias.resolve())
+        assert str(alias.resolve()) not in argv[-1]
+        assert kwargs["check"] and kwargs["capture_output"]
+        assert 0 < kwargs["timeout"] <= 60
+        if kwargs["timeout"] < 15:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return SimpleNamespace(stdout=json.dumps({
+            "protected": True, "count": 1, "owner_only": owner_only,
+        }))
+
+    monkeypatch.setattr(subprocess, "run", cold_powershell)
+    if owner_only:
+        assert_windows_owner_only(alias)
+    else:
+        with pytest.raises(AssertionError):
+            assert_windows_owner_only(alias)
+    assert len(calls) == 1  # Never replay an uncertain oracle invocation.
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="native Windows ACL")

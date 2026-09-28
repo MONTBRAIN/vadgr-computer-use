@@ -113,7 +113,6 @@ def test_transition_rules_bind_exact_legal_records(monkeypatch, selection, legal
         assert {row["legal_approval_sha256"] for row in rows.values()
                 if row["trust_class"] != "data"} == {legal[architecture]}
 
-
 def test_credential_job_never_executes_candidate_source():
     workflow = (ROOT / ".github/workflows/profile-wheels.yml").read_text()
     validator = workflow.split("  validate:", 1)[1]

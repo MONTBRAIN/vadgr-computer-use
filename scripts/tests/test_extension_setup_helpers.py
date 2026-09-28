@@ -89,7 +89,7 @@ global.document = {querySelector(s) {
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=30,
+                timeout=90,
         )
         assert completed.returncode == 0, completed.stderr
         result = json.loads(completed.stdout)

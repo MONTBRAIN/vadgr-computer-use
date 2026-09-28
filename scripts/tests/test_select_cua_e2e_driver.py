@@ -29,6 +29,12 @@ def test_weekly_threshold_selects_driver(used_percent, driver):
 
     assert selection["selected_driver"] == driver
     assert selection["codex_weekly_remaining_percent"] == 100 - used_percent
+    if driver == "codex":
+        assert selection["codex_model"] == "gpt-6-luna"
+        assert selection["claude_model"] is None
+    else:
+        assert selection["codex_model"] is None
+        assert selection["claude_model"] == "claude-sonnet-5"
 
 
 def test_ordinary_limit_ignores_separate_model_allowance():

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from computer_use.browser import windows_broker
+from computer_use.browser.profile import ReleaseProfile
 
 
 def _fake_bundle(root: Path) -> tuple[Path, dict[str, object]]:
@@ -31,6 +32,117 @@ def test_bundle_input_rejects_archive_tampering(tmp_path, monkeypatch):
 
     with pytest.raises(OSError, match="integrity verification"):
         windows_broker._bundle_inputs()
+
+
+def test_profile_bundle_uses_only_the_selected_architecture(tmp_path, monkeypatch):
+    archive = tmp_path / "computer_use/browser/winbroker/aarch64/broker.zip"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"arm64 broker")
+    member_manifest = tmp_path / "computer_use/browser/winbroker/aarch64/broker.manifest.json"
+    member_manifest.write_text(
+        json.dumps(
+            {
+                "architecture": "aarch64",
+                "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "helpers": {
+            "architecture": "aarch64",
+            "archive": {
+                "path": "computer_use/browser/winbroker/aarch64/broker.zip",
+                "size": archive.stat().st_size,
+                "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+            },
+            "member_manifest": {
+                "path": "computer_use/browser/winbroker/aarch64/broker.manifest.json",
+                "size": member_manifest.stat().st_size,
+                "sha256": hashlib.sha256(member_manifest.read_bytes()).hexdigest(),
+            },
+        }
+    }
+    monkeypatch.setattr(windows_broker, "_distribution_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        "computer_use.browser.profile.select_profile",
+        lambda: ReleaseProfile.WINDOWS_AARCH64,
+    )
+    monkeypatch.setattr(
+        "computer_use.browser.profile.load_input_manifest", lambda _profile: manifest
+    )
+
+    selected_archive, selected_manifest, selected_metadata = (
+        windows_broker._profile_bundle_inputs()
+    )
+
+    assert selected_archive == archive
+    assert selected_manifest == member_manifest
+    assert selected_metadata["architecture"] == "aarch64"
+
+
+def test_managed_deployment_requires_digest_bound_receipt(tmp_path, monkeypatch):
+    archive = tmp_path / "broker.zip"
+    archive.write_bytes(b"signed broker")
+    manifest_path = tmp_path / "broker-final-manifest.json"
+    manifest_path.write_bytes(b"manifest bytes")
+    archive_hash = hashlib.sha256(archive.read_bytes()).hexdigest()
+    manifest_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    manifest = {
+        "mode": "managed-signed",
+        "cua_version": "0.7.9",
+        "archive": {"path": "broker.zip", "size": archive.stat().st_size, "sha256": archive_hash},
+        "files": [{"path": "broker.exe"}],
+    }
+    reports = tmp_path / "managed-helpers" / "x86_64" / "signature-reports.json"
+    reports.parent.mkdir(parents=True)
+    reports.write_text("{}")
+    monkeypatch.setattr(
+        windows_broker, "_bundle_inputs", lambda: (archive, manifest_path, manifest)
+    )
+    monkeypatch.setattr(
+        windows_broker, "_package_root", lambda: Path(__file__).resolve().parents[1] / "browser"
+    )
+    monkeypatch.setattr(
+        "computer_use.browser.profile.load_package_trust",
+        lambda: {"mode": "managed", "release_profile": "windows-x86_64"},
+    )
+    monkeypatch.setattr(
+        "computer_use.browser.profile.select_profile",
+        lambda: SimpleNamespace(architecture="x86_64"),
+    )
+    monkeypatch.setattr(
+        "computer_use.browser.managed_authorization.managed_launch_authorization",
+        lambda *_args, **_kwargs: ({"installed_root": "C:\\installed\\lib\\cua"}, manifest),
+    )
+    translated = []
+
+    def local_path(value):
+        translated.append(value)
+        return tmp_path
+
+    monkeypatch.setattr("computer_use.browser.offline_attestation.local_path", local_path)
+
+    def run(_command, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "destination": f"C:\\state\\0.7.9\\{archive_hash}",
+                    "archive_sha256": archive_hash,
+                    "broker_final_manifest_sha256": manifest_hash,
+                    "member_count": 1,
+                }
+            ),
+        )
+
+    monkeypatch.setattr(windows_broker.subprocess, "run", run)
+
+    destination, returned_manifest = windows_broker.deployed_bundle()
+
+    assert destination.endswith(archive_hash)
+    assert returned_manifest is manifest
+    assert translated == ["C:\\installed\\lib\\cua"]
 
 
 def test_endpoint_identity_requires_the_exact_packaged_bundle(tmp_path, monkeypatch):
@@ -169,8 +281,31 @@ def test_upgrade_handoff_paths_travel_as_data_not_powershell_source(monkeypatch)
     }
     assert bundle not in captured["command"][-1]
     assert json.loads(captured["options"]["input"]) == {
-        "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE
+        "executable": bundle + "\\" + windows_broker.BROKER_EXECUTABLE,
+        "authorization": None,
     }
+
+
+def test_upgrade_handoff_passes_authenticated_transition_as_data(monkeypatch, tmp_path):
+    authorization = tmp_path / "helper-closure-authorization.json"
+    authorization.write_bytes(b"authorization")
+    digest = "a" * 64
+    captured = {}
+    monkeypatch.setattr(
+        windows_broker, "_handoff_authorization", lambda: (authorization, digest)
+    )
+    monkeypatch.setattr(windows_broker, "_windows_path", lambda path: str(path))
+
+    def capture(command, **kwargs):
+        captured.update(command=command, options=kwargs)
+        return SimpleNamespace(returncode=0, stdout='{"state":"replaced"}\n')
+
+    monkeypatch.setattr(windows_broker.subprocess, "run", capture)
+
+    assert windows_broker._run_upgrade_handoff("C:\\bundle") == {"state": "replaced"}
+    request = json.loads(captured["options"]["input"])
+    assert request["authorization"] == {"path": str(authorization), "sha256": digest}
+    assert str(authorization) not in captured["command"][-1]
 
 
 def test_upgrade_handoff_preserves_exact_safe_failure(monkeypatch):

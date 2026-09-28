@@ -8,6 +8,7 @@
 
 """Native-messaging stdio framing (length-prefixed JSON), no browser."""
 
+import errno
 import io
 import json
 import os
@@ -160,7 +161,12 @@ class TestEndToEndShim:
             # exercised by TestNativeHostShutdown, so close the synthetic
             # writer explicitly before asserting relay cleanup.
             chrome_to_shim.close_writer()
-            cua_sock.shutdown(socket.SHUT_RDWR)
+            try:
+                cua_sock.shutdown(socket.SHUT_RDWR)
+            except OSError as error:
+                # The peer may win the expected close race after Chrome EOF.
+                if error.errno != errno.ENOTCONN:
+                    raise
             relay.join(timeout=2)
             assert not relay.is_alive()
             cua_in.close()

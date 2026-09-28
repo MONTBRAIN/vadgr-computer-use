@@ -149,6 +149,23 @@ record it, and carry on to the next cell in the same turn.
 - If neither the stream nor a transcript is available, the test is **not verified**
   - say so; do not infer a pass.
 
+## Signed upgrade and rollback fixtures
+
+A signed-to-signed lifecycle cell needs two distinct, reviewed input closures
+and their retained signed outputs. Changing a version label, candidate id or
+manifest without changing the reviewed payload does not create a second fixture.
+Each input closure consumes its own one-use signing claim. Never reuse a claim
+or re-sign the same input merely to obtain a second test subject.
+
+Authenticate the predecessor catalog and both exact transition edges before
+testing upgrade or rollback. Preserve each fixture's source, input and final
+hashes, signing receipt and trust result. Verify the predecessor with its signed
+final manifest, not the unsigned build manifest. Exercise forward and approved
+reverse transitions, persistent signed state, replay rejection and refusal of
+unlisted or changed predecessors. Failed transitions must preserve the prior
+working installation and its state. Missing eligible fixtures leave those cells
+blocked; a synthetic regression test is not signed E2E evidence.
+
 ## Writing a new runbook
 
 **Start from [`TEMPLATE.md`](TEMPLATE.md).** Every runbook in this directory has

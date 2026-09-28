@@ -23,6 +23,18 @@ from build_profile_wheels import (
 )
 
 
+def require_exact_clean_source(repository: Path, commit: str) -> None:
+    """Require the named committed tree without tracked or untracked source drift."""
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(repository), *arguments], text=True
+        ).strip()
+
+    if git("rev-parse", "HEAD") != commit or git("status", "--porcelain", "--untracked-files=all"):
+        raise ValueError("development wheel requires the exact clean committed source")
+
+
 def build_development(
     repository: Path, helpers: Path, architecture: str, commit: str, output: Path
 ) -> dict:
@@ -35,7 +47,12 @@ def build_development(
         repository / "LICENSE"
     ).read_bytes()
     files.update(payload)
-    for name in ("install.ps1", "install-managed.ps1", "adopt-native.ps1", "predecessor-catalog.json"):
+    for name in (
+        "install.ps1",
+        "install-managed.ps1",
+        "adopt-native.ps1",
+        "predecessor-catalog.json",
+    ):
         files[PREFIX + "winbroker/" + name] = (
             repository / PREFIX / "winbroker" / name
         ).read_bytes()
@@ -97,15 +114,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    def git(*arguments: str) -> str:
-        return subprocess.check_output(
-            ["git", "-C", str(args.repository), *arguments], text=True
-        ).strip()
-
-    if git("rev-parse", "HEAD") != args.source_commit or git(
-        "status", "--porcelain", "--untracked-files=no"
-    ):
-        raise ValueError("development wheel requires the exact clean committed source")
+    require_exact_clean_source(args.repository, args.source_commit)
     result = build_development(
         args.repository, args.helpers, args.architecture, args.source_commit, args.output
     )

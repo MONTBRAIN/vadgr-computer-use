@@ -20,7 +20,11 @@ profile evidence record has `build_sha256`, `test_sha256`, `sbom_sha256`, numeri
 `native_job_ids`, and immutable `artifacts` records with `id` and `sha256`.
 The descriptor binds the exact source and tooling commits separately and the
 first hosted workflow attempt on master. `source-input.json` pins the reviewed
-product commit and version. It accepts no workflow input or environment override.
+product commit and version. A dispatch selects only `primary` or `upgrade-fixture`.
+The latter reads `fixtures/upgrade/source-input.json` and its separate
+`adoption-rules.json` from trusted tooling. It requires a different exact source
+commit and fails when either reviewed record is absent. No dispatch or environment
+value can supply a source hash, arbitrary input path, signer or member policy.
 No artifact or release ID is guessed.
 
 The producer creates one adoption directory per architecture under its isolated
@@ -103,6 +107,11 @@ jobs and artifact origins to the tooling commit, and binds packaged source and
 helper manifests to the source commit. It independently regenerates both policies
 from master review inputs and checks all nine wheels before attesting the catalog.
 Native build and live qualification remain separate results.
+
+Signed transition production and its exact producer contract are specified in
+[SIGNED-TRANSITIONS.md](SIGNED-TRANSITIONS.md). Its second fixture must change
+reviewed input payload bytes, not only a candidate identifier or manifest label.
+Both native architectures need separate retained inputs and qualification.
 
 ## Qualification and landing order
 
@@ -239,3 +248,21 @@ catalog checker rejects this receipt, and the publication workflow requires the
 trusted nine-wheel catalog. Development artifacts never satisfy signed or
 offline-adoption cells. Run the same builder locally only from the exact clean
 committed source with native helper inputs from that commit.
+
+The workflow also builds native Linux and macOS development profiles from the
+exact clean feature commit. Each supported hosted architecture produces one
+managed wheel, one standalone-development wheel, one canonical profile manifest
+and one canonical receipt. These jobs need no Windows helper, adoption rule,
+signing input, attestation or final catalog. Their filenames and wheel build tags
+contain `0development`, and every wheel contains a canonical development marker.
+The marker and receipt state the exact source commit, platform, architecture,
+`development: true`, `publishable: false`, disabled adoption and inapplicable
+signing.
+
+`scripts/check_native_development_profiles.py` validates those retained bytes.
+It checks the exact profile, manifest, wheel records, hashes and the absence of
+Windows helper, installer and adoption payloads. The final catalog checker still
+accepts only all eight managed release profiles plus the release standalone
+wheel from the trusted producer. The publication path still requires that
+catalog and its attestation. A native development receipt or wheel cannot enter
+either path and cannot prove signing, adoption, attestation or publication.
