@@ -57,3 +57,12 @@ def test_current_runbook_attributes_only_unsigned_windows_results_to_windows():
     assert "14cb515ba54ca9346ea931ba46d4c3253164c8b4" in runbook
     assert "937-ms human-stream failure" in runbook
     assert "No complete Windows, Linux, macOS or WSL pass exists" in runbook
+
+
+def test_current_runbook_does_not_deadlock_source_merge_on_vadgr_candidate():
+    runbook = _text("E2E/0.7.9/e2e.md")
+    assert "trusted-default-branch candidate producer" in runbook
+    assert "Signing- and adoption-dependent assertions do not gate that merge" in runbook
+    assert "gate the CUA 0.7.9 tag and release" in runbook
+    assert "Never tag or publish to manufacture a test candidate" in runbook
+    assert "Never merge #109 to manufacture its test candidate" not in runbook

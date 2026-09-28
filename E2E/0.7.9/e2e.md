@@ -1,6 +1,8 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: partial: three native Windows/Linux x86_64 and macOS arm64 unsigned passes complete; final trust qualification remains owed.
+> Status: source merge gate complete: three native Windows/Linux x86_64 and
+> macOS arm64 unsigned passes complete. Final trust qualification remains owed
+> before the 0.7.9 tag and release.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
 > Tested unsigned development product: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
@@ -116,24 +118,31 @@ cell; replace the branch reference with the implementation PR URL before handoff
 
 ## Producer, qualification, merge and release order
 
-Vadgr CUA 0.7.9 uses the **open-PR candidate producer** lifecycle. Trusted
-default-branch workflow code consumes the exact reviewed feature source and
-artifacts as data; merged product source is not a producer prerequisite. The
-implementation PR may therefore open after its ordinary first-host unsigned
-pass and green source checks. Every required unsigned, non-signature host
-assertion, finding and PR check still gates merge. Signing- and adoption-
-dependent assertions do not gate PR opening, but they do gate merge because the
-held candidate can be produced from the open PR. Publication promotes those
-same qualified bytes without rebuilding or re-signing, then verifies the public
+Vadgr CUA 0.7.9 uses the **trusted-default-branch candidate producer**
+lifecycle. The final signed profile bytes are part of the held Vadgr 0.5.0
+candidate. That candidate cannot exist before the reviewed CUA source reaches
+its trusted default branch. The implementation PR may open after its ordinary
+first-host unsigned pass and green source checks. Every required unsigned,
+non-signature host assertion, finding and PR check gates the CUA source merge.
+Signing- and adoption-dependent assertions do not gate that merge because no
+eligible final subject exists before it.
+
+The merge authorizes protected candidate production. It does not authorize a
+CUA tag, CUA release or Vadgr release. Protected CD must build and sign one held,
+non-public Vadgr candidate from the exact merged CUA source. P03-P10 and P12-P14
+then run against those exact held bytes. Their applicable signature, adoption,
+transition and lifecycle assertions gate the CUA 0.7.9 tag and release. They
+also gate the consuming Vadgr 0.5.0 release. Publication promotes the same
+qualified CUA bytes without rebuilding or re-signing, then verifies the public
 download against the retained inventory, provenance, hashes and signatures.
-Never merge #109 to manufacture its test candidate, and never use an unsigned
+Never tag or publish to manufacture a test candidate. Never use an unsigned
 result as a signing or adoption pass.
 
 The prerequisite trusted-tooling PR is
 `https://github.com/MONTBRAIN/vadgr-computer-use/pull/110`.
 It landed on master as `5c9a43816f2dd371f903bda290e21aa5c194cc29` and does not
-change shipped runtime code or version. This does not waive any final merge gate
-for implementation PR #109.
+change shipped runtime code or version. This does not waive any source merge or
+final release gate for implementation PR #109.
 
 The landed producer reads `packaging/profiles/source-input.json`, which pins the
 exact reviewed source commit separately from its own default-branch tooling commit.
@@ -203,9 +212,12 @@ signing transforms each approved Windows helper closure once for native Windows
 and WSL. Run all signed/adoption oracles against those actual retained outputs.
 Product fixes require a reviewed source-pin update and new artifacts, followed
 by affected reruns. Do not replace retained bytes under an existing identity.
-Only the complete required native matrix and green checks make #109 eligible
-for owner-approved merge. Publication is separate and uses the retained qualified
-artifacts without a rebuild. Never merge #109 to manufacture its test candidate.
+The completed unsigned native source matrix and green checks make #109 eligible
+for the approved source merge. The unavailable architecture rows remain honest
+`not run` results and never become inherited passes. They remain owed before a
+public profile release when their exact signed profile is in scope. Publication
+is separate and uses the retained qualified artifacts without a rebuild. Never
+tag or publish to manufacture a test candidate.
 
 ## Execution approach: a headless agent CLI session
 
