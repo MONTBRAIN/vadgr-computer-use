@@ -636,7 +636,7 @@ not weaken that security boundary for this cell.
 
 **Cleanup:** Seal and scan evidence; stop only this cell's proved owned process tree, close owned targets and restore copied fixtures. Retain the marked root until evidence is pushed. Preserve unknown processes and shared signed fixtures.
 
-**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`. Each pass used a separately scoped fs-only write/read driver and browser-only two-tab driver; file hashes and DOM values/counters agreed, the first tab stayed unchanged, and installed entry, CFT, host and broker were independently AMD64. Public browser-setup and the pinned installed Windows profile manifest proved selection. Earlier b6a72a1 attempts are retained but do not count toward these three passes. Private evidence: PR #182, 20260924-windows-browser-only/pass-1 through pass-3. Signed/adoption and Windows ARM64 obligations remain owed.
+**Result:** pass, unsigned development slice in three independent native Windows x86_64 passes at `14cb515ba54ca9346ea931ba46d4c3253164c8b4`, plus a fresh final source-C retained-wheel rerun at implementation head `c7b25b66bbc5e2165d510ca3ba31083044c70557`. The source-C rerun installed standalone wheel SHA-256 `87aee775cec58337a26beb44b10c2dd0c36ef45e42ee4c7c9267a4e78cb59f45` from trusted producer run `36364736356`, artifact `10946574285`, and selected Windows x86_64 manifest SHA-256 `7b0171a2a133cdcb03505ad1147114e2cdbd55594b22ce84c545575b0431d116`. Every accepted pass used a separately scoped fs-only write/read driver and browser-only two-tab driver; file hashes and DOM values/counters agreed, the first tab stayed unchanged, and installed entry, CFT, host and broker were independently AMD64. Public browser-setup and the pinned installed Windows profile manifest proved selection. Earlier attempts, including a source-C wrapper timeout after mutation but before its exit receipt, are retained and do not count. Private evidence: PR #182, `20260924-windows-browser-only/pass-1` through `pass-3` and `20260928-windows-source-c/P01-windows-x86_64`. Signed/adoption and Windows ARM64 obligations remain owed.
 
 ### P01-windows-aarch64: standalone selection on windows-aarch64
 
@@ -3079,10 +3079,11 @@ Use the same procedure after failed or interrupted passes.
 
 ## Findings
 
-P01-windows-x86_64 has one accepted pass (attempt 11) and ten retained earlier
-attempts. Read those evidence boundaries before any continuation; do not erase
+P01-windows-x86_64 has three accepted development passes, one accepted final
+source-C retained-wheel rerun, and the retained earlier and source-C wrapper
+failures. Read those evidence boundaries before any continuation; do not erase
 failed attempts or treat their noise as passing results. The public cell above
-records the exact tested subject and accepted observations.
+records the exact tested subjects and accepted observations.
 
 The trusted-producer/final-merge circular prerequisite is repaired by separate
 tooling PR #110, landed as `5c9a438`, and the exact source/tooling identity split.

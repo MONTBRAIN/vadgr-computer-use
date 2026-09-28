@@ -23,9 +23,14 @@ def scrub_private_identity(value, roots):
         return [scrub_private_identity(item, roots) for item in value]
     if isinstance(value, str):
         for root in roots:
-            value = value.replace(root, "<private-root>").replace(
-                root.replace("\\", "/"), "<private-root>"
-            )
+            variants = {
+                root,
+                root.replace("\\", "/"),
+                root.replace("\\", "\\\\"),
+                root.replace("/", "\\/"),
+            }
+            for variant in sorted(variants, key=len, reverse=True):
+                value = value.replace(variant, "<private-root>")
         return re.sub(r"S-1-5-21-(?:\d+-){2,}\d+", "<owner-sid>", value)
     return value
 

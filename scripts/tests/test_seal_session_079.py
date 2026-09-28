@@ -47,6 +47,15 @@ def test_clean_removes_private_root_and_sid_but_keeps_public_oracle_fields():
     }
 
 
+def test_clean_removes_json_escaped_windows_root():
+    root = r"C:\private\root"
+    value = json.dumps({"path": root + r"\fixture\state.json"})
+
+    result = MODULE.clean(value, [root])
+
+    assert json.loads(result) == {"path": r"<private-root>\fixture\state.json"}
+
+
 def test_clean_redacts_media_payload():
     result = MODULE.clean(
         {"type": "image", "source": {"type": "base64", "data": "private pixels"}},
