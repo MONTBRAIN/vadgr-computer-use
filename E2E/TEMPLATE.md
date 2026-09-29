@@ -192,13 +192,12 @@ present in a given runbook, the entry is all there is.
    or returns the exact designed error and matching remedy. [Persistent helper
    lifecycle recovery]
 
-27. **Protected signing must not create a circular PR gate.** Identify whether
-   the approved producer can hold a candidate from an open PR or requires
-   merged product source. In the latter case, unsigned development acceptance
-   opens and gates the implementation PR; signing-dependent cells stay owed
-   before release and run against the held post-merge candidate. Unsigned
-   evidence never passes a signing assertion. [Unsigned development and
-   protected release candidates]
+27. **Production signing starts only after merge.** An open implementation PR
+   uses an exact release-equivalent unsigned artifact for functional E2E.
+   Every applicable functional assertion gates merge. Protected CD then signs
+   a held candidate from the exact merged default-branch commit. Only trust and
+   signature assertions wait for that candidate and gate release. [Unsigned
+   functional qualification and post-merge trust qualification]
 
 28. **Signed upgrade and rollback require two distinct reviewed fixtures.**
    Preserve both one-use input claims, signed final manifests and authenticated
@@ -694,55 +693,39 @@ system discovering a blocker four groups in.
 > its reason. A sibling repository offered a release as finished while its
 > Windows job was still running, and that job went red.
 
-## Unsigned development and protected release candidates
+## Unsigned functional qualification and post-merge trust qualification
 
 > Use this section when a minor adds or changes a signed executable, native
 > helper, package, installer or managed profile artifact. Delete it when the
 > minor has no signing surface.
 
-Local development and ordinary host passes use an unsigned development
-artifact. Label it development-only and record its exact source commit,
-inventory and hashes. An unsigned pass can prove behavior, packaging and
-platform isolation. It proves no publisher identity, trust chain, timestamp,
-notarization, adoption or operating-system reputation behavior.
+Local development and ordinary host passes use an exact release-equivalent
+unsigned artifact. Label it development-only and record its exact source commit,
+inventory and hashes. The open PR and its artifacts must not consume production
+signing credentials.
 
-Before live work, state which approved producer shape applies and cite the
-repository rule or credential boundary that establishes it. Trusted
-default-branch workflow code alone is not proof that product source must already
-be merged: the workflow may still be allowed to consume a reviewed PR artifact
-as untrusted data.
+The pre-merge pass proves every functional assertion which does not require a
+platform trust identity. Package installation, tool dispatch, browser isolation,
+helper lifecycle, upgrade and rollback normally belong here. Complete these
+assertions on every required host before merge. An unsigned pass proves no
+publisher identity, trust chain, timestamp, notarization, attestation, adoption
+or operating-system reputation behavior.
 
-**Open-PR candidate producer.** When protected CD can safely build and hold a
-candidate from the open implementation PR, invoke it for the frozen pushed
-head. Record source, workflow, target, artifact inventory, hashes, provenance
-and signing identity. Applicable signed-candidate cells run against those exact
-held bytes and gate merge as well as release.
+Merge authorizes candidate production, not release. Protected CD creates one
+held, non-public candidate from the exact merged default-branch commit. Record
+the source, workflow, target, inventory, hashes, provenance and signing identity.
+The signing job accepts product source only from that protected branch.
 
-**Merged-source-only candidate producer.** When repository policy permits the
-approved producer to consume product source only after it has merged to the
-trusted default branch:
+Run only the assertions that require the held signed subject before a final tag
+or public release. These include platform signature verification, trust chains,
+timestamps, notarization, attestations, adoption and exact-byte promotion.
+Repeat a functional assertion only when signing or final packaging changed the
+behavior it proves. A failure blocks release and is fixed through a new
+implementation PR. The next merged commit produces a new candidate and
+invalidates affected earlier verdicts.
 
-1. Open the implementation PR after the ordinary first-host unsigned pass and
-   source gates. Signing-dependent cells are explicitly `owed before release`;
-   they do not block PR opening because no eligible signed subject exists yet.
-2. Before merge, complete every source gate and every applicable unsigned,
-   non-signature cell on every mandated host. Classify assertions, not whole
-   features: package installation, tool dispatch, browser isolation and helper
-   lifecycle normally have unsigned assertions that run now; trust and adoption
-   remain owed. Resolve findings and wait for every PR check.
-3. Merge authorizes candidate production, not release. Protected CD creates one
-   held, non-public candidate from the exact merged commit. Record source,
-   workflow, target, inventory, hashes, provenance and signing identity.
-4. Run every required signature-, trust-, notarization-, adoption- and
-   signed-lifecycle cell against those retained bytes before a final tag or
-   public release. A failure blocks release, is preserved, and is fixed through
-   a new implementation PR. The next merged commit produces a new candidate and
-   invalidates affected earlier verdicts.
-
-Missing credentials or an unavailable signer do not select the merged-source
-lifecycle and never turn a signing cell green. A first-signing/bootstrap minor
-uses the same stages and records owner approvals and external conditions where
-they are actually required.
+Post-merge trust checks are CD and release validation. They are not a second
+full host E2E gate.
 
 Release promotes the exact qualified bytes without rebuilding or re-signing.
 Before publication, compare the held candidate's inventory, hashes, provenance
@@ -753,9 +736,8 @@ and creates a new candidate that must run the affected cells.
 
 | stage | artifact | required identity | gate |
 |---|---|---|---|
-| local development | unsigned development build | source commit, inventory and hashes | one real OS plus ordinary source gates opens the PR; every required unsigned OS cell gates merge |
-| open-PR protected candidate | signed, held and not public | frozen PR head, workflow, target, inventory, hashes, provenance and signing identity | applicable signed cells gate merge and release |
-| post-merge protected candidate | signed, held and not public | exact merged commit, workflow, target, inventory, hashes, provenance and signing identity | only for an explicitly merged-source-only producer; signed cells gate tag and release |
+| open implementation PR | release-equivalent unsigned development build | source commit, inventory and hashes | one real OS plus ordinary source gates opens the PR; every required functional OS assertion gates merge |
+| post-merge protected candidate | signed, held and not public | exact merged default-branch commit, workflow, target, inventory, hashes, provenance and signing identity | signature and trust assertions gate tag and release; repeat functional work only when final packaging changed it |
 | release promotion | the same qualified bytes | candidate inventory, hashes, provenance and signatures match exactly | identity check before publication and after download; never a first signing pass |
 
 ## Coverage

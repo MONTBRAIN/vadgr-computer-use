@@ -129,10 +129,13 @@ eligible final subject exists before it.
 
 The merge authorizes protected candidate production. It does not authorize a
 CUA tag, CUA release or Vadgr release. Protected CD must build and sign one held,
-non-public Vadgr candidate from the exact merged CUA source. P03-P10 and P12-P14
-then run against those exact held bytes. Their applicable signature, adoption,
-transition and lifecycle assertions gate the CUA 0.7.9 tag and release. They
-also gate the consuming Vadgr 0.5.0 release. Publication promotes the same
+non-public Vadgr candidate from the exact merged CUA source. Only the signature,
+attestation, adoption, authenticated transition and signed-state assertions in
+P03-P10 and P12-P14 then run against those exact held bytes. Repeat functional
+work only when signing or final packaging changed the behavior it proves. These
+targeted checks gate the CUA 0.7.9 tag and release. They also gate the consuming
+Vadgr 0.5.0 release. They are CD and release validation, not a second full host
+E2E gate. Publication promotes the same
 qualified CUA bytes without rebuilding or re-signing, then verifies the public
 download against the retained inventory, provenance, hashes and signatures.
 Never tag or publish to manufacture a test candidate. Never use an unsigned
