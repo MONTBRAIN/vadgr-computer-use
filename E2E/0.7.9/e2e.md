@@ -14,8 +14,9 @@
 
 The Linux accessibility follow-up is
 `https://github.com/MONTBRAIN/vadgr-computer-use/pull/124`, on branch
-`fix/linux-atspi-optional-role-name`, with runtime source
-`cc93d30c87d37d83cc6e0fa33094024621960dfc`. PR #109 and its evidence PR #182
+`fix/linux-atspi-optional-role-name`. R01 used runtime source
+`cc93d30c87d37d83cc6e0fa33094024621960dfc`; R02 used
+`11fc082bdc0e4f51cf9175551ec03ad38d8493e0`. PR #109 and its evidence PR #182
 are merged historical boundaries, not targets for new results. The follow-up
 evidence is in `https://github.com/MONTBRAIN/vadgr-docs/pull/194`.
 
@@ -3019,7 +3020,9 @@ readable but whose advertised interfaces omit `org.a11y.atspi.Action`. Record
 the exact driver artifact, host/session and target identity without owner data.
 A button role, enabled state or sensitive state alone does not supply Action.
 Read-only native probes may confirm the interface boundary but cannot qualify
-the public MCP result.
+the public MCP result. R02 uses the exact committed noneditable development
+wheel boundary specified for these accessibility regressions below, not a
+profile or trusted release artifact.
 
 In three independent driver sessions, locate the exact control through actual
 exposed `ui_find`. Invoke `ui_act` with `click` once. Expect
@@ -3030,9 +3033,38 @@ invoke an ordinary advertised button action and confirm its independent effect,
 so the refusal does not establish a blanket inability to act. Preserve failed
 attempts, stop only test-created processes and restore scoped test state.
 
-Result: pending the rebuilt driver's actual MCP rerun. Earlier live attempts
-misreported a readable GNOME Shell button as gone. Read-only probes found no
-Action interface, `GetActions` returning UnknownMethod and `GetRole` returning
+Result: **pass**, narrowly for virtualized Ubuntu 26.04 x86_64 GNOME Wayland
+on 2026-10-01. Three independent actual MCP driver processes used source
+`11fc082bdc0e4f51cf9175551ec03ad38d8493e0`. The noneditable development wheel
+contains 304828 bytes with SHA-256
+`3c50c99b8b80cf8b0b42908b954e73f99f1e7e48b075fface79bfff42a527108`.
+Each pass invoked the notification button once and returned `unsupported_action`
+with an empty supported-action list. Fresh readback found the same live,
+enabled and sensitive control unchanged. The platform action remains absent;
+this is not a notification-dismissal pass.
+
+Each pass separately launched an owned installer process with its own isolated
+roots and distinct configured port. No daemon or listening socket was started.
+The ordinary Decline and close action ended that process with exit 0 and left
+its product roots absent. Each post-action `element_gone` reply is retained;
+the action was not replayed. Pass three also retained a transient client tool
+catalog absence before any dispatch; reacquiring the catalog restored access.
+The ordinary control fixture reused exact retained AppImage bytes from
+`eab017e5e100b9422d462338d661cb3cb0ad9a37`, 577767928 bytes with SHA-256
+`c6ef7d4cdb968b10594c5228d4c004ca829811462bca6a512e6dea8b0f2992c3`.
+This control check does not qualify that installer or Vadgr's functional cells.
+
+Cleanup verified all three subject processes, configured listeners and isolated
+product state absent. The two assistive settings and two accessibility-bus
+flags were restored to false; no reader process remained. Temporary MCP pass
+tags were removed. The qualified active driver remains intentionally available
+for continued testing. No generated product state needed deletion, so these
+session cleanups reclaimed zero bytes. Raw records are in private evidence
+PR #194 alongside the original failures and source regression results.
+
+Earlier live attempts misreported a readable GNOME Shell button as gone.
+Read-only probes found no Action interface, `GetActions` returning UnknownMethod
+and `GetRole` returning
 43. This is a classification defect, not evidence that the notification can be
 dismissed through accessibility. The fix changes only Linux named-action
 dispatch preflight; earlier exact-byte R01 and profile evidence remain historical
@@ -3043,7 +3075,7 @@ remain not run for this added assertion.
 
 This regression is separate from the 130 primary profile cells and T01-T77.
 It does not relax their artifact eligibility or browser-only tool boundary.
-Only this regression may use a non-editable source-only development wheel built
+Only R01 and R02 may use a non-editable source-only development wheel built
 from an exact clean committed source. It is not a P01/P11 profile artifact and
 cannot prove catalog, signing, adoption, attestation or release qualification.
 
