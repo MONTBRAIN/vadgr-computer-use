@@ -25,7 +25,8 @@ Two facts the snapshot is built around, both observed on a real GNOME box:
 - **The role is an enum, not a name**, and a toolkit's own ``GetRoleName`` does
   not always match the canonical AT-SPI name (GTK4 renders role 43 as "button",
   not "push button"). So role names are resolved by the client against
-  ``GetRoleName``, calibrated once per enum, never assumed from a static table:
+  ``GetRoleName``, calibrated per application and enum. When that optional
+  method is absent, the client uses the canonical numeric role instead:
   the snapshot carries the raw enum and the client maps it.
 """
 

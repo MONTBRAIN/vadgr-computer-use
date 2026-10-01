@@ -14,6 +14,10 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
+- Read Linux accessibility roles when a toolkit omits the optional role-name
+  method, keeping its windows and controls available through the structured tier.
+- Report an unsupported action, rather than a vanished element, when a live
+  Linux control does not expose the native Action interface.
 - Select Windows helpers by the native system architecture, including the
   Windows host used by WSL, and refuse mismatched execution profiles.
 - Preserve exact member identity through signed deployment, shared Windows/WSL

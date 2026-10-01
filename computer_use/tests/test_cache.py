@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from computer_use.tools.ui.atspi import decode_states
+from computer_use.tools.ui.atspi import ElementGone, decode_states
 from computer_use.tools.ui.cache import build_snapshot
 
 
@@ -257,6 +257,73 @@ class _FakeBus:
 def _one_item(bus, path, parent, cc, role_enum, name):
     return [[bus, path], [bus, "/app"], [bus, parent], 0, cc, [], name,
             role_enum, "", [0, 0]]
+
+
+class _OptionalRoleNameBus(_FakeBus):
+    """AccessKit exports GetRole but omits the optional GetRoleName method."""
+
+    def __init__(self, *, role=23, name_error="UnknownMethod", role_error=None,
+                 cached=False):
+        items = [_one_item("accesskit", "/frame", "/app", 0, role, "Test window")]
+        super().__init__({"accesskit": items} if cached else {})
+        self.role = role
+        self.name_error = name_error
+        self.role_error = role_error
+        self.methods = []
+
+    def call(self, dest, path, iface, member, signature="", body=None):
+        self.methods.append(member)
+        if dest == "accesskit" and member == "GetRoleName":
+            return _Reply(None, error_name=f"org.freedesktop.DBus.Error.{self.name_error}")
+        if dest == "accesskit" and member == "GetRole":
+            if self.role_error:
+                return _Reply(None, error_name=f"org.freedesktop.DBus.Error.{self.role_error}")
+            return _Reply([self.role])
+        return super().call(dest, path, iface, member, signature, body)
+
+
+@pytest.mark.skipif(not _HAS_DBUS_FAST, reason="dbus-fast is installed on Linux only")
+class TestOptionalRoleName:
+    @pytest.mark.parametrize("role, expected", [
+        (16, "dialog"), (23, "frame"), (29, "label"), (43, "button"),
+        (61, "text"), (62, "toggle button"), (69, "window"),
+        (75, "application"), (79, "entry"), (130, "switch"),
+        (70, "extended"), (9999, "unknown"),
+    ])
+    def test_missing_optional_name_uses_canonical_numeric_role(self, role, expected):
+        bus = _OptionalRoleNameBus(role=role)
+        assert _DbusClient(bus).role_name(("accesskit", "/frame")) == expected
+        assert bus.methods == ["GetRoleName", "GetRole"]
+
+    @pytest.mark.parametrize("error", ["UnknownObject", "ServiceUnknown", "NoReply"])
+    def test_object_failure_is_not_an_optional_method(self, error):
+        bus = _OptionalRoleNameBus(name_error=error)
+        with pytest.raises(ElementGone):
+            _DbusClient(bus).role_name(("accesskit", "/frame"))
+        assert bus.methods == ["GetRoleName"]
+
+    @pytest.mark.parametrize("error", ["UnknownObject", "ServiceUnknown", "UnknownMethod"])
+    def test_missing_numeric_role_still_reports_gone(self, error):
+        bus = _OptionalRoleNameBus(role_error=error)
+        with pytest.raises(ElementGone):
+            _DbusClient(bus).role_name(("accesskit", "/frame"))
+        assert bus.methods == ["GetRoleName", "GetRole"]
+
+    def test_cache_calibration_uses_same_fallback(self):
+        bus = _OptionalRoleNameBus(cached=True)
+        client = _DbusClient(bus)
+        client.warm_caches(["accesskit"])
+        before = list(bus.methods)
+        assert client.role_name(("accesskit", "/frame")) == "frame"
+        assert bus.methods == before
+
+    def test_toolkit_role_names_do_not_cross_application_caches(self):
+        bus = _OptionalRoleNameBus(role=43, cached=True)
+        bus._get_items["gtk"] = [_one_item("gtk", "/button", "/app", 0, 43, "Test")]
+        client = _DbusClient(bus)
+        client.warm_caches(["gtk", "accesskit"])
+        assert client.role_name(("gtk", "/button")) == "LIVE-ROLE"
+        assert client.role_name(("accesskit", "/frame")) == "button"
 
 
 @pytest.mark.skipif(not _HAS_DBUS_FAST,
