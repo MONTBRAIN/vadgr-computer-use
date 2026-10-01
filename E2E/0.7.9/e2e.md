@@ -2,7 +2,7 @@
 
 > Status: historical three-pass unsigned results remain recorded below. The
 > Linux AT-SPI follow-up passed its three installed MCP regression runs on
-> virtualized Ubuntu GNOME Wayland x86_64. Follow-up branch checks remain owed.
+> virtualized Ubuntu GNOME Wayland x86_64. Follow-up branch checks gate review.
 > Historical profile results do not qualify a rebuilt artifact.
 > Final trust qualification remains owed before the 0.7.9 tag and release.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
@@ -15,8 +15,8 @@
 The Linux accessibility follow-up uses branch
 `fix/linux-atspi-optional-role-name`, with runtime source
 `cc93d30c87d37d83cc6e0fa33094024621960dfc`. PR #109 and its evidence PR #182
-are merged historical boundaries, not targets for new results. Resolve a normal
-follow-up repair and private evidence PR before handing off the completed cell.
+are merged historical boundaries, not targets for new results. The follow-up
+evidence is in `https://github.com/MONTBRAIN/vadgr-docs/pull/194`.
 
 Signed-transition repair, 2026-09-27: the current source adds exact authenticated
 signed predecessor catalogs, final-manifest handoff verification and signed
@@ -223,8 +223,8 @@ signing transforms each approved Windows helper closure once for native Windows
 and WSL. Run all signed/adoption oracles against those actual retained outputs.
 Product fixes require a reviewed source-pin update and new artifacts, followed
 by affected reruns. Do not replace retained bytes under an existing identity.
-The completed unsigned native source matrix and green checks make #109 eligible
-for the approved source merge. The unavailable architecture rows remain honest
+The historical unsigned native source matrix and green checks preceded the
+source merge of #109. The unavailable architecture rows remain honest
 `not run` results and never become inherited passes. They remain owed before a
 public profile release when their exact signed profile is in scope. Publication
 is separate and uses the retained qualified artifacts without a rebuild. Never
@@ -3065,8 +3065,8 @@ trees and selections, native method availability, wheel and process identities,
 test-value equality and original-value restoration booleans. Never retain the
 original owner value, credentials, pairing material or secret-bearing trees.
 
-**Evidence boundary:** A separate dated Linux accessibility-regression boundary
-on the follow-up evidence branch, with failed baseline, fixed attempts, exact
+**Evidence boundary:** PR #194, a separate dated Linux accessibility-regression
+boundary on the follow-up evidence branch, with failed baseline, fixed attempts, exact
 identities, red/green tests, gate exits and cleanup. Run three independent passes
 with fresh owned MCP driver, console and daemon processes; separate XDG and
 Vadgr data roots, databases, endpoints and evidence. Run the GUI tasks
@@ -3105,11 +3105,13 @@ The immutable installed fixture came from source
 It supplied no new installer verdict. Cleanup stopped all six owned subject
 processes, confirmed all three test ports had no listener, restored the original
 accessibility settings and isolated machine values, and stopped the test-started
-screen reader. The active owner's isolated MCP driver and immutable fixture remain
-available for continued testing. Test-root deletion waits for sealed, pushed
-evidence; this boundary has reclaimed zero bytes so far.
+screen reader. After the evidence push, cleanup removed twelve validated
+disposable state directories and reclaimed 577536 allocated bytes. The active
+owner's isolated MCP driver and immutable fixture remain available for continued
+testing. Source and evidence remain intact. This is R01 regression cleanup,
+not completion of the separate Vadgr functional pass or its cleanup cell.
 
-Private evidence: `20261001-linux-atspi-role-followup`, with each pass's actual
+Private evidence: PR #194, `20261001-linux-atspi-role-followup`, with each pass's actual
 MCP observations, launch/process identities and cleanup record. This result
 does not qualify bare-metal hardware, aarch64, X11, KDE Plasma, minimal installs,
 Sway or Hyprland: none was exercised by this regression.
