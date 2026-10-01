@@ -1,14 +1,22 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: source merge gate complete: three native Windows/Linux x86_64 and
-> macOS arm64 unsigned passes complete. Final trust qualification remains owed
-> before the 0.7.9 tag and release.
+> Status: historical three-pass unsigned results remain recorded below. The
+> Linux AT-SPI follow-up passed its three installed MCP regression runs on
+> virtualized Ubuntu GNOME Wayland x86_64. Follow-up branch checks remain owed.
+> Historical profile results do not qualify a rebuilt artifact.
+> Final trust qualification remains owed before the 0.7.9 tag and release.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
 > Tested unsigned development product: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
 > Frozen feature-branch producer source: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
+
+The Linux accessibility follow-up uses branch
+`fix/linux-atspi-optional-role-name`, with runtime source
+`cc93d30c87d37d83cc6e0fa33094024621960dfc`. PR #109 and its evidence PR #182
+are merged historical boundaries, not targets for new results. Resolve a normal
+follow-up repair and private evidence PR before handing off the completed cell.
 
 Signed-transition repair, 2026-09-27: the current source adds exact authenticated
 signed predecessor catalogs, final-manifest handoff verification and signed
@@ -277,6 +285,13 @@ another minor release before this one. Their approval and identity remain mandat
 | repository | released version | dependency |
 |---|---|---|
 | none | not applicable | installed CUA CLI and MCP are driven directly |
+
+R01 uses an already-installed isolated Vadgr development console as a real
+AccessKit application fixture. Record that fixture's source and executable hash
+separately from CUA. It is not a dependency on a future Vadgr release and does
+not qualify the fixture's installer. The independent machine API observation
+checks the fixture's effect; it does not replace the MCP accessibility action.
+No physical handset or Vadgr Mobile application is required for R01.
 
 ## The oracle is the JSON, never the agent's prose
 
@@ -2995,6 +3010,120 @@ members; this does not claim timestamped signing itself is reproducible.
 Repeat the failed public path before diagnosis. Add a regression, rebuild and
 reinstall, record the new identity and rerun the entire affected cell.
 Retain failed and fixed boundaries. Shared changes invalidate earlier host results.
+
+## Supplementary R01: Linux accessible role discovery
+
+This regression is separate from the 130 primary profile cells and T01-T77.
+It does not relax their artifact eligibility or browser-only tool boundary.
+Only this regression may use a non-editable source-only development wheel built
+from an exact clean committed source. It is not a P01/P11 profile artifact and
+cannot prove catalog, signing, adoption, attestation or release qualification.
+
+### R01-linux-x86_64: AccessKit window and control discovery
+
+**Precondition:** A real Linux desktop session with an installed, isolated
+AccessKit-based Vadgr console. Record distribution, architecture, desktop,
+display protocol and virtualization. Virtual-machine GNOME Wayland coverage is
+virtualized-native Linux, not bare-metal, X11, aarch64 or another desktop.
+Use only a disposable machine configuration without credentials in visible UI.
+
+**Setup:** Record the CUA source commit, exact wheel filename, size and SHA-256,
+non-editable installed entry, dependency check and driver process identity.
+Record the separate installed Vadgr executable hash and process identity.
+Connect the actual MCP server through its supported client configuration and
+reload path; confirm the new connection uses the intended installed driver.
+An unchanged configuration reload that keeps the old process does not establish
+the new identity. A direct Python call to a tool function is not an MCP result.
+Retain the original failed discovery and read-only native AT-SPI probes:
+`GetRoleName` returns `org.freedesktop.DBus.Error.UnknownMethod`, while
+mandatory `GetRole` returns `23` for the live frame. Keep private bus names,
+object paths and unrelated application titles out of retained evidence.
+
+**Task given to the agent:** "Through the installed MCP accessibility tools,
+list windows and match the isolated Vadgr process. Read its frame and controls.
+Find Settings and Providers by accessible name, invoke their advertised native
+actions and read the resulting selected state after each action. Open the
+isolated machine-name editor. Only if native editable-text support is exposed,
+set a harmless test value and read it back. Save once, inspect the new screen
+and independently verify the machine value through its read-only API. Restore
+the original value through the same accessible controls and verify restoration."
+
+**Expected result:** `ui_windows` includes the exact Vadgr process;
+`ui_tree` returns the live frame and named controls rather than `no_tree`;
+`ui_find` locates the ordinary controls; `ui_act` navigation and `set_text`
+agree with fresh read-back. Do not replace missing native actions with pixel
+input. A Save control removed by its own successful action may return the
+explicit `element_gone` / `element gone after acting` reply. Preserve that
+reply; do not replay the action or claim it returned success. A new scoped
+tree and independent API observation must establish whether the effect occurred.
+Missing native editable-text support is a distinct assertion not run, not a
+successful edit. An optional independent app-only visual capture cannot replace
+the accessibility or API oracle.
+
+**Verdict from the JSON:** Actual MCP request/response sequence, scoped fresh
+trees and selections, native method availability, wheel and process identities,
+test-value equality and original-value restoration booleans. Never retain the
+original owner value, credentials, pairing material or secret-bearing trees.
+
+**Evidence boundary:** A separate dated Linux accessibility-regression boundary
+on the follow-up evidence branch, with failed baseline, fixed attempts, exact
+identities, red/green tests, gate exits and cleanup. Run three independent passes
+with fresh owned MCP driver, console and daemon processes; separate XDG and
+Vadgr data roots, databases, endpoints and evidence. Run the GUI tasks
+sequentially so name-based accessibility selection cannot address another pass.
+Each pass may launch the same immutable installed AppImage bytes read-only.
+Record that executable's hash for every pass; shared bytes do not imply shared
+mutable state. This fixture proves CUA accessibility, not a new Vadgr installer
+or L01 qualification.
+
+**Cleanup:** Restore the original isolated value before closing the subject.
+Stop only owned processes and restore any test-changed accessibility setting.
+Preserve driver installations referenced by an active owner MCP configuration
+until that configuration no longer depends on them. Seal and scan evidence
+before the documented cleanup procedure; record retained state explicitly.
+
+**Result:** pass: three independent installed MCP runs on virtualized Ubuntu
+26.04 x86_64 GNOME Wayland under VMware, against source
+`cc93d30c87d37d83cc6e0fa33094024621960dfc` and non-editable wheel
+`vadgr_computer_use-0.7.9-py3-none-any.whl`, 304752 bytes, SHA-256
+`4d7d5af15ca4992ff8b1faa1f3ce741651c5e88dbdb996f1f2d42b3fd40d9df2`.
+Each fresh driver discovered the matching console process, read the frame,
+navigated Settings and Providers with fresh selected-state checks, edited the
+isolated machine name through native editable text, saved and restored it.
+Independent API reads confirmed each test value and each restoration.
+
+All six Save actions returned the documented post-action `element_gone` reply
+because the dialog closed. None was replayed; fresh UI and API reads established
+the effects. Pass 1 also retained a stale Edit reference during a layout change;
+the driver reacquired the control before continuing. Some immediate navigation
+replies preceded selection updates; fresh structured reads confirmed the selected
+state. These observations remain in evidence, not rewritten as error-free calls.
+
+The immutable installed fixture came from source
+`eab017e5e100b9422d462338d661cb3cb0ad9a37`, 577767928 bytes, SHA-256
+`c6ef7d4cdb968b10594c5228d4c004ca829811462bca6a512e6dea8b0f2992c3`.
+It supplied no new installer verdict. Cleanup stopped all six owned subject
+processes, confirmed all three test ports had no listener, restored the original
+accessibility settings and isolated machine values, and stopped the test-started
+screen reader. The active owner's isolated MCP driver and immutable fixture remain
+available for continued testing. Test-root deletion waits for sealed, pushed
+evidence; this boundary has reclaimed zero bytes so far.
+
+Private evidence: `20261001-linux-atspi-role-followup`, with each pass's actual
+MCP observations, launch/process identities and cleanup record. This result
+does not qualify bare-metal hardware, aarch64, X11, KDE Plasma, minimal installs,
+Sway or Hyprland: none was exercised by this regression.
+
+The repair at `cc93d30c87d37d83cc6e0fa33094024621960dfc` changes Linux runtime
+role resolution and per-application role calibration. Earlier P01/P11 passes
+remain truthful observations of their exact retained bytes, not qualification
+of this new runtime. The follow-up patch gate is the changed-behavior R01 cell;
+it does not claim a new full profile pass or require unrelated browser cells
+for appearance. Browser-only and Windows/macOS observations are not retroactively
+renamed or erased. No shared browser, Windows broker or adoption behavior is
+changed by this Linux-only fix. Windows and macOS do not dispatch this AT-SPI
+backend; R01 is not applicable there. Other Linux desktops and aarch64 remain
+not run until their real sessions are exercised.
 
 ## Repeatability
 
