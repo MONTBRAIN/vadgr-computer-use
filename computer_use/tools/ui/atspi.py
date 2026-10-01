@@ -991,12 +991,11 @@ class _DbusClient:
 
     def __init__(self, bus: _AtspiBus) -> None:
         self._bus = bus
-        # A warm snapshot per application bus name, and the role-enum-to-name map
-        # calibrated against GetRoleName so a cached role name is identical to a
-        # walked one. Both persist for the process: the cache is kept and the
-        # calibration only grows.
+        # A warm snapshot per application bus name, and its role-enum-to-name
+        # map. Toolkit spellings must not cross application boundaries. Both
+        # persist for the process: the cache is kept and calibration only grows.
         self._cache: dict[str, CacheSnapshot] = {}
-        self._role_names: dict[int, str] = {}
+        self._role_names: dict[tuple[str, int], str] = {}
         # Apps whose GetExtents never answers; asked once, then read as boundless.
         self._no_extents: set[str] = set()
         # Apps whose Cache.GetItems never answers; asked once, then read live.
@@ -1043,19 +1042,18 @@ class _DbusClient:
         # the walk that follows needs no live role reads. One call per new enum,
         # about ten the first time and none after.
         for role_enum in snapshot.role_enums():
-            if role_enum in self._role_names:
-                continue
             node = snapshot.node_with_role(role_enum)
             if node is None:
                 continue
+            key = (node[0], role_enum)
+            if key in self._role_names:
+                continue
             try:
-                reply = self._run(
-                    self._bus.call(node[0], node[1], _ACCESSIBLE, "GetRoleName")
-                )
+                self._role_names[key] = self._live_role_name(node)
             except ElementGone:
                 continue  # calibration is best effort; the enum reads live
-            if not _is_error(reply):
-                self._role_names[role_enum] = reply.body[0]
+            except StructuredError:
+                continue  # a failed optional calibration must not break the cache
 
     def _cached(self, node: Node) -> CacheSnapshot | None:
         snapshot = self._cache.get(node[0])
@@ -1148,10 +1146,24 @@ class _DbusClient:
     def role_name(self, node: Node) -> str:
         snapshot = self._cached(node)
         if snapshot is not None:
-            name = self._role_names.get(snapshot.item(node).role_enum)
+            name = self._role_names.get((node[0], snapshot.item(node).role_enum))
             if name is not None:
                 return name
-        reply = self._call(node, _ACCESSIBLE, "GetRoleName")
+        return self._live_role_name(node)
+
+    def _live_role_name(self, node: Node) -> str:
+        # GetRoleName is optional, not proof of object lifetime. AccessKit
+        # exports only GetRole. A second live call distinguishes that case
+        # from toolkits that use UnknownMethod for an object that disappeared.
+        from .roles import canonical_role_name
+
+        reply = self._run(
+            self._bus.call(node[0], node[1], _ACCESSIBLE, "GetRoleName")
+        )
+        if _is_error(reply) and reply.error_name == "org.freedesktop.DBus.Error.UnknownMethod":
+            role = self._call(node, _ACCESSIBLE, "GetRole").body[0]
+            return canonical_role_name(role)
+        self._check(reply)
         return reply.body[0]
 
     def name(self, node: Node) -> str:
