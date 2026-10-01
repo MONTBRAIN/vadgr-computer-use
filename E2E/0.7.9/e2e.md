@@ -12,7 +12,8 @@
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
 
-The Linux accessibility follow-up uses branch
+The Linux accessibility follow-up is
+`https://github.com/MONTBRAIN/vadgr-computer-use/pull/124`, on branch
 `fix/linux-atspi-optional-role-name`, with runtime source
 `cc93d30c87d37d83cc6e0fa33094024621960dfc`. PR #109 and its evidence PR #182
 are merged historical boundaries, not targets for new results. The follow-up
