@@ -401,6 +401,27 @@ class TestRefLifecycle:
 
 
 class TestActVerbs:
+    @pytest.mark.parametrize("verb", ["click", "toggle", "expand"])
+    def test_live_button_without_action_interface_is_unsupported(self, verb):
+        nodes = _tree_with_button(interfaces=[_ACCESSIBLE, _COMPONENT])
+        client = FakeClient(nodes)
+        calls = []
+
+        def missing_actions(node):
+            calls.append(node)
+            raise ElementGone("org.freedesktop.DBus.Error.UnknownMethod")
+
+        client.actions = missing_actions
+        backend = AtspiBackend(client, _session())
+        ref = backend.find("push button", "")[0].ref
+        with pytest.raises(StructuredError) as exc:
+            backend.act(ref, verb, "")
+        assert exc.value.code == "unsupported_action"
+        assert exc.value.extra["supported"] == []
+        assert calls == []
+        assert nodes[("btn", "/b")].did == []
+        assert backend.find("push button", "")[0].ref == ref
+
     def test_click_fires_the_named_action(self):
         nodes = _tree_with_button()
         backend = _backend(nodes)

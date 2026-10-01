@@ -669,6 +669,13 @@ class AtspiBackend:
     # -- acting ------------------------------------------------------------
 
     def _do_named_action(self, node: Node, candidates: tuple[str, ...]) -> None:
+        # A live control can omit Action entirely. Calling GetActions then
+        # returns UnknownMethod, not proof that the accessible object vanished.
+        if _ACTION not in self._client.interfaces(node):
+            raise StructuredError(
+                UNSUPPORTED_ACTION, "element has no action interface",
+                supported=[],
+            )
         actions = self._client.actions(node)
         lowered = [a.lower() for a in actions]
         for candidate in candidates:

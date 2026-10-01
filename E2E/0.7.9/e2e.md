@@ -3012,6 +3012,33 @@ Repeat the failed public path before diagnosis. Add a regression, rebuild and
 reinstall, record the new identity and rerun the entire affected cell.
 Retain failed and fixed boundaries. Shared changes invalidate earlier host results.
 
+## Supplementary R02: Linux control without an Action interface
+
+Use an isolated live Linux control whose native Accessible interface remains
+readable but whose advertised interfaces omit `org.a11y.atspi.Action`. Record
+the exact driver artifact, host/session and target identity without owner data.
+A button role, enabled state or sensitive state alone does not supply Action.
+Read-only native probes may confirm the interface boundary but cannot qualify
+the public MCP result.
+
+In three independent driver sessions, locate the exact control through actual
+exposed `ui_find`. Invoke `ui_act` with `click` once. Expect
+`unsupported_action` with an empty supported-action list, not `element_gone`.
+Reacquire the same live control and independently confirm unchanged state.
+Never substitute pixels, keyboard input or a private backend action. Separately
+invoke an ordinary advertised button action and confirm its independent effect,
+so the refusal does not establish a blanket inability to act. Preserve failed
+attempts, stop only test-created processes and restore scoped test state.
+
+Result: pending the rebuilt driver's actual MCP rerun. Earlier live attempts
+misreported a readable GNOME Shell button as gone. Read-only probes found no
+Action interface, `GetActions` returning UnknownMethod and `GetRole` returning
+43. This is a classification defect, not evidence that the notification can be
+dismissed through accessibility. The fix changes only Linux named-action
+dispatch preflight; earlier exact-byte R01 and profile evidence remain historical
+observations, not proof of the new driver. Other desktops and architectures
+remain not run for this added assertion.
+
 ## Supplementary R01: Linux accessible role discovery
 
 This regression is separate from the 130 primary profile cells and T01-T77.
