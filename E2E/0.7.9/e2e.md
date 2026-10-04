@@ -3013,6 +3013,52 @@ Repeat the failed public path before diagnosis. Add a regression, rebuild and
 reinstall, record the new identity and rerun the entire affected cell.
 Retain failed and fixed boundaries. Shared changes invalidate earlier host results.
 
+## Supplementary R03: Linux complete keyboard chords
+
+This regression covers Linux input only. It changes no Windows or macOS input
+implementation and does not qualify the package profiles or signed lifecycle.
+The existing R01 and R02 observations remain bound to their original wheels.
+
+### R03-linux-x86_64: Insert and unsupported chord members
+
+**Precondition:** A real Linux desktop with an isolated, noneditable development
+wheel from the exact committed source. Record the source and wheel identities,
+desktop, display protocol and selected input backend. Prepare a disposable
+application which records its own key events and contains no owner data.
+Do not change the owner's keyboard layout, reader settings or application state.
+
+**Setup:** Give each of three independent driver sessions its own fresh MCP
+server and fixture. Record the driver version and installed command path.
+Use a subscription-authenticated driver and its public MCP tools. Input is
+machine-global, so serialize the focused input steps between sessions.
+
+**Action:** Focus the owned fixture through its public accessibility surface.
+Send `ctrl+insert+left` through `key_press`. Independently read the fixture's
+event record. Then send a chord with `unsupported_key` before, between and
+after the supported `ctrl` and `left` members, resetting the fixture record
+before each case. Never send these chords to an owner application.
+
+**Expected observable and oracle:** The positive record contains all three
+key presses and their reverse-order releases. On the Wayland and XTEST
+backends, each unsupported chord returns a tool error and leaves the fixture's
+event record empty. No partial Ctrl+Left chord is allowed. The xdotool fallback
+cell proves Insert spelling and event delivery only; it does not inherit the
+Wayland unsupported-key assertion. Keypad Insert is not an alias for Insert.
+These assertions do not require or prove a screen reader's response.
+
+**Evidence:** Preserve every tool call/result and the independent fixture
+records, with exact source, wheel, backend and process identities. Retain failed
+attempts. A unit test or backend import does not close this cell.
+
+**Cleanup:** Close only the recorded fixture and driver processes after their
+records are filed. Preserve owner processes, configuration and credentials.
+
+**Result:** Not run. The repaired wheel and native MCP confirmation are owed.
+GNOME Wayland, GNOME X11, KDE, wlroots and Linux aarch64 remain not run until
+their exact backend/session is exercised. WSL input uses its Windows bridge;
+this Linux implementation change does not prove that separate path. Native
+Windows and macOS are unchanged and receive no new live-pass claim.
+
 ## Supplementary R02: Linux control without an Action interface
 
 Use an isolated live Linux control whose native Accessible interface remains
@@ -3075,7 +3121,7 @@ remain not run for this added assertion.
 
 This regression is separate from the 130 primary profile cells and T01-T77.
 It does not relax their artifact eligibility or browser-only tool boundary.
-Only R01 and R02 may use a non-editable source-only development wheel built
+Only R01, R02 and R03 may use a non-editable source-only development wheel built
 from an exact clean committed source. It is not a P01/P11 profile artifact and
 cannot prove catalog, signing, adoption, attestation or release qualification.
 

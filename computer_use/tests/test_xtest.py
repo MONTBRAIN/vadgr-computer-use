@@ -6,6 +6,7 @@
 
 import pytest
 
+from computer_use.core.errors import ActionError
 from computer_use.core.typing import TypingCancelled, TypingPlan, TypingUnit
 from computer_use.platform.backends.xtest import XTestExecutor
 
@@ -76,6 +77,24 @@ class TestMouse:
 
 
 class TestKeyboard:
+    def test_insert_chord_preserves_every_key(self):
+        ex, fx = _exec()
+        ex.key_press(["ctrl", "Insert", "left"])
+        codes = [1000 + symbol for symbol in (0xFFE3, 0xFF63, 0xFF51)]
+        assert fx.events == [
+            *(("key", code, True) for code in codes),
+            *(("key", code, False) for code in reversed(codes)),
+        ]
+
+    @pytest.mark.parametrize("unknown_position", range(3))
+    def test_unknown_chord_emits_no_events(self, unknown_position):
+        ex, fx = _exec()
+        keys = ["ctrl", "left"]
+        keys.insert(unknown_position, "unsupported_key")
+        with pytest.raises(ActionError, match="unknown key"):
+            ex.key_press(keys)
+        assert fx.events == []
+
     def test_type_text_presses_each_char(self):
         ex, fx = _exec()
         ex.type_text("ab")

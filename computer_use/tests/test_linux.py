@@ -5,11 +5,60 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from computer_use.core.errors import ScreenCaptureError
+from computer_use.core.errors import ActionError, ScreenCaptureError
 from computer_use.platform.linux import ecodes, evdev_import, jeepney_import
 
 _has_jeepney = jeepney_import is not None
 _has_evdev = evdev_import is not None
+
+
+@pytest.mark.parametrize("executor_name", [
+    "EvdevActionExecutor", "UinputActionExecutor", "MutterRemoteDesktopExecutor",
+])
+class TestCompleteKeyboardChord:
+    def _executor(self, executor_name):
+        from computer_use.platform import linux
+
+        # Resolve the real implementation without opening a device or session bus.
+        executor = object.__new__(getattr(linux, executor_name))
+        with patch.object(linux, "ecodes", None):
+            executor._key_map = linux._build_evdev_key_map()
+        executor._char_map = None
+        executor._key_event = MagicMock()
+        return executor
+
+    def test_insert_chord_preserves_every_key(self, executor_name):
+        executor = self._executor(executor_name)
+        executor.key_press(["ctrl", "Insert", "left"])
+        assert [call.args for call in executor._key_event.call_args_list] == [
+            (29, True), (110, True), (105, True),
+            (105, False), (110, False), (29, False),
+        ]
+
+    @pytest.mark.parametrize("unknown_position", range(3))
+    def test_unknown_chord_emits_no_events(self, executor_name, unknown_position):
+        executor = self._executor(executor_name)
+        keys = ["ctrl", "left"]
+        keys.insert(unknown_position, "unsupported_key")
+        with pytest.raises(ActionError, match="unknown key"):
+            executor.key_press(keys)
+        executor._key_event.assert_not_called()
+
+
+@pytest.mark.parametrize("keycodes", [None, MagicMock(KEY_INSERT=110)])
+def test_insert_keycode_with_and_without_evdev(keycodes):
+    from computer_use.platform import linux
+
+    with patch.object(linux, "ecodes", keycodes):
+        assert linux._build_evdev_key_map()["insert"] == 110
+
+
+def test_xdotool_insert_name_is_normalized():
+    from computer_use.platform.linux import LinuxActionExecutor
+
+    with patch("computer_use.platform.linux._run_xdotool") as run:
+        LinuxActionExecutor().key_press(["ctrl", "insert", "left"])
+    run.assert_called_once_with("key", "--clearmodifiers", "ctrl+Insert+Left")
 
 
 # -- Display session detection --
