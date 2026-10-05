@@ -3026,6 +3026,14 @@ wheel from the exact committed source. Record the source and wheel identities,
 desktop, display protocol and selected input backend. Prepare a disposable
 application which records its own key events and contains no owner data.
 Do not change the owner's keyboard layout, reader settings or application state.
+If an existing reader consumes the chord before application delivery, use an
+independent passive compositor event observer instead. Bind it to the exact
+compositor and reader processes and bus identities, and arm it only while the
+owned fixture has verified focus. Retain only Ctrl, Insert and Left press/release
+events with monotonic timestamps; disarm on any observed focus or identity change.
+Do not acquire the reader's bus name, grab or forward input, inspect reader
+history, or change reader settings. Record the observer's ordering limitations;
+a failed or incomplete observation is not a passing result.
 
 **Setup:** Give each of three independent driver sessions its own fresh MCP
 server and fixture. Record the driver version and installed command path.
@@ -3034,20 +3042,27 @@ machine-global, so serialize the focused input steps between sessions.
 
 **Action:** Focus the owned fixture through its public accessibility surface.
 Send `ctrl+insert+left` through `key_press`. Independently read the fixture's
-event record. Then send a chord with `unsupported_key` before, between and
+event record or its focus-bound passive compositor observation. Then send a chord
+with `unsupported_key` before, between and
 after the supported `ctrl` and `left` members, resetting the fixture record
-before each case. Never send these chords to an owner application.
+or arming a fresh observer epoch before each case. Never send these chords to an
+owner application. The agent chooses and sends every public MCP call; the
+independent observer records events only and never selects or performs actions.
 
 **Expected observable and oracle:** The positive record contains all three
 key presses and their reverse-order releases. On the Wayland and XTEST
 backends, each unsupported chord returns a tool error and leaves the fixture's
-event record empty. No partial Ctrl+Left chord is allowed. The xdotool fallback
+event record or passive compositor observation empty. No partial Ctrl+Left chord
+is allowed. The xdotool fallback
 cell proves Insert spelling and event delivery only; it does not inherit the
 Wayland unsupported-key assertion. Keypad Insert is not an alias for Insert.
 These assertions do not require or prove a screen reader's response.
 
-**Evidence:** Preserve every tool call/result and the independent fixture
-records, with exact source, wheel, backend and process identities. Retain failed
+**Evidence:** Preserve every tool call/result and the independent fixture or
+passive compositor records, with exact source, wheel, backend and process
+identities. Bind each observation epoch to its actual public call and terminal
+result; retain the complete bounded post-call window for a zero-event assertion.
+Retain failed
 attempts. A unit test or backend import does not close this cell.
 
 **Cleanup:** Close only the recorded fixture and driver processes after their
