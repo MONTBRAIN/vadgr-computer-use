@@ -339,6 +339,7 @@ def _create_screen_capture() -> ScreenCapture:
 # ---------------------------------------------------------------------------
 
 XDOTOOL_KEY_MAP = {
+    "insert": "Insert",
     "enter": "Return",
     "return": "Return",
     "tab": "Tab",
@@ -468,6 +469,7 @@ class LinuxActionExecutor(ActionExecutor):
 
 # Hardcoded evdev keycodes (input-event-codes.h). Fallback when python-evdev not installed.
 _FALLBACK_EVDEV_KEYCODES: dict[str, int] = {
+    "insert": 110,
     "enter": 28,
     "return": 28,
     "tab": 15,
@@ -709,6 +711,7 @@ def _build_evdev_key_map() -> dict[str, int]:
     if ecodes is None:
         return dict(_FALLBACK_EVDEV_KEYCODES)
     return {
+        "insert": ecodes.KEY_INSERT,
         "enter": ecodes.KEY_ENTER,
         "return": ecodes.KEY_ENTER,
         "tab": ecodes.KEY_TAB,
@@ -865,8 +868,7 @@ class _WaylandActionExecutor(ActionExecutor):
                 # Named keys (ctrl, enter, f1, etc.) or fallback.
                 code = self._key_map.get(k.lower())
             if code is None:
-                logger.warning("Unknown key: %s", k)
-                continue
+                raise ActionError(f"unknown key: {k}")
             codes.append(code)
         for code in codes:
             self._key_event(code, True)
@@ -1417,8 +1419,7 @@ class MutterRemoteDesktopExecutor(_WaylandActionExecutor):
             if code is None:
                 code = self._key_map.get(k.lower())
             if code is None:
-                logger.warning("Unknown key: %s", k)
-                continue
+                raise ActionError(f"unknown key: {k}")
             codes.append(code)
         for code in codes:
             self._key_event(code, True)

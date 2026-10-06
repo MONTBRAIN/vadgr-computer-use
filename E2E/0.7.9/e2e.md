@@ -1,14 +1,24 @@
 # 0.7.9 - profile packaging and authenticated deployment: e2e runbook
 
-> Status: source merge gate complete: three native Windows/Linux x86_64 and
-> macOS arm64 unsigned passes complete. Final trust qualification remains owed
-> before the 0.7.9 tag and release.
+> Status: historical three-pass unsigned results remain recorded below. The
+> Linux AT-SPI follow-up passed its three installed MCP regression runs on
+> virtualized Ubuntu GNOME Wayland x86_64. Follow-up branch checks gate review.
+> Historical profile results do not qualify a rebuilt artifact.
+> Final trust qualification remains owed before the 0.7.9 tag and release.
 > Implementation PR: `https://github.com/MONTBRAIN/vadgr-computer-use/pull/109`.
 > Initial checkout: `575a1442f425fd2a1f97609ae0c52e5103acd80c`.
 > Tested unsigned development product: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
 > Frozen feature-branch producer source: `14cb515ba54ca9346ea931ba46d4c3253164c8b4`.
 > Common evidence PR: `https://github.com/MONTBRAIN/vadgr-docs/pull/182`.
 > No complete platform pass, held signed candidate or release is claimed.
+
+The Linux accessibility follow-up is
+`https://github.com/MONTBRAIN/vadgr-computer-use/pull/124`, on branch
+`fix/linux-atspi-optional-role-name`. R01 used runtime source
+`cc93d30c87d37d83cc6e0fa33094024621960dfc`; R02 used
+`11fc082bdc0e4f51cf9175551ec03ad38d8493e0`. PR #109 and its evidence PR #182
+are merged historical boundaries, not targets for new results. The follow-up
+evidence is in `https://github.com/MONTBRAIN/vadgr-docs/pull/194`.
 
 Signed-transition repair, 2026-09-27: the current source adds exact authenticated
 signed predecessor catalogs, final-manifest handoff verification and signed
@@ -215,8 +225,8 @@ signing transforms each approved Windows helper closure once for native Windows
 and WSL. Run all signed/adoption oracles against those actual retained outputs.
 Product fixes require a reviewed source-pin update and new artifacts, followed
 by affected reruns. Do not replace retained bytes under an existing identity.
-The completed unsigned native source matrix and green checks make #109 eligible
-for the approved source merge. The unavailable architecture rows remain honest
+The historical unsigned native source matrix and green checks preceded the
+source merge of #109. The unavailable architecture rows remain honest
 `not run` results and never become inherited passes. They remain owed before a
 public profile release when their exact signed profile is in scope. Publication
 is separate and uses the retained qualified artifacts without a rebuild. Never
@@ -277,6 +287,13 @@ another minor release before this one. Their approval and identity remain mandat
 | repository | released version | dependency |
 |---|---|---|
 | none | not applicable | installed CUA CLI and MCP are driven directly |
+
+R01 uses an already-installed isolated Vadgr development console as a real
+AccessKit application fixture. Record that fixture's source and executable hash
+separately from CUA. It is not a dependency on a future Vadgr release and does
+not qualify the fixture's installer. The independent machine API observation
+checks the fixture's effect; it does not replace the MCP accessibility action.
+No physical handset or Vadgr Mobile application is required for R01.
 
 ## The oracle is the JSON, never the agent's prose
 
@@ -2995,6 +3012,241 @@ members; this does not claim timestamped signing itself is reproducible.
 Repeat the failed public path before diagnosis. Add a regression, rebuild and
 reinstall, record the new identity and rerun the entire affected cell.
 Retain failed and fixed boundaries. Shared changes invalidate earlier host results.
+
+## Supplementary R03: Linux complete keyboard chords
+
+This regression covers Linux input only. It changes no Windows or macOS input
+implementation and does not qualify the package profiles or signed lifecycle.
+The existing R01 and R02 observations remain bound to their original wheels.
+
+### R03-linux-x86_64: Insert and unsupported chord members
+
+**Precondition:** A real Linux desktop with an isolated, noneditable development
+wheel from the exact committed source. Record the source and wheel identities,
+desktop, display protocol and selected input backend. Prepare a disposable
+application which records its own key events and contains no owner data.
+Do not change the owner's keyboard layout, reader settings or application state.
+If an existing reader consumes the chord before application delivery, use an
+independent passive compositor event observer instead. Bind it to the exact
+compositor and reader processes and bus identities, and arm it only while the
+owned fixture has verified focus. Retain only Ctrl, Insert and Left press/release
+events with monotonic timestamps; disarm on any observed focus or identity change.
+Do not acquire the reader's bus name, grab or forward input, inspect reader
+history, or change reader settings. Record the observer's ordering limitations;
+a failed or incomplete observation is not a passing result.
+
+**Setup:** Give each of three independent driver sessions its own fresh MCP
+server and fixture. Record the driver version and installed command path.
+Use a subscription-authenticated driver and its public MCP tools. Input is
+machine-global, so serialize the focused input steps between sessions.
+
+**Action:** Focus the owned fixture through its public accessibility surface.
+Send `ctrl+insert+left` through `key_press`. Independently read the fixture's
+event record or its focus-bound passive compositor observation. Then send a chord
+with `unsupported_key` before, between and
+after the supported `ctrl` and `left` members, resetting the fixture record
+or arming a fresh observer epoch before each case. Never send these chords to an
+owner application. The agent chooses and sends every public MCP call; the
+independent observer records events only and never selects or performs actions.
+
+**Expected observable and oracle:** The positive record contains all three
+key presses and their reverse-order releases. On the Wayland and XTEST
+backends, each unsupported chord returns a tool error and leaves the fixture's
+event record or passive compositor observation empty. No partial Ctrl+Left chord
+is allowed. The xdotool fallback
+cell proves Insert spelling and event delivery only; it does not inherit the
+Wayland unsupported-key assertion. Keypad Insert is not an alias for Insert.
+These assertions do not require or prove a screen reader's response.
+
+**Evidence:** Preserve every tool call/result and the independent fixture or
+passive compositor records, with exact source, wheel, backend and process
+identities. Bind each observation epoch to its actual public call and terminal
+result; retain the complete bounded post-call window for a zero-event assertion.
+Retain failed
+attempts. A unit test or backend import does not close this cell.
+
+**Cleanup:** Close only the recorded fixture and driver processes after their
+records are filed. Preserve owner processes, configuration and credentials.
+
+**Result:** Not run. The repaired wheel and native MCP confirmation are owed.
+GNOME Wayland, GNOME X11, KDE, wlroots and Linux aarch64 remain not run until
+their exact backend/session is exercised. WSL input uses its Windows bridge;
+this Linux implementation change does not prove that separate path. Native
+Windows and macOS are unchanged and receive no new live-pass claim.
+
+## Supplementary R02: Linux control without an Action interface
+
+Use an isolated live Linux control whose native Accessible interface remains
+readable but whose advertised interfaces omit `org.a11y.atspi.Action`. Record
+the exact driver artifact, host/session and target identity without owner data.
+A button role, enabled state or sensitive state alone does not supply Action.
+Read-only native probes may confirm the interface boundary but cannot qualify
+the public MCP result. R02 uses the exact committed noneditable development
+wheel boundary specified for these accessibility regressions below, not a
+profile or trusted release artifact.
+
+In three independent driver sessions, locate the exact control through actual
+exposed `ui_find`. Invoke `ui_act` with `click` once. Expect
+`unsupported_action` with an empty supported-action list, not `element_gone`.
+Reacquire the same live control and independently confirm unchanged state.
+Never substitute pixels, keyboard input or a private backend action. Separately
+invoke an ordinary advertised button action and confirm its independent effect,
+so the refusal does not establish a blanket inability to act. Preserve failed
+attempts, stop only test-created processes and restore scoped test state.
+
+Result: **pass**, narrowly for virtualized Ubuntu 26.04 x86_64 GNOME Wayland
+on 2026-10-01. Three independent actual MCP driver processes used source
+`11fc082bdc0e4f51cf9175551ec03ad38d8493e0`. The noneditable development wheel
+contains 304828 bytes with SHA-256
+`3c50c99b8b80cf8b0b42908b954e73f99f1e7e48b075fface79bfff42a527108`.
+Each pass invoked the notification button once and returned `unsupported_action`
+with an empty supported-action list. Fresh readback found the same live,
+enabled and sensitive control unchanged. The platform action remains absent;
+this is not a notification-dismissal pass.
+
+Each pass separately launched an owned installer process with its own isolated
+roots and distinct configured port. No daemon or listening socket was started.
+The ordinary Decline and close action ended that process with exit 0 and left
+its product roots absent. Each post-action `element_gone` reply is retained;
+the action was not replayed. Pass three also retained a transient client tool
+catalog absence before any dispatch; reacquiring the catalog restored access.
+The ordinary control fixture reused exact retained AppImage bytes from
+`eab017e5e100b9422d462338d661cb3cb0ad9a37`, 577767928 bytes with SHA-256
+`c6ef7d4cdb968b10594c5228d4c004ca829811462bca6a512e6dea8b0f2992c3`.
+This control check does not qualify that installer or Vadgr's functional cells.
+
+Cleanup verified all three subject processes, configured listeners and isolated
+product state absent. The two assistive settings and two accessibility-bus
+flags were restored to false; no reader process remained. Temporary MCP pass
+tags were removed. The qualified active driver remains intentionally available
+for continued testing. No generated product state needed deletion, so these
+session cleanups reclaimed zero bytes. Raw records are in private evidence
+PR #194 alongside the original failures and source regression results.
+
+Earlier live attempts misreported a readable GNOME Shell button as gone.
+Read-only probes found no Action interface, `GetActions` returning UnknownMethod
+and `GetRole` returning
+43. This is a classification defect, not evidence that the notification can be
+dismissed through accessibility. The fix changes only Linux named-action
+dispatch preflight; earlier exact-byte R01 and profile evidence remain historical
+observations, not proof of the new driver. Other desktops and architectures
+remain not run for this added assertion.
+
+## Supplementary R01: Linux accessible role discovery
+
+This regression is separate from the 130 primary profile cells and T01-T77.
+It does not relax their artifact eligibility or browser-only tool boundary.
+Only R01, R02 and R03 may use a non-editable source-only development wheel built
+from an exact clean committed source. It is not a P01/P11 profile artifact and
+cannot prove catalog, signing, adoption, attestation or release qualification.
+
+### R01-linux-x86_64: AccessKit window and control discovery
+
+**Precondition:** A real Linux desktop session with an installed, isolated
+AccessKit-based Vadgr console. Record distribution, architecture, desktop,
+display protocol and virtualization. Virtual-machine GNOME Wayland coverage is
+virtualized-native Linux, not bare-metal, X11, aarch64 or another desktop.
+Use only a disposable machine configuration without credentials in visible UI.
+
+**Setup:** Record the CUA source commit, exact wheel filename, size and SHA-256,
+non-editable installed entry, dependency check and driver process identity.
+Record the separate installed Vadgr executable hash and process identity.
+Connect the actual MCP server through its supported client configuration and
+reload path; confirm the new connection uses the intended installed driver.
+An unchanged configuration reload that keeps the old process does not establish
+the new identity. A direct Python call to a tool function is not an MCP result.
+Retain the original failed discovery and read-only native AT-SPI probes:
+`GetRoleName` returns `org.freedesktop.DBus.Error.UnknownMethod`, while
+mandatory `GetRole` returns `23` for the live frame. Keep private bus names,
+object paths and unrelated application titles out of retained evidence.
+
+**Task given to the agent:** "Through the installed MCP accessibility tools,
+list windows and match the isolated Vadgr process. Read its frame and controls.
+Find Settings and Providers by accessible name, invoke their advertised native
+actions and read the resulting selected state after each action. Open the
+isolated machine-name editor. Only if native editable-text support is exposed,
+set a harmless test value and read it back. Save once, inspect the new screen
+and independently verify the machine value through its read-only API. Restore
+the original value through the same accessible controls and verify restoration."
+
+**Expected result:** `ui_windows` includes the exact Vadgr process;
+`ui_tree` returns the live frame and named controls rather than `no_tree`;
+`ui_find` locates the ordinary controls; `ui_act` navigation and `set_text`
+agree with fresh read-back. Do not replace missing native actions with pixel
+input. A Save control removed by its own successful action may return the
+explicit `element_gone` / `element gone after acting` reply. Preserve that
+reply; do not replay the action or claim it returned success. A new scoped
+tree and independent API observation must establish whether the effect occurred.
+Missing native editable-text support is a distinct assertion not run, not a
+successful edit. An optional independent app-only visual capture cannot replace
+the accessibility or API oracle.
+
+**Verdict from the JSON:** Actual MCP request/response sequence, scoped fresh
+trees and selections, native method availability, wheel and process identities,
+test-value equality and original-value restoration booleans. Never retain the
+original owner value, credentials, pairing material or secret-bearing trees.
+
+**Evidence boundary:** PR #194, a separate dated Linux accessibility-regression
+boundary on the follow-up evidence branch, with failed baseline, fixed attempts, exact
+identities, red/green tests, gate exits and cleanup. Run three independent passes
+with fresh owned MCP driver, console and daemon processes; separate XDG and
+Vadgr data roots, databases, endpoints and evidence. Run the GUI tasks
+sequentially so name-based accessibility selection cannot address another pass.
+Each pass may launch the same immutable installed AppImage bytes read-only.
+Record that executable's hash for every pass; shared bytes do not imply shared
+mutable state. This fixture proves CUA accessibility, not a new Vadgr installer
+or L01 qualification.
+
+**Cleanup:** Restore the original isolated value before closing the subject.
+Stop only owned processes and restore any test-changed accessibility setting.
+Preserve driver installations referenced by an active owner MCP configuration
+until that configuration no longer depends on them. Seal and scan evidence
+before the documented cleanup procedure; record retained state explicitly.
+
+**Result:** pass: three independent installed MCP runs on virtualized Ubuntu
+26.04 x86_64 GNOME Wayland under VMware, against source
+`cc93d30c87d37d83cc6e0fa33094024621960dfc` and non-editable wheel
+`vadgr_computer_use-0.7.9-py3-none-any.whl`, 304752 bytes, SHA-256
+`4d7d5af15ca4992ff8b1faa1f3ce741651c5e88dbdb996f1f2d42b3fd40d9df2`.
+Each fresh driver discovered the matching console process, read the frame,
+navigated Settings and Providers with fresh selected-state checks, edited the
+isolated machine name through native editable text, saved and restored it.
+Independent API reads confirmed each test value and each restoration.
+
+All six Save actions returned the documented post-action `element_gone` reply
+because the dialog closed. None was replayed; fresh UI and API reads established
+the effects. Pass 1 also retained a stale Edit reference during a layout change;
+the driver reacquired the control before continuing. Some immediate navigation
+replies preceded selection updates; fresh structured reads confirmed the selected
+state. These observations remain in evidence, not rewritten as error-free calls.
+
+The immutable installed fixture came from source
+`eab017e5e100b9422d462338d661cb3cb0ad9a37`, 577767928 bytes, SHA-256
+`c6ef7d4cdb968b10594c5228d4c004ca829811462bca6a512e6dea8b0f2992c3`.
+It supplied no new installer verdict. Cleanup stopped all six owned subject
+processes, confirmed all three test ports had no listener, restored the original
+accessibility settings and isolated machine values, and stopped the test-started
+screen reader. After the evidence push, cleanup removed twelve validated
+disposable state directories and reclaimed 577536 allocated bytes. The active
+owner's isolated MCP driver and immutable fixture remain available for continued
+testing. Source and evidence remain intact. This is R01 regression cleanup,
+not completion of the separate Vadgr functional pass or its cleanup cell.
+
+Private evidence: PR #194, `20261001-linux-atspi-role-followup`, with each pass's actual
+MCP observations, launch/process identities and cleanup record. This result
+does not qualify bare-metal hardware, aarch64, X11, KDE Plasma, minimal installs,
+Sway or Hyprland: none was exercised by this regression.
+
+The repair at `cc93d30c87d37d83cc6e0fa33094024621960dfc` changes Linux runtime
+role resolution and per-application role calibration. Earlier P01/P11 passes
+remain truthful observations of their exact retained bytes, not qualification
+of this new runtime. The follow-up patch gate is the changed-behavior R01 cell;
+it does not claim a new full profile pass or require unrelated browser cells
+for appearance. Browser-only and Windows/macOS observations are not retroactively
+renamed or erased. No shared browser, Windows broker or adoption behavior is
+changed by this Linux-only fix. Windows and macOS do not dispatch this AT-SPI
+backend; R01 is not applicable there. Other Linux desktops and aarch64 remain
+not run until their real sessions are exercised.
 
 ## Repeatability
 

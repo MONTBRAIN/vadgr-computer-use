@@ -33,6 +33,7 @@ _BUTTONS = {"left": 1, "middle": 2, "right": 3}
 
 # X11 keysyms for named keys (X11/keysymdef.h).
 _NAMED_KEYSYMS = {
+    "insert": 0xFF63,
     "shift": 0xFFE1,
     "ctrl": 0xFFE3,
     "control": 0xFFE3,
