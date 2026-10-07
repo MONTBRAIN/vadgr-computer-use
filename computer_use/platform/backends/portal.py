@@ -26,9 +26,11 @@ round-trip is covered by the e2e runbook.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import logging
 import os
+import time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -83,6 +85,42 @@ def portal_available() -> bool:
                 pass
 
 
+def _request_lock_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime and os.path.isdir(runtime):
+        return Path(runtime) / "vadgr-cua-portal-screenshot.lock"
+    return Path(f"/tmp/vadgr-cua-portal-screenshot-{os.getuid()}.lock")
+
+
+@contextlib.contextmanager
+def _portal_request_lock(timeout: float):
+    """Hold a per-user lock for one portal Screenshot request.
+
+    GNOME answers only one of several overlapping Screenshot requests; the
+    others never receive a Response and wait out their whole timeout. Separate
+    computer-use processes therefore take turns.
+    """
+    import fcntl
+
+    path = _request_lock_path()
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    try:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise ScreenCaptureError(
+                        "another screenshot request did not finish in time"
+                    ) from None
+                time.sleep(0.05)
+        yield
+    finally:
+        os.close(fd)
+
+
 class PortalScreenshotClient:
     """Real transport: ``org.freedesktop.portal.Screenshot`` over jeepney."""
 
@@ -90,6 +128,10 @@ class PortalScreenshotClient:
         """Invoke the portal and return a local PNG path. Raises ScreenCaptureError."""
         if _jeepney is None or _open_dbus_connection is None:
             raise ScreenCaptureError("jeepney is required for the screenshot portal")
+        with _portal_request_lock(timeout):
+            return self._take_screenshot(timeout)
+
+    def _take_screenshot(self, timeout: float) -> str:
         conn = _open_dbus_connection(bus="SESSION")
         try:
             sender = conn.unique_name.lstrip(":").replace(".", "_")
