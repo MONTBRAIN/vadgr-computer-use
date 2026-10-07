@@ -100,8 +100,8 @@ def test_final_preflight_accepts_each_reviewed_input_set(monkeypatch, selection)
         "aarch64": "8de5ba4af010e0f8ba430d08bd6be083a59057b995216d2a6e6e633e89995ad9",
     }),
     ("upgrade-fixture", {
-        "x86_64": "b456be679e49154efc52a954c653278fceb98f70d33092d832ea477aeebe05a0",
-        "aarch64": "cf1cf8cc00eee9a1f3b3995d0fa702ae67ac66c0baa9502b3f4bd0aaba6befa8",
+        "x86_64": "0c367f089e1b005d9395075a20467f7b6af0aa45483992290c7931946ee1c811",
+        "aarch64": "1b23550a312d706a02ff04f3f6429fd5111f3dda581a6c89368d92bcf05389ae",
     }),
 ])
 def test_transition_rules_bind_exact_legal_records(monkeypatch, selection, legal):
