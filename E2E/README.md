@@ -196,6 +196,33 @@ Inform the owner before that group runs. If setup is unavailable, keep the
 complete cases and mark them `blocked`; never reduce the test plan after live
 execution begins.
 
+Every part and assertion must be testable with tools that exist. Before it
+enters a runbook, name the exact tool, version and interface its action and
+its oracle use, and record a capability probe that shows the tool exists and
+works on the target, in the template's tooling table. An existing development
+build counts, released or not, when its exact source and artifact are named. A
+version that does not exist does not count, and neither does a release that is
+ordered after this minor, because then the runbook and the tool each wait for
+the other to ship.
+
+An assertion that needs such a tool is not written into this minor's runbook as
+owed. It moves to the minor that delivers the tool, named in the plan and in
+the runbook's moved table, or it is replaced by a workaround that existing tools
+execute, with the workaround recorded in the part. **A runbook that only a
+future release can finish is unfinished.** Every part must reach pass or fail
+with existing tools. The only exceptions are real hardware, OS or
+owner-protected steps, and they are named in the requirements table before the
+first part. When a pass discovers that an assertion cannot be executed with
+existing tools, it moves the assertion out the same day, to the delivering
+minor or to a workaround, with the failed probe as evidence, instead of leaving
+it `partial` and owed.
+
+Written from a `vadgr 0.5.0` pass that this runtime drove. Four visual cells
+needed a window capture only a version of this runtime that did not exist could
+make, a closure with a release of this runtime that was ordered after
+`vadgr 0.5.0` itself, and a pressed-button state no tool here could hold. The
+cells could never close.
+
 Credentials come from the workspace `../.env` only. Never echo or copy them
 into commands, logs, screenshots, transcripts, process listings, GitHub text,
 documentation or evidence. Run
