@@ -205,6 +205,16 @@ present in a given runbook, the entry is all there is.
    eligible fixtures block signed cells, not independent unsigned work.
    [../README.md: Signed upgrade and rollback fixtures]
 
+29. **Every part is testable with tools that exist.** Before a part or
+    assertion enters this runbook, name the exact tool, version and interface
+    for its action and its oracle, and record a capability probe that ran on
+    the target. A tool version that does not exist, or one released only after
+    this minor, never leaves a part owed here: move the assertion to the minor
+    that delivers the tool, or replace it with a recorded workaround existing
+    tools execute. A pass that finds an assertion it cannot execute moves it
+    out the same day instead of leaving it partial. [Tooling capability
+    probes] [../README.md: Writing a new runbook]
+
 **A pass is finished, not paused, and reporting is not a stopping point.** A
 checkpoint or a progress summary does not end your turn: write it and keep
 driving in the same turn. A pass ends when every cell carries a verdict or a
@@ -408,6 +418,38 @@ never appears in.
 
 > Name where this pass's JSON landed - the teed stream, or the driving CLI's
 > transcript path - so a reader can check your verdicts rather than trust them.
+
+## Tooling capability probes
+
+> Complete this table before the first live part. Give one row to every tool a
+> part's action or oracle uses: the driving agent CLI and its version, this
+> runtime's installed build and the tools it exposes, an accessibility backend,
+> a capture method, a browser build or a committed helper. Name the exact
+> version and interface, and run a probe that proves the tool exists and does
+> the required thing on the target host. An existing development build counts,
+> released or not, when the row names its exact source commit and artifact
+> hash. A version that does not exist yet does not count, and neither does a
+> release ordered after this minor.
+
+> An assertion whose tool does not exist, or whose tool is released only after
+> this minor, is never written here as owed. Move it to the minor that delivers
+> the tool and name that minor in the second table, or replace it with a
+> workaround that an existing tool executes and record that workaround in the
+> part. A runbook that only a future release can finish is unfinished. Only real
+> hardware, OS or owner-protected steps listed under the owner and environment
+> requirements may wait on something other than an existing tool.
+
+> When a pass finds an assertion that no existing tool can execute, move it out
+> of this runbook the same day, with the failed probe as its evidence. Do not
+> leave it `partial`, `blocked` or owed.
+
+| parts or cells | role (action or oracle) | exact tool, version and interface | build identity | probe on the target and its result |
+|---|---|---|---|---|
+| &lt;ids&gt; | &lt;action / oracle&gt; | &lt;for example `vadgr-cua` X.Y.Z, tool `&lt;name&gt;`&gt; | &lt;release tag, or source commit and artifact hash&gt; | &lt;command, exit code, observation, evidence path&gt; |
+
+| assertion | tool or capability that does not exist | delivering minor | workaround that existing tools execute |
+|---|---|---|---|
+| &lt;id: assertion&gt; | &lt;exact missing tool, version or interface&gt; | `&lt;X.Y.Z&gt;` | &lt;recorded workaround and its part, or none&gt; |
 
 ## Owner and environment requirements
 
