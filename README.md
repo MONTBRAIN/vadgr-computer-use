@@ -4,7 +4,7 @@ Local MCP server for computer use. 33 tools across three tiers: **Tier 0** syste
 
 Tested with **Claude Code**, **Codex CLI**, and **Gemini CLI** (same server, same tools, same prompt).
 
-> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME 46-50, KDE, wlroots)**, **Windows native**, **WSL2**, and **macOS**. On **Linux** run `vadgr-cua install-deps` once after install (clipboard backend + input permissions); on **macOS** grant Accessibility + Screen Recording on first run. See [First run on Linux](#first-run-on-linux), [First run on macOS](#first-run-on-macos), and [Platform support](#platform-support).
+> **Platforms:** works on **Linux (X11 and Wayland incl. GNOME 46-50, KDE, wlroots)**, **Windows native**, **WSL2**, and **macOS**. On **Linux** run `vadgr-cua install-deps` once after install (clipboard backend + input permissions, and on GNOME 50 the shell extension that shows when vadgr drives the desktop); on **macOS** grant Accessibility + Screen Recording on first run. See [First run on Linux](#first-run-on-linux), [First run on macOS](#first-run-on-macos), and [Platform support](#platform-support).
 
 ---
 
@@ -292,7 +292,8 @@ The Linux backend is selected per session by a capability resolver (run
 |----------|-------------|------------------|----------------|
 | Linux / X11 | `mss` | XTEST (`python-xlib`) | nothing extra; pure-Python, no `xdotool` |
 | Linux / Wayland (GNOME 46-48) | `gnome-screenshot` | Mutter RemoteDesktop via `jeepney` | nothing extra |
-| Linux / Wayland (GNOME 49-50) | XDG Screenshot portal | Mutter RemoteDesktop via `jeepney` | one consent prompt on first capture (persisted) |
+| Linux / Wayland (GNOME 49) | XDG Screenshot portal | Mutter RemoteDesktop via `jeepney` | one consent prompt on first capture (persisted) |
+| Linux / Wayland (GNOME 50) | vadgr GNOME Shell extension (no flash); XDG Screenshot portal without it | Mutter RemoteDesktop via `jeepney` | `vadgr-cua install-deps` installs the extension; log out and back in once |
 | Linux / Wayland (KDE, wlroots) | `grim` (wlroots) / portal | pure-Python uinput | `vadgr-cua install-deps` for `/dev/uinput` access |
 | Windows native | Win32 GDI | SendInput | nothing extra |
 | WSL2 to Windows host | TCP bridge daemon (`mss` on Windows) | TCP bridge daemon (Win32 `SendInput`) | bridge daemon auto-launches |
@@ -315,10 +316,21 @@ It installs the clipboard backend (`wl-clipboard`), the accessibility stack
 up `/dev/uinput` access (udev rule + `input` group) under a single graphical auth
 prompt. pip cannot install these because they are OS packages, not Python wheels.
 
-On **GNOME 49/50 Wayland**, the first `screenshot()` shows a one-time GNOME consent
-dialog (the XDG Screenshot portal); click **Share** and the grant is remembered, so
-later screenshots are silent. For unattended/remote runs, trigger one screenshot
-while you are at the machine first so the prompt is out of the way. On GNOME 46-48,
+On **GNOME 50** it also installs the vadgr GNOME Shell extension for your user, with
+no root prompt. Log out and back in once afterwards: GNOME Shell on Wayland loads a
+new extension only at login. While vadgr drives the desktop (the native UI tools, the
+pixel tools and `app_open`), an orange glow lights every screen edge, a pill at the
+top names the action, and a ring marks a click target before the click. Press
+**Esc** to stop it: for the next 30 seconds every desktop tool returns
+`user_stopped` instead of acting, and the key press does not reach the application.
+Screenshots then go through the shell, with no screen flash and without the overlay
+in the image; `get_platform_info` reports `"capture": "gnome-shell-extension"`.
+
+Without the extension, on **GNOME 49/50 Wayland** the first `screenshot()` shows a
+one-time GNOME consent dialog (the XDG Screenshot portal); click **Share** and the
+grant is remembered, so later screenshots need no dialog, though GNOME flashes the
+screen for each one. For unattended/remote runs, trigger one screenshot while you are
+at the machine first so the prompt is out of the way. On GNOME 46-48,
 `gnome-screenshot` is used and there is no prompt. Input (mouse/keyboard) on GNOME
 uses Mutter RemoteDesktop and needs no prompt.
 
@@ -328,6 +340,8 @@ Check what the resolver selected:
 vadgr-cua doctor
 # "platform_backends": { "capture": {"selected": "portal"}, "input": {"selected": "mutter-remotedesktop"}, ... }
 ```
+
+With the GNOME Shell extension running, `capture` selects `gnome-shell-extension`.
 
 ## First run on macOS
 
@@ -381,8 +395,8 @@ Three tiers; `vadgr-cua doctor` reports the live `tool_count`.
 ### Tier 1: structured desktop (5, Linux)
 Read and drive native apps through the accessibility tree (AT-SPI over `dbus-fast`), so the agent acts on a control by role and name instead of guessing a pixel. Small text and tens of milliseconds instead of a full screenshot. Reads use a one-call bulk read (`Cache.GetItems`) per app where the toolkit exports it, degrading to a node walk where it does not. Enablement is handled per toolkit: `app_open` launches a Chromium or Electron entry with its accessibility flag (Chromium only reads that gate at startup). The tier never sets the bus screen-reader flag, because on GNOME that autostarts a screen reader that then speaks; a thin already-running Chromium or Electron window reads tree-only, and the remedy is to relaunch it through `app_open` (which adds the flag) or to drive it through the browser tier. Reported by `get_platform_info`'s `structured` block, which also carries `coordinate_trust`: `real` on X11, and `per_window` on Wayland, where a Wayland-native window's bounds are window-relative but an XWayland client's are true screen pixels, so each found element carries its own `coordinate_trust` and a `real` one can ground a Tier 2 click.
 - `ui_tree(depth=6, app="")`: an accessible tree, filtered and depth-capped. `app=""` is the focused window; `app="Name"` is that application's window even if unfocused; `app="*"` is every open window.
-- `ui_find(role, name, app="")`: elements matching a role and/or name, each with an opaque `ref`, `bounds`, decoded `states` and the title of its owning `window` (what tells equal matches in different windows apart). On Wayland each element also carries `coordinate_trust`. `app` scopes the search the same way as `ui_tree`. An empty match is a successful read, not an error.
-- `ui_act(ref, action, text="")`: act on a `ref`: `click`, `focus`, `set_text`, `toggle`, `expand`. It re-reads the element and returns its new state; a stale `ref` fails `element_gone` and never falls back to clicking an old coordinate.
+- `ui_find(role, name, app="")`: elements matching a role and/or name, each with an opaque `ref`, `bounds`, decoded `states` and the title of its owning `window` (what tells equal matches in different windows apart). On Wayland each element also carries `coordinate_trust`. A Flutter app is never asked for bounds (its embedder blocks for 25 seconds on that read), so its elements carry `unknown: ["bounds"]`. Any other application that leaves a state or bounds read unanswered costs one half-second wait per call, not five seconds per element: its elements are still returned, with `unknown` naming the fields that could not be read. `app` scopes the search the same way as `ui_tree`. An empty match is a successful read, not an error.
+- `ui_act(action, ref="", text="", name="", role="", app="")`: act on one element: `click`, `focus`, `set_text`, `toggle`, `expand`. Target it by a `ref` from `ui_find`, or directly by `name` and/or `role` (scoped by `app` as in `ui_find`), so a native interaction takes one call. By name it acts only when exactly one element matches, and a whole-name match wins over partial ones; otherwise it returns `not_found` with the nearest `candidates`, or `ambiguous` with up to five candidate refs and the `count`. A `ref` wins when both are given. It re-reads the element and returns its new state (and, by name, the `ref` it used); a stale `ref` fails `element_gone` and never falls back to clicking an old coordinate.
 - `ui_wait(role, name, timeout_ms=5000, app="")`: block until a matching element appears or the timeout elapses.
 - `ui_windows()`: list open top-level windows across all apps (app name, title, active flag, ref), so you can discover what is open before targeting a window by name.
 

@@ -33,6 +33,11 @@ NO_TREE = "no_tree"
 ELEMENT_GONE = "element_gone"
 TIMEOUT = "timeout"
 UNSUPPORTED_ACTION = "unsupported_action"
+# ui_act by name and role: it acts only on exactly one match, and names the
+# other two outcomes rather than guessing.
+NOT_FOUND = "not_found"
+AMBIGUOUS = "ambiguous"
+NO_TARGET = "no_target"
 
 # The one-line remedy that ships with at_spi_unavailable. It points at the single
 # cross-distro provisioner rather than a hand-typed package line, per the family's
@@ -105,6 +110,10 @@ class Element:
     vouches for the window origin), a Wayland-native client's are
     window-relative. On X11 every bound is real and the capability block
     already says so once.
+
+    ``unknown`` names the fields the application did not answer for in time
+    ("bounds", "states"). Their null and empty values are then not facts about
+    the element, and the field says so rather than leaving a reader to guess.
     """
 
     ref: str
@@ -115,6 +124,7 @@ class Element:
     text: str | None = None
     window: str | None = None
     coordinate_trust: str | None = None
+    unknown: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         out = {
@@ -135,6 +145,10 @@ class Element:
         # Only carried where the session makes it ambiguous (Wayland).
         if self.coordinate_trust is not None:
             out["coordinate_trust"] = self.coordinate_trust
+        # Only carried where a read went unanswered, so an answering app pays
+        # nothing for it.
+        if self.unknown:
+            out["unknown"] = list(self.unknown)
         return out
 
 
@@ -165,6 +179,9 @@ class StructuredBackend(Protocol):
 
     def tree(self, depth: int, app: str) -> dict: ...
     def find(self, role: str, name: str, app: str) -> list[Element]: ...
+    def nearest(
+        self, role: str, name: str, app: str, limit: int
+    ) -> list[Element]: ...
     def act(self, ref: str, action: str, text: str) -> dict: ...
     def wait(
         self, role: str, name: str, timeout_ms: int, app: str

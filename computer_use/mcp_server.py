@@ -5,6 +5,7 @@ Run: python -m computer_use.mcp_server [--transport stdio|sse] [--max-width 1366
 
 import argparse
 import functools
+import inspect
 import io
 import logging
 import math
@@ -16,6 +17,7 @@ import time as _time_module
 from importlib.metadata import PackageNotFoundError, version
 
 import anyio
+import pydantic_core
 
 _DEBUG = os.environ.get("VADGR_DEBUG", "") == "1"
 
@@ -77,33 +79,151 @@ from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as PILImage
 
+from computer_use import indicator as _indicator
 from computer_use.core import REGISTRY, Risk, Tier, tool
+from computer_use.platform.backends.gnome_shell import UserStopped, default_client
 from computer_use.platform.detect import detect_platform
 
-mcp = MCPServer(
+
+class _CompactMCPServer(MCPServer):
+    """The MCPServer every tool is registered on: compact results, and the cue.
+
+    Compact: MCPServer serializes a dict result with indent=2, the client hands
+    that text to the model as is, and the indentation is about 40% of the tokens
+    of a ui_tree, ui_windows or browser read. A dict result is converted before
+    the SDK sees it, with the same serializer minus the indent. str, Image and
+    list results keep their own conversion. A tool whose return annotation makes
+    the SDK validate an object schema (type_text) keeps its dict, because a
+    string fails that validation. A direct Python call still returns the dict.
+
+    Cue: this wrapper is the one place every tool call passes through, so it is
+    where a desktop tool tells the on-screen indicator what it is about to do
+    (see ``computer_use/indicator.py``). When the user has pressed Esc, a cued
+    tool does not run and returns ``user_stopped`` instead.
+    """
+
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+
+        def decorator(fn):
+            name = kwargs.get("name") or fn.__name__
+            keeps_dict = _validates_an_object(fn, kwargs.get("structured_output"))
+            cued = name in _indicator.INDICATED_TOOLS
+            signature = inspect.signature(fn)
+            # The SDK wraps a str result as {"result": str}, so the stop goes out
+            # as text there: a JSON string inside it reached the model escaped.
+            stop_as_text = signature.return_annotation in (str, "str")
+
+            def stopped():
+                stop = _indicator.stopped_result()
+                return f"{stop['error']}: {stop['message']}" if stop_as_text else deliver(stop)
+
+            def deliver(result):
+                if cued:
+                    _ELEMENTS.observe(name, result)
+                return result if keeps_dict else _compact(result)
+
+            if inspect.iscoroutinefunction(fn):
+                @functools.wraps(fn)
+                async def wire(*a, **kw):
+                    if cued and await anyio.to_thread.run_sync(
+                        _cue, name, signature, a, kw
+                    ):
+                        return stopped()
+                    try:
+                        return deliver(await fn(*a, **kw))
+                    except UserStopped:
+                        return stopped()
+            else:
+                @functools.wraps(fn)
+                def wire(*a, **kw):
+                    if cued and _cue(name, signature, a, kw):
+                        return stopped()
+                    try:
+                        return deliver(fn(*a, **kw))
+                    except UserStopped:
+                        return stopped()
+            register(wire)
+            return fn
+
+        return decorator
+
+
+def _validates_an_object(fn, structured_output) -> bool:
+    """Whether the SDK validates this tool's result against an object schema.
+
+    True for a dict-typed return such as type_text's. A str return is also
+    validated, but wrapped as {"result": str}, so a dict for it must still be
+    compacted into a string; and a bare dict or no annotation is not validated.
+    """
+    try:
+        from mcp.server.mcpserver.tools import Tool as SdkTool
+
+        meta = SdkTool.from_function(fn, structured_output=structured_output).fn_metadata
+        return meta.output_schema is not None and not getattr(meta, "wrap_output", False)
+    except Exception:
+        return False
+
+
+def _compact(result):
+    if isinstance(result, dict):
+        return pydantic_core.to_json(result, fallback=str).decode()
+    return result
+
+
+# Names and trusted bounds from recent ui_* reads, so a ui_act cue can say
+# what it is about to act on.
+_ELEMENTS = _indicator.ElementMemory()
+
+
+def _cue(name: str, signature: inspect.Signature, args: tuple, kwargs: dict) -> bool:
+    """Tell the indicator what the tool is about to do. True: the user stopped it.
+
+    Never raises. The indicator is for the person at the screen, and a tool
+    must not fail because it could not be drawn.
+    """
+    try:
+        bound = signature.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        cue = _indicator.cue_for(name, bound.arguments, _to_real, _ELEMENTS)
+        return default_client().begin(
+            cue.tool, cue.text, cue.x, cue.y, cue.width, cue.height, cue.own_escape
+        )
+    except Exception as exc:
+        logger.debug("indicator cue skipped for %s: %s", name, exc)
+        return False
+
+
+mcp = _CompactMCPServer(
     name="computer-use",
     instructions=(
-        "Desktop automation engine. Use screenshot() to see the screen, "
-        "then click/type/scroll to interact with UI elements.\n\n"
-        "CRITICAL RULES:\n"
-        "1. ALWAYS take a screenshot BEFORE clicking or typing to verify "
-        "the target is where you expect it to be.\n"
-        "2. ALWAYS take a screenshot AFTER clicking to confirm the action "
-        "had the intended effect (correct window opened, right element selected, etc.).\n"
-        "3. NEVER click based on assumed coordinates from memory -- always "
-        "use the latest screenshot to identify precise coordinates.\n"
-        "4. When clicking on a list item, aim for the CENTER of the item's text, "
-        "not near its edge, to avoid hitting adjacent items.\n"
-        "5. If a click lands on the wrong target, take a screenshot, reassess "
-        "coordinates, and retry.\n"
-        "6. Screenshots are point-in-time. Don't rely on older screenshots from "
-        "earlier turns -- the UI may have changed. Take a fresh one when needed.\n"
-        "7. The `browser` tool (Tier 1, MV3 extension) verifies differently: the "
-        "DOM is the ground truth, so after ANY mutating browser op "
-        "(click/type/fill/select) CONFIRM the effect with a structured read-back "
-        "-- the op's returned `ok`/`checked`, or get_attribute/read_text/query/"
-        "wait_for -- not a screenshot (web state changes too fast to screenshot "
-        "reliably). Never continue on an unverified browser action."
+        "Desktop automation. Prefer the structured tiers: a targeted read is a "
+        "few dozen tokens and an act is confirmed by its own re-read, while a "
+        "full screenshot is 1,500 tokens or more. Pixels are the fallback, not "
+        "the default.\n\n"
+        "1. Web pages: `browser` (DOM selectors). Confirm each mutating op "
+        "with its returned `ok`/`checked` or a read-back (get_value, "
+        "read_text, wait_for), not a screenshot.\n"
+        "2. Native app windows: `ui_act(action=..., name=..., role=...)` "
+        "finds the control and acts in one call when exactly one matches "
+        "(roles read like \"button\", \"toggle button\", \"text box\", "
+        "\"label\"). On `ambiguous` or `not_found` it lists candidate refs: "
+        "act on one with `ui_act(ref=...)`, or `ui_find` to look further. The "
+        "act returns the element re-read, so it needs no screenshot. Use "
+        "`ui_tree` only to discover what to search for, with a small depth: a "
+        "whole window can cost thousands of tokens. If a ui_* call reports the "
+        "tier unavailable, or "
+        "a window's tree is empty, go to step 3. On Linux, a Chromium or "
+        "Electron window with an empty tree builds one when it is relaunched "
+        "through `app_open`.\n"
+        "3. Pixels, only when steps 1 and 2 cannot reach the target (canvas, "
+        "games, an empty tree, a visual judgment): take a screenshot, use "
+        "coordinates from the latest screenshot only, and take another only "
+        "when the result cannot be read back. format=\"thumbnail\" is enough "
+        "for a sanity check.\n\n"
+        "If a desktop tool returns error `user_stopped`, the person at the "
+        "screen pressed Esc: stop calling desktop tools and wait for their "
+        "next instruction."
     ),
 )
 
@@ -211,15 +331,17 @@ def _downscale(
     img = PILImage.open(io.BytesIO(png_bytes))
     real_w, real_h = img.size
 
-    if fmt == "thumbnail":
-        target_w = min(_THUMBNAIL_WIDTH, real_w)
-    else:
-        configured = _MAX_WIDTH if _MAX_WIDTH > 0 else real_w
-        target_w = min(configured, _MAX_DIMENSION_CEILING, real_w)
+    configured = _MAX_WIDTH if _MAX_WIDTH > 0 else real_w
+    coord_w = min(configured, _MAX_DIMENSION_CEILING, real_w)
+    coord_h = int(real_h * coord_w / real_w)
+    # A thumbnail is the same screen in fewer pixels, so it keeps the coordinate
+    # space of the full format, as the screenshot docstring promises. Taking the
+    # thumbnail's own width made a following click or region four times off.
+    _scale_x, _scale_y = real_w / coord_w, real_h / coord_h
+    _display_w, _display_h = coord_w, coord_h
+    target_w = min(_THUMBNAIL_WIDTH, real_w) if fmt == "thumbnail" else coord_w
 
     if target_w >= real_w:
-        _scale_x, _scale_y = 1.0, 1.0
-        _display_w, _display_h = real_w, real_h
         data, image_format = _encode_image(img, fmt)
         logger.debug(
             "No resize (%dx%d), encoded as %s, %d bytes",
@@ -230,13 +352,8 @@ def _downscale(
         )
         return data, image_format
 
-    ratio = target_w / real_w
     new_w = target_w
-    new_h = int(real_h * ratio)
-
-    _scale_x = real_w / new_w
-    _scale_y = real_h / new_h
-    _display_w, _display_h = new_w, new_h
+    new_h = int(real_h * target_w / real_w)
 
     img = img.resize((new_w, new_h), PILImage.LANCZOS)
     data, image_format = _encode_image(img, fmt)
@@ -967,7 +1084,7 @@ def ui_find(role: str = "", name: str = "", app: str = "") -> dict:
 
     Each result carries an opaque ``ref`` for ui_act, plus ``bounds`` and
     ``states``. An empty match is a successful read (``ok`` with an empty list),
-    not an error. Match by role (e.g. "push button"), by name, or both. ``app=""``
+    not an error. Match by role (e.g. "button"), by name, or both. ``app=""``
     searches the focused window; ``app="Name"`` searches that application's window
     even when unfocused; ``app="*"`` searches every open window.
     """
@@ -988,15 +1105,32 @@ def ui_windows() -> dict:
 
 @mcp.tool()
 @tool(name="ui_act", tier=Tier.ONE, risk=Risk.MEDIUM)
-def ui_act(ref: str, action: str, text: str = "") -> dict:
-    """Act on a native UI element by ref (Tier 1): click, focus, set_text, toggle, expand.
+def ui_act(
+    action: str,
+    ref: str = "",
+    text: str = "",
+    name: str = "",
+    role: str = "",
+    app: str = "",
+) -> dict:
+    """Act on one native UI element (Tier 1): click, focus, set_text, toggle, expand.
+
+    Target it directly by ``name`` and/or ``role`` (e.g. "button"), with ``app``
+    scoping the search as in ui_find, or by a ``ref`` from ui_find; a ``ref``
+    wins when both are given. By name it acts only when exactly one element
+    matches, and an element whose whole name equals ``name`` wins over partial
+    matches. No match returns ``not_found`` with the nearest ``candidates``;
+    several return ``ambiguous`` with up to five candidate refs and the
+    ``count``. A by-name act also returns the ``ref`` it used.
 
     Re-reads the element after acting and returns its new state, so a toggle that
     did not toggle is visible in the response. A ref that no longer resolves fails
     ``element_gone`` and never falls back to clicking its old coordinates. Pass
     ``text`` for ``set_text``.
     """
-    return _ui_impl.ui_act(ref=ref, action=action, text=text)
+    return _ui_impl.ui_act(
+        ref=ref, action=action, text=text, name=name, role=role, app=app
+    )
 
 
 @mcp.tool()
@@ -1164,7 +1298,8 @@ def _cmd_browser_setup(args) -> int:
 
 
 def _cmd_install_deps(args) -> int:
-    """Provision the system deps pip can't (wl-clipboard, /dev/uinput udev rule).
+    """Provision what pip can't: system packages, the uinput udev rule, and on
+    GNOME the shell extension (indicator, Esc to stop, no screenshot flash).
 
     Prints a distro-aware plan by default; executes it with --yes.
     """
@@ -1246,7 +1381,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     deps_parser = sub.add_parser(
         "install-deps",
-        help="Provision system deps pip can't (wl-clipboard, /dev/uinput udev rule)",
+        help=(
+            "Provision what pip can't (wl-clipboard, /dev/uinput udev rule, "
+            "the GNOME Shell extension)"
+        ),
     )
     deps_parser.add_argument(
         "--yes",

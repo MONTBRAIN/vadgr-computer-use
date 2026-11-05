@@ -42,6 +42,7 @@ from computer_use.core.smooth_move import (
 )
 from computer_use.core.types import ForegroundWindow, Region, ScreenState
 from computer_use.core.typing import TypingPlan
+from computer_use.platform.backends import gnome_shell
 from computer_use.platform.backends.portal import PortalScreenshotCapture, portal_available
 from computer_use.platform.backends.uinput import UinputDevice
 from computer_use.platform.backends.xtest import XTestExecutor
@@ -215,6 +216,8 @@ class _CliScreenCapture(ScreenCapture):
 class GrimScreenCapture(_CliScreenCapture):
     """Wayland screenshots via grim (wlroots compositors: Sway, Hyprland, etc.)."""
 
+    backend_name = "grim"
+
     def _tool_name(self) -> str:
         return "grim"
 
@@ -230,6 +233,8 @@ class GrimScreenCapture(_CliScreenCapture):
 class GnomeScreenCapture(_CliScreenCapture):
     """Wayland screenshots via gnome-screenshot (GNOME)."""
 
+    backend_name = "gnome-screenshot"
+
     def _tool_name(self) -> str:
         return "gnome-screenshot"
 
@@ -244,6 +249,8 @@ class GnomeScreenCapture(_CliScreenCapture):
 
 class MssScreenCapture(ScreenCapture):
     """X11 screenshots via mss."""
+
+    backend_name = "mss"
 
     def __init__(self):
         if mss_import is None:
@@ -302,9 +309,29 @@ _WAYLAND_TOOLS: list[tuple[str, type[_CliScreenCapture]]] = [
 ]
 
 
+def _gnome_shell_capture_available() -> bool:
+    """The vadgr GNOME Shell extension is installed here, or answers on the bus.
+
+    Installed is enough: the capture falls back to the portal per call while the
+    extension is away (screen locked, shell still starting), and comes back to it
+    without a restart. Choosing by a live answer alone pinned a server started at
+    such a moment to the flashing portal for its whole life.
+    """
+    return gnome_shell.session_is_gnome() and (
+        gnome_shell.extension_installed() or gnome_shell.extension_available()
+    )
+
+
 def _create_screen_capture() -> ScreenCapture:
     if not _is_wayland():
         return MssScreenCapture()
+
+    # GNOME with the vadgr extension loaded: the shell captures in-process, with
+    # no portal flash and the indicator overlay kept out of the image. Probed
+    # with a size query, never a capture, so choosing it lights nothing.
+    if _gnome_shell_capture_available():
+        logger.info("Wayland: using the vadgr GNOME Shell extension for screenshots")
+        return gnome_shell.GnomeShellScreenCapture()
 
     # Binary existing doesn't mean it works (e.g. grim on GNOME).
     # Probe each tool with a real capture attempt.
@@ -1661,7 +1688,11 @@ def _query_foreground_window() -> ForegroundWindow | None:
 
 
 def _wayland_screenshot_tool_available() -> bool:
-    return any(shutil.which(tool) for tool, _cls in _WAYLAND_TOOLS) or portal_available()
+    return (
+        any(shutil.which(tool) for tool, _cls in _WAYLAND_TOOLS)
+        or portal_available()
+        or _gnome_shell_capture_available()
+    )
 
 
 class LinuxBackend(PlatformBackend):

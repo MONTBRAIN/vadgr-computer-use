@@ -11,15 +11,69 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Require authenticated final helper identities for managed installations and
   verify exact signed helper adoption offline for standalone clients.
 - Publish retained profile artifacts without rebuilding their validated bytes.
+- Add a GNOME Shell extension for GNOME 50, installed per user by
+  `vadgr-cua install-deps`. While a native UI tool, a pixel tool or `app_open`
+  runs, an orange glow lights every monitor edge, a pill at the top names the
+  action, and a click-type action first shows a ring at its target, or a box
+  around a control whose screen bounds are trusted. Esc stops vadgr: for 30
+  seconds every desktop tool returns `user_stopped` instead of acting, and the
+  key does not reach the application. The server instructions tell the model to
+  stop and wait for the user when it sees `user_stopped`.
+- Take GNOME Wayland screenshots through that extension, without the flash the
+  screenshot portal always shows and without the overlay in the image. Capture
+  falls back to the portal when the extension is not running, and
+  `get_platform_info` names the capture path.
+- Let `ui_act` find its own target by `name`, `role` and `app` when no `ref` is
+  given, so a native interaction takes one call instead of a `ui_find` and a
+  `ui_act`. It acts only when exactly one element matches, and a whole-name
+  match wins over partial ones. No match returns `not_found` with the nearest
+  candidates, several return `ambiguous` with up to five candidate refs, and a
+  by-name act returns the ref it used. A `ref` still wins when both are given.
+  The server instructions now lead native apps with `ui_act` by name.
+
+### Changed
+
+- Return dict tool results as compact JSON. MCP clients hand the text to the
+  model unchanged, and the indent=2 layout was about 40% of the tokens of a
+  structured read such as `ui_tree`, `ui_windows` or `browser`. A tool whose
+  declared output schema is an object, such as `type_text`, keeps its dict,
+  because the MCP SDK validates that result against the schema.
+- Lead the server instructions with the structured tiers and keep screenshots as
+  the fallback. The previous instructions required a screenshot before and after
+  every click, which contradicted the tier order the tools are built around.
 
 ### Fixed
 
+- Keep the coordinate space of a full screenshot after a `thumbnail` one, as
+  the screenshot documentation states. A click or region taken after a
+  thumbnail was scaled for the 640-pixel image and landed several times off.
+- Let `ui_find`, `ui_tree` and the other `app=` reads match a window title when
+  no application name matches, for apps whose accessible name is their process
+  (FlClash is `com.follow.clash`).
+- Show "button" as the `ui_find` role example. Current toolkits report that name,
+  so a search that followed the old "push button" example matched nothing and
+  the agent fell back to a whole-window `ui_tree`.
 - Preserve Insert in Linux keyboard chords and reject unsupported Wayland keys
   before sending any part of the chord.
 - Read Linux accessibility roles when a toolkit omits the optional role-name
   method, keeping its windows and controls available through the structured tier.
 - Report an unsupported action, rather than a vanished element, when a live
   Linux control does not expose the native Action interface.
+- Bound the Linux structured tier's state and bounds reads at half a second.
+  Flutter apps such as the Ubuntu App Center leave them unanswered for some
+  nodes, and at the five-second bus timeout one `ui_tree` of such an app took
+  25 seconds and dropped those nodes. After one unanswered read an app is not
+  asked again within the same tool call, and its elements are still returned,
+  with `unknown` naming the `bounds` and `states` that could not be read.
+- Never ask a Flutter app for element bounds on Linux. Flutter's embedder
+  answers that read by calling itself over D-Bus and blocks the whole app until
+  the 25 second bus timeout, so even one bounded read froze it for the rest of
+  the call. A Flutter app is recognised by its process and read in well under a
+  second, with `unknown` naming `bounds` on its elements; names, states and
+  actions are read as usual.
+- Cancel an accessibility-bus call that outlives its timeout instead of leaving
+  it pending, and report every such timeout as one error class, including on
+  Python 3.10, where the loop raises its own timeout classes.
 - Serialize GNOME Wayland portal screenshots across processes. Overlapping
   requests from concurrent computer-use servers waited out their whole timeout
   and failed; each request now takes a per-user turn.
